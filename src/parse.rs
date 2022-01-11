@@ -1,4 +1,8 @@
-use tree_sitter::{Language, Parser, Tree};
+use {
+    crate::ID,
+    std::sync::Arc,
+    tree_sitter::{Language, Parser, Tree},
+};
 
 extern "C" {
     fn tree_sitter_zeek() -> Language;
@@ -10,6 +14,12 @@ pub fn parse(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> 
     parser.set_language(language).ok();
 
     parser.parse(source, old_tree)
+}
+
+#[salsa::query_group(ParseStorage)]
+pub trait Parse: salsa::Database {
+    #[salsa::input]
+    fn source(&self, id: ID) -> Arc<String>;
 }
 
 #[cfg(test)]

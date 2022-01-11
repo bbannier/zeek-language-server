@@ -1,0 +1,16 @@
+repos:
+- repo: https://github.com/doublify/pre-commit-rust
+  rev: v1.0
+  hooks:
+  - id: fmt
+  - id: clippy
+    args: ['--', '-D', 'clippy::pedantic']
+  - id: cargo-check
+- repo: https://github.com/jorisroovers/gitlint
+  rev:  v0.17.0
+  hooks:
+  - id: gitlint
+- repo: https://github.com/crate-ci/typos
+  rev: typos-v0.8.2
+  hooks:
+  - id: typos

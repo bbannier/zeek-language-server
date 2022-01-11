@@ -1,0 +1,7 @@
+---
+source: src/parse.rs
+assertion_line: 67
+expression: "&tree.root_node().to_sexp()"
+
+---
+"(source_file (decl (func_decl (func_hdr (event (id) (func_params))) (func_body))))"

@@ -1,40 +1,95 @@
 use {
     crate::ID,
-    std::sync::Arc,
-    tree_sitter::{Language, Parser, Tree},
+    std::{ops::Deref, sync::Arc},
+    tracing::instrument,
+    tree_sitter::{Language, Parser},
 };
 
 extern "C" {
     fn tree_sitter_zeek() -> Language;
 }
 
-pub fn parse(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> {
+fn parse_(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> {
     let language = unsafe { tree_sitter_zeek() };
     let mut parser = Parser::new();
     parser.set_language(language).ok();
 
-    parser.parse(source, old_tree)
+    parser
+        .parse(source, old_tree.map(|t| &t.0))
+        .map(|t| Tree(t))
+}
+
+#[derive(Debug)]
+pub struct Tree(tree_sitter::Tree);
+
+impl PartialEq for Tree {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.root_node().id() == other.0.root_node().id()
+    }
+}
+
+impl Eq for Tree {}
+
+impl Deref for Tree {
+    type Target = tree_sitter::Tree;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[salsa::query_group(ParseStorage)]
 pub trait Parse: salsa::Database {
     #[salsa::input]
     fn source(&self, id: ID) -> Arc<String>;
+
+    fn parse(&self, id: ID) -> Arc<Option<Tree>>;
+}
+
+#[instrument(skip(db))]
+fn parse(db: &dyn Parse, id: ID) -> Arc<Option<Tree>> {
+    let source = db.source(id);
+    Arc::new(parse_(source.as_str(), None))
 }
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
+    use lsp_types::{Url, VersionedTextDocumentIdentifier};
+
     use {
-        super::parse,
+        super::{parse_, Parse, ID},
+        crate::lsp::Database,
         eyre::{eyre, Result},
         insta::assert_debug_snapshot,
     };
 
+    const SOURCE: &'static str = "event zeek_init() {}";
+
+    #[test]
+    fn can_parse_() -> Result<()> {
+        let tree = parse_(&SOURCE, None).ok_or_else(|| eyre!("parser returned no tree"))?;
+        assert_debug_snapshot!(&tree.root_node().to_sexp());
+
+        Ok(())
+    }
+
     #[test]
     fn can_parse() -> Result<()> {
-        let source = "event zeek_init() {}";
-        let tree = parse(&source, None).ok_or_else(|| eyre!("parser returned no tree"))?;
+        let uri = Url::from_file_path("/foo/bar.zeek").unwrap();
+        let id: ID = VersionedTextDocumentIdentifier::new(uri, 0).into();
+
+        let mut db = Database::default();
+        db.set_source(id.clone(), Arc::new(SOURCE.to_owned()));
+
+        let tree = db.parse(id.clone());
+        let tree = tree
+            .as_ref()
+            .as_ref()
+            .ok_or_else(|| eyre!("parser returned no tree"))?;
         assert_debug_snapshot!(&tree.root_node().to_sexp());
+
         Ok(())
     }
 }

@@ -12,5 +12,14 @@ cc = "1.0.72"
 insta = "1.10.0"
 
 [dependencies]
+clap = { version = "3.0.6", features = ["derive"] }
+clap-verbosity-flag = "0.4.0"
 eyre = "0.6.5"
+log = "0.4.14"
+tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1.29"
+tracing-appender = "0.2.0"
+tracing-log = "0.1.2"
+tracing-subscriber = { version = "0.3.5", features = ["tracing-log"] }
+tracing-tree = "0.2.0"
 tree-sitter = "0.20.2"

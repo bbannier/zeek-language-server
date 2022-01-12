@@ -1,3 +1,6 @@
+use lsp_types::Position;
+use tree_sitter::Point;
+
 use {
     crate::ID,
     std::{ops::Deref, sync::Arc},
@@ -14,13 +17,23 @@ fn parse_(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> {
     let mut parser = Parser::new();
     parser.set_language(language).ok();
 
-    parser
-        .parse(source, old_tree.map(|t| &t.0))
-        .map(|t| Tree(t))
+    parser.parse(source, old_tree.map(|t| &t.0)).map(Tree)
 }
 
-#[derive(Debug)]
-pub struct Tree(tree_sitter::Tree);
+#[derive(Clone, Debug)]
+pub struct Tree(pub tree_sitter::Tree);
+
+impl Tree {
+    // FIXME(bbannier): do not leak `Node` type here.
+    #[must_use]
+    pub fn named_descendant_for_position(&self, position: &Position) -> Option<tree_sitter::Node> {
+        let start = Point::new(position.line as usize, position.character as usize);
+
+        self.0
+            .root_node()
+            .named_descendant_for_point_range(start, start)
+    }
+}
 
 impl PartialEq for Tree {
     fn eq(&self, other: &Self) -> bool {
@@ -54,15 +67,13 @@ fn parse(db: &dyn Parse, id: ID) -> Arc<Option<Tree>> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
-    use lsp_types::{Url, VersionedTextDocumentIdentifier};
-
     use {
         super::{parse_, Parse, ID},
         crate::lsp::Database,
         eyre::{eyre, Result},
         insta::assert_debug_snapshot,
+        lsp_types::{Url, VersionedTextDocumentIdentifier},
+        std::sync::Arc,
     };
 
     const SOURCE: &'static str = "event zeek_init() {}";

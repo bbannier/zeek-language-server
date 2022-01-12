@@ -1,11 +1,9 @@
-use lsp_types::Position;
-use tree_sitter::Point;
-
 use {
     crate::ID,
     std::{ops::Deref, sync::Arc},
+    tower_lsp::lsp_types::Position,
     tracing::instrument,
-    tree_sitter::{Language, Parser},
+    tree_sitter::{Language, Parser, Point},
 };
 
 extern "C" {
@@ -72,8 +70,8 @@ mod test {
         crate::lsp::Database,
         eyre::{eyre, Result},
         insta::assert_debug_snapshot,
-        lsp_types::{Url, VersionedTextDocumentIdentifier},
         std::sync::Arc,
+        tower_lsp::lsp_types::{Url, VersionedTextDocumentIdentifier},
     };
 
     const SOURCE: &'static str = "event zeek_init() {}";

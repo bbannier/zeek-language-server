@@ -7,7 +7,7 @@ use {
     tracing_log::LogTracer,
     tracing_subscriber::{layer::SubscriberExt, Registry},
     tracing_tree::HierarchicalLayer,
-    zeek_lsp::lsp::LanguageServer,
+    zeek_lsp::lsp::run,
 };
 
 #[derive(Parser, Debug)]
@@ -47,8 +47,7 @@ async fn main() -> Result<()> {
 
     info!("starting Zeek language server");
 
-    let mut server = LanguageServer::default();
-    server.run().await?;
+    run().await;
 
     Ok(())
 }

@@ -1,6 +1,6 @@
 use {
-    lsp_types::VersionedTextDocumentIdentifier,
     std::{hash::Hash, ops::Deref, sync::Arc},
+    tower_lsp::lsp_types::VersionedTextDocumentIdentifier,
 };
 
 pub mod lsp;

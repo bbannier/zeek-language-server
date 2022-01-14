@@ -1,3 +1,3 @@
 [submodule "src/tree-sitter-zeek"]
 	path = src/tree-sitter-zeek
-	url = https://github.com/ckreibich/tree-sitter-zeek
+	url = https://github.com/bbannier/tree-sitter-zeek

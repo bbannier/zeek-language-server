@@ -54,6 +54,7 @@ pub trait Parse: salsa::Database {
     #[salsa::input]
     fn source(&self, id: ID) -> Arc<String>;
 
+    #[must_use]
     fn parse(&self, id: ID) -> Arc<Option<Tree>>;
 }
 
@@ -61,6 +62,24 @@ pub trait Parse: salsa::Database {
 fn parse(db: &dyn Parse, id: ID) -> Arc<Option<Tree>> {
     let source = db.source(id);
     Arc::new(parse_(source.as_str(), None))
+}
+
+pub fn query_to<T>(
+    node: tree_sitter::Node,
+    source: &str,
+    query: &str,
+    f: impl Fn(&tree_sitter::QueryCapture) -> Option<T>,
+) -> Vec<T> {
+    let query = match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, query).ok() {
+        Some(q) => q,
+        None => return Vec::new(),
+    };
+
+    tree_sitter::QueryCursor::new()
+        .captures(&query, node, source.as_bytes())
+        .flat_map(|(c, _)| c.captures)
+        .filter_map(f)
+        .collect()
 }
 
 #[cfg(test)]

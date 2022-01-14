@@ -6,7 +6,6 @@ use {
     tracing::info,
     tracing_log::LogTracer,
     tracing_subscriber::{layer::SubscriberExt, Registry},
-    tracing_tree::HierarchicalLayer,
     zeek_lsp::lsp::run,
 };
 
@@ -36,13 +35,7 @@ async fn main() -> Result<()> {
     )?;
 
     tracing::subscriber::set_global_default(
-        Registry::default().with(
-            HierarchicalLayer::new(2)
-                .with_thread_ids(true)
-                .with_thread_names(true)
-                .with_writer(log_writer)
-                .with_ansi(true),
-        ),
+        Registry::default().with(tracing_subscriber::fmt::layer().with_writer(log_writer)),
     )?;
 
     info!("starting Zeek language server");

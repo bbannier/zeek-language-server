@@ -23,5 +23,4 @@ tracing = "0.1.29"
 tracing-appender = "0.2.0"
 tracing-log = "0.1.2"
 tracing-subscriber = { version = "0.3.5", features = ["tracing-log"] }
-tracing-tree = "0.2.0"
 tree-sitter = "0.20.2"

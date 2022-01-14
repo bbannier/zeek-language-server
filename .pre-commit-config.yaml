@@ -11,10 +11,23 @@ repos:
   hooks:
   - id: gitlint
 - repo: https://github.com/crate-ci/typos
-  rev: typos-v0.8.2
+  rev: v1.3.4
   hooks:
   - id: typos
 - repo: https://github.com/igorshubovych/markdownlint-cli
   rev: v0.30.0
   hooks:
   - id: markdownlint-fix
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.1.0
+  hooks:
+  - id: trailing-whitespace
+    exclude: '^tests/Baseline'
+  - id: end-of-file-fixer
+    exclude: '^tests/Baseline|^doc/autogen|^doc/_static'
+  - id: check-yaml
+  - id: check-added-large-files
+- repo: https://github.com/jorisroovers/gitlint
+  rev:  v0.17.0
+  hooks:
+  - id: gitlint

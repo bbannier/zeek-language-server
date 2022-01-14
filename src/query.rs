@@ -149,7 +149,7 @@ mod test {
 
     #[test]
     fn test_module() {
-        let source = "module test; 
+        let source = "module test;
 
               export {
                   const x = 1 &redef;

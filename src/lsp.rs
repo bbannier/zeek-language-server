@@ -1,9 +1,7 @@
+use crate::query::{self, Decl, DeclKind};
+
 use {
-    crate::{
-        parse::{query_to, Parse},
-        ID,
-    },
-    log::warn,
+    crate::{parse::Parse, query::default_module_name, to_range, ID},
     std::{
         collections::HashSet,
         fmt::Debug,
@@ -15,30 +13,14 @@ use {
             DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbol,
             DocumentSymbolParams, DocumentSymbolResponse, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-            MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities, SymbolKind,
+            MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
             TextDocumentIdentifier, TextDocumentSyncCapability, TextDocumentSyncKind,
             VersionedTextDocumentIdentifier,
         },
         Client, LanguageServer, LspService, Server,
     },
     tracing::instrument,
-    tree_sitter::QueryCapture,
 };
-
-fn to_offset(x: usize) -> Result<u32> {
-    u32::try_from(x).map_err(|_| Error::new(ErrorCode::InternalError))
-}
-
-fn to_position(p: tree_sitter::Point) -> Result<Position> {
-    Ok(Position::new(to_offset(p.row)?, to_offset(p.column)?))
-}
-
-fn to_range(r: tree_sitter::Range) -> Result<Range> {
-    Ok(Range::new(
-        to_position(r.start_point)?,
-        to_position(r.end_point)?,
-    ))
-}
 
 #[salsa::database(crate::parse::ParseStorage)]
 #[derive(Default)]
@@ -206,123 +188,56 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let document = |c: &QueryCapture| {
-            let node = c.node;
-
-            let kind = match node.kind() {
-                "module_decl" => SymbolKind::Module,
-                "const_decl" => SymbolKind::Constant,
-                "global_decl" | "redef_decl" => SymbolKind::Variable,
-                "redef_enum_decl" => SymbolKind::Enum,
-                "redef_record_decl" => SymbolKind::Interface,
-                "option_decl" => SymbolKind::Property,
-                "type_decl" => SymbolKind::Class,
-                "event_decl" => SymbolKind::Event,
-                "func_decl" | "hook_decl" => SymbolKind::Function,
-                "export_decl" | "preproc" => {
-                    // These nodes are no interesting decls.
-                    return None;
-                }
-                _ => {
-                    warn!("unsupported node kind {}", node.kind());
-                    return None;
+        if let Some(m) = dbg!(query::module(tree.root_node(), &source)) {
+            let symbol = |d: Decl| -> DocumentSymbol {
+                #[allow(deprecated)]
+                DocumentSymbol {
+                    name: d.id,
+                    range: d.range,
+                    selection_range: d.selection_range,
+                    kind: match d.kind {
+                        DeclKind::Global | DeclKind::Redef => SymbolKind::Variable,
+                        DeclKind::Option => SymbolKind::Property,
+                        DeclKind::Const => SymbolKind::Constant,
+                        DeclKind::RedefEnum => SymbolKind::Enum,
+                        DeclKind::RedefRecord => SymbolKind::Interface,
+                        DeclKind::Type => SymbolKind::Class,
+                        DeclKind::Func => SymbolKind::Function,
+                        DeclKind::Hook => SymbolKind::Operator,
+                        DeclKind::Event => SymbolKind::Event,
+                    },
+                    deprecated: None,
+                    detail: None,
+                    tags: None,
+                    children: None,
                 }
             };
 
-            let detail = None;
-            let tags = None;
-            let deprecated = None;
-            let children = None;
+            let range = to_range(tree.root_node().range())
+                .map_err(|_| Error::new(ErrorCode::ContentModified))?;
 
-            let range = to_range(node.range()).ok()?;
+            Ok(Some(
+                #[allow(deprecated)]
+                DocumentSymbolResponse::Nested(vec![DocumentSymbol {
+                    name: m
+                        .id
+                        .unwrap_or_else(|| {
+                            default_module_name(&params.text_document.uri).unwrap_or("<invalid>")
+                        })
+                        .into(),
+                    kind: SymbolKind::Module,
+                    range,
+                    selection_range: range,
+                    deprecated: None,
 
-            // Concrete decls always have an explicit `id`. Since we
-            // return early for other nodes above this always succeeds.
-            let id = node.child_by_field_name("id")?;
-
-            let selection_range = to_range(id.range()).ok()?;
-            let name = id.utf8_text(source.as_bytes()).ok()?.into();
-
-            #[allow(deprecated)]
-            Some(DocumentSymbol {
-                name,
-                detail,
-                kind,
-                tags,
-                deprecated,
-                range,
-                selection_range,
-                children,
-            })
-        };
-
-        // The module node.
-        let module = query_to(
-            tree.root_node(),
-            &source,
-            "(decl (module_decl (id))@d)",
-            document,
-        )
-        .into_iter()
-        // Add a generated module symbol so we always have one, even if the user did not write an
-        // explicit module_decl.
-        .chain(std::iter::once({
-            let range =
-                to_range(tree.root_node().range()).expect("source file should have some range");
-
-            let name = params
-                .text_document
-                .uri
-                // Assume that text documents refer to file paths.
-                .path_segments()
-                // The last path component would be the file name.
-                .and_then(Iterator::last)
-                // Assume that implicit module names only exist for files name like `mod.zeek`, and
-                // e.g., multiple `.` are not allowed.
-                .and_then(|s| s.split('.').next())
-                // If we still cannot extract a name at least provide _something_.
-                .unwrap_or("<invalid>")
-                .into();
-
-            #[allow(deprecated)]
-            DocumentSymbol {
-                name,
-                kind: SymbolKind::Module,
-
-                children: None,
-                detail: None,
-                tags: None,
-                deprecated: None,
-
-                range,
-                selection_range: range,
-            }
-        }))
-        // Valid Zeek code should have at most one module_decl.
-        .nth(0)
-        .map(|m| {
-            // All non-module nodes. This will execute at most once here.
-            // FIXME(bbannier): This currently handles decls wrapped in preproc, test that.
-            let children = query_to(tree.root_node(), &source, "(decl (_ (id))@d)", document)
-                .into_iter()
-                .filter(|s| s.kind != SymbolKind::Module)
-                .map(|mut n| {
-                    // Symbol names can be declared with a module prefix. Remove the prefix.
-                    if let Some(name) = n.name.strip_prefix(&format!("{}::", m.name)) {
-                        n.name = name.into();
-                    }
-                    n
-                })
-                .collect::<Vec<_>>();
-
-            DocumentSymbol {
-                children: Some(children),
-                ..m
-            }
-        })
-        .expect("module information should always be generated");
-
-        Ok(Some(DocumentSymbolResponse::from(vec![module])))
+                    detail: None,
+                    tags: None,
+                    children: Some(m.decls.into_iter().map(symbol).collect()),
+                }]),
+            ))
+        } else {
+            Ok(None)
+        }
     }
 }
 

@@ -7,10 +7,10 @@ use {
 };
 
 extern "C" {
-    fn tree_sitter_zeek() -> Language;
+    pub(crate) fn tree_sitter_zeek() -> Language;
 }
 
-fn parse_(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> {
+pub(crate) fn parse_(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> {
     let language = unsafe { tree_sitter_zeek() };
     let mut parser = Parser::new();
     parser.set_language(language).ok();
@@ -62,24 +62,6 @@ pub trait Parse: salsa::Database {
 fn parse(db: &dyn Parse, id: ID) -> Arc<Option<Tree>> {
     let source = db.source(id);
     Arc::new(parse_(source.as_str(), None))
-}
-
-pub fn query_to<T>(
-    node: tree_sitter::Node,
-    source: &str,
-    query: &str,
-    f: impl Fn(&tree_sitter::QueryCapture) -> Option<T>,
-) -> Vec<T> {
-    let query = match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, query).ok() {
-        Some(q) => q,
-        None => return Vec::new(),
-    };
-
-    tree_sitter::QueryCursor::new()
-        .captures(&query, node, source.as_bytes())
-        .flat_map(|(c, _)| c.captures)
-        .filter_map(f)
-        .collect()
 }
 
 #[cfg(test)]

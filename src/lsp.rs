@@ -188,56 +188,54 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        if let Some(m) = dbg!(query::module(tree.root_node(), &source)) {
-            let symbol = |d: Decl| -> DocumentSymbol {
-                #[allow(deprecated)]
-                DocumentSymbol {
-                    name: d.id,
-                    range: d.range,
-                    selection_range: d.selection_range,
-                    kind: match d.kind {
-                        DeclKind::Global | DeclKind::Redef => SymbolKind::Variable,
-                        DeclKind::Option => SymbolKind::Property,
-                        DeclKind::Const => SymbolKind::Constant,
-                        DeclKind::RedefEnum => SymbolKind::Enum,
-                        DeclKind::RedefRecord => SymbolKind::Interface,
-                        DeclKind::Type => SymbolKind::Class,
-                        DeclKind::Func => SymbolKind::Function,
-                        DeclKind::Hook => SymbolKind::Operator,
-                        DeclKind::Event => SymbolKind::Event,
-                    },
-                    deprecated: None,
-                    detail: None,
-                    tags: None,
-                    children: None,
-                }
-            };
+        let module = query::module(tree.root_node(), &source);
 
-            let range = to_range(tree.root_node().range())
-                .map_err(|_| Error::new(ErrorCode::ContentModified))?;
+        let symbol = |d: Decl| -> DocumentSymbol {
+            #[allow(deprecated)]
+            DocumentSymbol {
+                name: d.id,
+                range: d.range,
+                selection_range: d.selection_range,
+                kind: match d.kind {
+                    DeclKind::Global | DeclKind::Redef => SymbolKind::Variable,
+                    DeclKind::Option => SymbolKind::Property,
+                    DeclKind::Const => SymbolKind::Constant,
+                    DeclKind::RedefEnum => SymbolKind::Enum,
+                    DeclKind::RedefRecord => SymbolKind::Interface,
+                    DeclKind::Type => SymbolKind::Class,
+                    DeclKind::Func => SymbolKind::Function,
+                    DeclKind::Hook => SymbolKind::Operator,
+                    DeclKind::Event => SymbolKind::Event,
+                },
+                deprecated: None,
+                detail: None,
+                tags: None,
+                children: None,
+            }
+        };
 
-            Ok(Some(
-                #[allow(deprecated)]
-                DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                    name: m
-                        .id
-                        .unwrap_or_else(|| {
-                            default_module_name(&params.text_document.uri).unwrap_or("<invalid>")
-                        })
-                        .into(),
-                    kind: SymbolKind::Module,
-                    range,
-                    selection_range: range,
-                    deprecated: None,
+        let range = to_range(tree.root_node().range())
+            .map_err(|_| Error::new(ErrorCode::ContentModified))?;
 
-                    detail: None,
-                    tags: None,
-                    children: Some(m.decls.into_iter().map(symbol).collect()),
-                }]),
-            ))
-        } else {
-            Ok(None)
-        }
+        Ok(Some(
+            #[allow(deprecated)]
+            DocumentSymbolResponse::Nested(vec![DocumentSymbol {
+                name: module
+                    .id
+                    .unwrap_or_else(|| {
+                        default_module_name(&params.text_document.uri).unwrap_or("<invalid>")
+                    })
+                    .into(),
+                kind: SymbolKind::Module,
+                range,
+                selection_range: range,
+                deprecated: None,
+
+                detail: None,
+                tags: None,
+                children: Some(module.decls.into_iter().map(symbol).collect()),
+            }]),
+        ))
     }
 }
 

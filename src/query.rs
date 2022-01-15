@@ -1,4 +1,4 @@
-use log::warn;
+use log::error;
 use tower_lsp::lsp_types::{Range, Url};
 use tree_sitter::Node;
 
@@ -46,60 +46,73 @@ pub fn default_module_name(uri: &Url) -> Option<&str> {
     // If we still cannot extract a name at least provide _something_.
 }
 
-#[must_use]
-pub fn module<'a>(node: Node, source: &'a str) -> Option<Module<'a>> {
-    let query = match tree_sitter::Query::new(
-        unsafe { tree_sitter_zeek() },
-        "(module (id)*@module_id [\
-            (_ (id)@id)@priv_decl \
-            (export (_ (id)@id)@pub_decl) \
-            ])",
-    )
-    .ok()
-    {
-        Some(q) => q,
-        None => return None,
-    };
+fn in_export(mut node: Node) -> bool {
+    loop {
+        node = match node.parent() {
+            Some(p) => p,
+            None => return false,
+        };
 
-    dbg!(&query.capture_names());
+        if node.kind() == "export" {
+            return true;
+        }
+    }
+}
 
-    let c_module = query.capture_index_for_name("module_id")?;
-    let c_id = query.capture_index_for_name("id")?;
-    let c_priv_decl = query.capture_index_for_name("priv_decl")?;
-    let c_pub_decl = query.capture_index_for_name("pub_decl")?;
+fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
+    let query = tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(module (id)*@module_id)")
+        .expect("could not construct module query");
 
-    let decls = tree_sitter::QueryCursor::new()
+    let c_module_id = query
+        .capture_index_for_name("module_id")
+        .expect("module_id should be captured");
+
+    tree_sitter::QueryCursor::new()
         .matches(&query, node, source.as_bytes())
         .filter_map(|c| {
-            let module_id = c
-                .nodes_for_capture_index(c_module)
+            c.nodes_for_capture_index(c_module_id)
                 .next()
-                .and_then(|n| n.utf8_text(source.as_bytes()).ok());
+                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+        })
+        .collect()
+}
 
-            let id = c
-                .nodes_for_capture_index(c_id)
+#[must_use]
+pub fn module<'a>(node: Node, source: &'a str) -> Module<'a> {
+    let id = module_id(node, source).get(0).copied();
+    let decls = decls(node, source);
+
+    Module { id, decls }
+}
+
+#[must_use]
+pub fn decls(node: Node, source: &str) -> Vec<Decl> {
+    let query = match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(_ (_ (id)@id)@decl)")
+    {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return Vec::new();
+        }
+    };
+
+    let c_id = query
+        .capture_index_for_name("id")
+        .expect("id should be captured");
+
+    let c_decl = query
+        .capture_index_for_name("decl")
+        .expect("decl should be captured");
+
+    tree_sitter::QueryCursor::new()
+        .matches(&query, node, source.as_bytes())
+        .filter_map(|c| {
+            let decl = c
+                .nodes_for_capture_index(c_decl)
                 .next()
-                .expect("match should be present");
+                .expect("decl should be present");
 
-            let pub_decl = c.nodes_for_capture_index(c_pub_decl).next();
-            let priv_decl = c.nodes_for_capture_index(c_priv_decl).next();
-
-            let is_export = pub_decl.is_some();
-
-            let node = if let Some(n) = pub_decl {
-                n
-            } else if let Some(n) = priv_decl {
-                n
-            } else {
-                unreachable!("we should match either a private or an export node");
-            };
-
-            let range = to_range(node.range()).ok()?;
-            let selection_range = to_range(id.range()).ok()?;
-
-            let id = id.utf8_text(source.as_bytes()).ok()?.into();
-
-            let kind = match node.kind() {
+            let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
                 "global_decl" => DeclKind::Global,
                 "redef_enum_decl" => DeclKind::RedefEnum,
@@ -108,48 +121,36 @@ pub fn module<'a>(node: Node, source: &'a str) -> Option<Module<'a>> {
                 "type_decl" => DeclKind::Type,
                 "event_decl" => DeclKind::Event,
                 "func_decl" => DeclKind::Func,
-                "export_decl" | "preproc" => {
-                    // These nodes are no interesting decls.
-                    return None;
-                }
                 _ => {
-                    warn!("received node kind {} which is unsupported", node.kind());
                     return None;
                 }
             };
 
-            Some((
-                module_id,
-                Decl {
-                    id,
-                    kind,
-                    is_export,
-                    range,
-                    selection_range,
-                },
-            ))
+            let id = c.nodes_for_capture_index(c_id).next()?;
+
+            let range = to_range(decl.range()).ok()?;
+            let selection_range = to_range(id.range()).ok()?;
+
+            let id = id.utf8_text(source.as_bytes()).ok()?.into();
+
+            Some(Decl {
+                id,
+                kind,
+                is_export: in_export(decl),
+                range,
+                selection_range,
+            })
         })
-        .collect::<Vec<(_, _)>>();
-
-    let id = match decls.get(0) {
-        Some((Some(id), _)) => Some(*id),
-        _ => None,
-    };
-
-    let decls = decls.into_iter().map(|(_, d)| d).collect();
-
-    Some(Module { id, decls })
+        .collect()
 }
 
 #[cfg(test)]
 mod test {
-    use super::module;
-    use crate::parse::parse_;
+    use super::{decls, module, module_id};
+    use crate::{parse::parse_, query::in_export};
     use insta::assert_debug_snapshot;
 
-    #[test]
-    fn test_module() {
-        let source = "module test;
+    const SOURCE: &str = "module test;
 
               export {
                   const x = 1 &redef;
@@ -162,8 +163,57 @@ mod test {
 
               event zeek_init() { 1; }";
 
-        let tree = parse_(source, None).expect("cannot parse");
+    #[test]
+    fn test_module() {
+        let tree = parse_(SOURCE, None).expect("cannot parse");
 
-        assert_debug_snapshot!(module(tree.root_node(), source));
+        assert_debug_snapshot!(module(tree.root_node(), SOURCE));
+    }
+
+    #[test]
+    fn test_decls() {
+        let tree = parse_(SOURCE, None).expect("cannot parse");
+
+        let decls = decls(tree.root_node(), SOURCE);
+
+        assert_eq!(4, decls.len());
+        assert_debug_snapshot!(decls);
+    }
+
+    #[test]
+    fn test_in_export() {
+        let tree = parse_(SOURCE, None).expect("cannot parse");
+        assert!(!in_export(tree.root_node()));
+
+        let const_node = tree
+            .root_node()
+            .named_child(1)
+            .and_then(|c| c.named_child(0))
+            .unwrap();
+        assert_eq!(const_node.kind(), "const_decl");
+        assert!(in_export(const_node));
+
+        let zeek_init_node = tree
+            .root_node()
+            .named_child(tree.root_node().named_child_count() - 1)
+            .unwrap();
+        assert_eq!(zeek_init_node.kind(), "event_decl");
+        assert!(!in_export(zeek_init_node));
+    }
+
+    #[test]
+    fn test_module_id() {
+        let module_id = |source| module_id(parse_(source, None).unwrap().root_node(), source);
+
+        assert!(module_id("").is_empty());
+        assert!(module_id("event zeek_init() {}").is_empty());
+        assert!(module_id("export {}").is_empty());
+        assert_eq!(module_id("module test;"), vec!["test"]);
+
+        // Multiple occurrences of `module` currently disallowed by grammar.
+        // assert_eq!(
+        //     module_name("module test1; module test2;"),
+        //     vec!["test1", "test2"]
+        // );
     }
 }

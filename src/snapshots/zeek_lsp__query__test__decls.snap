@@ -1,0 +1,108 @@
+---
+source: src/query.rs
+assertion_line: 247
+expression: decls
+
+---
+[
+    Decl {
+        id: "x",
+        kind: Const,
+        is_export: true,
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 18,
+            },
+            end: Position {
+                line: 3,
+                character: 37,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 24,
+            },
+            end: Position {
+                line: 3,
+                character: 25,
+            },
+        },
+    },
+    Decl {
+        id: "y",
+        kind: Global,
+        is_export: true,
+        range: Range {
+            start: Position {
+                line: 4,
+                character: 18,
+            },
+            end: Position {
+                line: 4,
+                character: 31,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 4,
+                character: 25,
+            },
+            end: Position {
+                line: 4,
+                character: 26,
+            },
+        },
+    },
+    Decl {
+        id: "Y",
+        kind: Type,
+        is_export: false,
+        range: Range {
+            start: Position {
+                line: 7,
+                character: 14,
+            },
+            end: Position {
+                line: 9,
+                character: 16,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 7,
+                character: 19,
+            },
+            end: Position {
+                line: 7,
+                character: 20,
+            },
+        },
+    },
+    Decl {
+        id: "zeek_init",
+        kind: Event,
+        is_export: false,
+        range: Range {
+            start: Position {
+                line: 11,
+                character: 14,
+            },
+            end: Position {
+                line: 11,
+                character: 38,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 11,
+                character: 20,
+            },
+            end: Position {
+                line: 11,
+                character: 29,
+            },
+        },
+    },
+]

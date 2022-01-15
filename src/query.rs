@@ -16,6 +16,7 @@ pub enum DeclKind {
     Func,
     Hook,
     Event,
+    Variable,
 }
 
 #[derive(Debug)]
@@ -87,14 +88,20 @@ pub fn module<'a>(node: Node, source: &'a str) -> Module<'a> {
 
 #[must_use]
 pub fn decls(node: Node, source: &str) -> Vec<Decl> {
-    let query = match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(_ (_ (id)@id)@decl)")
-    {
+    let query = match tree_sitter::Query::new(
+        unsafe { tree_sitter_zeek() },
+        "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id)@decl)@outer_node",
+    ) {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
             return Vec::new();
         }
     };
+
+    let c_scope = query
+        .capture_index_for_name("scope")
+        .expect("scope should be captured");
 
     let c_id = query
         .capture_index_for_name("id")
@@ -104,6 +111,10 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
         .capture_index_for_name("decl")
         .expect("decl should be captured");
 
+    let c_outer_node = query
+        .capture_index_for_name("outer_node")
+        .expect("outer node should be captured");
+
     tree_sitter::QueryCursor::new()
         .matches(&query, node, source.as_bytes())
         .filter_map(|c| {
@@ -112,9 +123,35 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
                 .next()
                 .expect("decl should be present");
 
+            // Skip children not directly below the node or in an `export` below the node.
+            // TODO(bbannier): this would probably be better handled directly in the query.
+            let outer_node = c
+                .nodes_for_capture_index(c_outer_node)
+                .next()
+                .expect("outer node should be present");
+            if outer_node != node
+                && (outer_node.kind() != "export" && outer_node.parent() != Some(node))
+            {
+                return None;
+            }
+
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
-                "global_decl" => DeclKind::Global,
+                "var_decl" => {
+                    let scope = c
+                        .nodes_for_capture_index(c_scope)
+                        .next()
+                        .expect("scope should be present");
+
+                    match scope.kind() {
+                        "global" => DeclKind::Global,
+                        "local" => DeclKind::Variable,
+                        _ => {
+                            error!("unhandled variable scope: {}", scope.kind());
+                            return None;
+                        }
+                    }
+                }
                 "redef_enum_decl" => DeclKind::RedefEnum,
                 "redef_record_decl" => DeclKind::RedefRecord,
                 "option_decl" => DeclKind::Option,
@@ -161,7 +198,9 @@ mod test {
                   y: vector of count &optional;
               };
 
-              event zeek_init() { 1; }";
+              event zeek_init() { local x=1; \n
+                  # Comment.
+              }";
 
     #[test]
     fn test_module() {
@@ -174,10 +213,24 @@ mod test {
     fn test_decls() {
         let tree = parse_(SOURCE, None).expect("cannot parse");
 
-        let decls = decls(tree.root_node(), SOURCE);
+        // Test decls reachable from the root node. This is used e.g., to figure out what decls are
+        // available in a module. This should not contain e.g., function-scope decls.
+        let root_decls = decls(tree.root_node(), SOURCE);
+        assert_eq!(4, root_decls.len());
+        assert_debug_snapshot!(root_decls);
 
-        assert_eq!(4, decls.len());
-        assert_debug_snapshot!(decls);
+        // Test decls with scope. While they should not be visible from outside the scope (tested
+        // above), they should be visible inside the scope.
+        let func_body = tree
+            .root_node()
+            .child(5)
+            .expect("cannot get event_decl")
+            .child(3)
+            .expect("cannot get func_body");
+        assert_eq!(func_body.kind(), "func_body");
+        let func_decls = decls(func_body, SOURCE);
+        assert_eq!(func_decls.len(), 1);
+        assert_debug_snapshot!(func_decls);
     }
 
     #[test]

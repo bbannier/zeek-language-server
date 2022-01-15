@@ -1,7 +1,9 @@
-use crate::query::{self, Decl, DeclKind};
-
 use {
-    crate::{parse::Parse, query::default_module_name, to_range, ID},
+    crate::{
+        parse::Parse,
+        query::{self, default_module_name, Decl, DeclKind},
+        to_range, ID,
+    },
     std::{
         collections::HashSet,
         fmt::Debug,
@@ -196,17 +198,7 @@ impl LanguageServer for Backend {
                 name: d.id,
                 range: d.range,
                 selection_range: d.selection_range,
-                kind: match d.kind {
-                    DeclKind::Global | DeclKind::Redef => SymbolKind::Variable,
-                    DeclKind::Option => SymbolKind::Property,
-                    DeclKind::Const => SymbolKind::Constant,
-                    DeclKind::RedefEnum => SymbolKind::Enum,
-                    DeclKind::RedefRecord => SymbolKind::Interface,
-                    DeclKind::Type => SymbolKind::Class,
-                    DeclKind::Func => SymbolKind::Function,
-                    DeclKind::Hook => SymbolKind::Operator,
-                    DeclKind::Event => SymbolKind::Event,
-                },
+                kind: to_symbol_kind(d.kind),
                 deprecated: None,
                 detail: None,
                 tags: None,
@@ -236,6 +228,20 @@ impl LanguageServer for Backend {
                 children: Some(module.decls.into_iter().map(symbol).collect()),
             }]),
         ))
+    }
+}
+
+fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
+    match kind {
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::Variable,
+        DeclKind::Option => SymbolKind::Property,
+        DeclKind::Const => SymbolKind::Constant,
+        DeclKind::RedefEnum => SymbolKind::Enum,
+        DeclKind::RedefRecord => SymbolKind::Interface,
+        DeclKind::Type => SymbolKind::Class,
+        DeclKind::Func => SymbolKind::Function,
+        DeclKind::Hook => SymbolKind::Operator,
+        DeclKind::Event => SymbolKind::Event,
     }
 }
 

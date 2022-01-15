@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 170
+assertion_line: 209
 expression: "module(tree.root_node(), SOURCE)"
 
 ---
@@ -94,8 +94,8 @@ Module {
                     character: 14,
                 },
                 end: Position {
-                    line: 11,
-                    character: 38,
+                    line: 14,
+                    character: 15,
                 },
             },
             selection_range: Range {

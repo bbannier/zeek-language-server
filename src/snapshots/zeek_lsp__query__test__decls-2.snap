@@ -1,0 +1,33 @@
+---
+source: src/query.rs
+assertion_line: 231
+expression: stmt_decls
+
+---
+[
+    Decl {
+        id: "x",
+        kind: Variable,
+        is_export: false,
+        range: Range {
+            start: Position {
+                line: 11,
+                character: 34,
+            },
+            end: Position {
+                line: 11,
+                character: 44,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 11,
+                character: 40,
+            },
+            end: Position {
+                line: 11,
+                character: 41,
+            },
+        },
+    },
+]

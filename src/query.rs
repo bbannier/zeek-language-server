@@ -31,8 +31,14 @@ pub struct Decl {
 
 #[derive(Debug)]
 pub struct Module<'a> {
+    /// ID of this module.
     pub id: Option<&'a str>,
+
+    /// Declarations in this module.
     pub decls: Vec<Decl>,
+
+    /// Other modules explicitly loaded by this module.
+    pub loads: Vec<&'a str>,
 }
 
 #[must_use]
@@ -84,8 +90,9 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 pub fn module<'a>(node: Node, source: &'a str) -> Module<'a> {
     let id = module_id(node, source).get(0).copied();
     let decls = decls(node, source);
+    let loads = loads(node, source);
 
-    Module { id, decls }
+    Module { id, decls, loads }
 }
 
 #[instrument]
@@ -184,9 +191,31 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
         .collect()
 }
 
+#[instrument]
+pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
+    let query =
+        match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(\"@load\") (file)@file") {
+            Ok(q) => q,
+            Err(e) => {
+                error!("could not construct query: {}", e);
+                return Vec::new();
+            }
+        };
+
+    let c_file = query
+        .capture_index_for_name("file")
+        .expect("file should be captured");
+
+    tree_sitter::QueryCursor::new()
+        .matches(&query, node, source.as_bytes())
+        .filter_map(|c| c.nodes_for_capture_index(c_file).next())
+        .filter_map(|f| f.utf8_text(&source.as_bytes()).ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod test {
-    use super::{decls, module, module_id};
+    use super::{decls, loads, module, module_id};
     use crate::{parse::parse_, query::in_export};
     use insta::assert_debug_snapshot;
 
@@ -204,6 +233,23 @@ mod test {
               event zeek_init() { local x=1; \n
                   # Comment.
               }";
+
+    #[test]
+    fn test_loads() {
+        let loads = |source| {
+            loads(
+                parse_(source, None).expect("cannot parse").root_node(),
+                source,
+            )
+        };
+
+        assert_eq!(loads(""), Vec::<&str>::new());
+
+        assert_eq!(
+            loads("@load ./main; @load base/misc/version;"),
+            vec!["./main", "base/misc/version"]
+        );
+    }
 
     #[test]
     fn test_module() {

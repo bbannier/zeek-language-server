@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 209
+assertion_line: 258
 expression: "module(tree.root_node(), SOURCE)"
 
 ---
@@ -110,4 +110,5 @@ Module {
             },
         },
     ],
+    loads: [],
 }

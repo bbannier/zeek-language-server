@@ -1,5 +1,6 @@
 use log::error;
 use tower_lsp::lsp_types::{Range, Url};
+use tracing::instrument;
 use tree_sitter::Node;
 
 use crate::{parse::tree_sitter_zeek, to_range};
@@ -78,6 +79,7 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
+#[instrument]
 #[must_use]
 pub fn module<'a>(node: Node, source: &'a str) -> Module<'a> {
     let id = module_id(node, source).get(0).copied();
@@ -86,6 +88,7 @@ pub fn module<'a>(node: Node, source: &'a str) -> Module<'a> {
     Module { id, decls }
 }
 
+#[instrument]
 #[must_use]
 pub fn decls(node: Node, source: &str) -> Vec<Decl> {
     let query = match tree_sitter::Query::new(

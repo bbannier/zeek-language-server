@@ -1,42 +1,33 @@
-use {
-    clap::Parser,
-    clap_verbosity_flag::Verbosity,
-    eyre::{eyre, Result},
-    std::path::PathBuf,
-    tracing::info,
-    tracing_log::LogTracer,
-    tracing_subscriber::{layer::SubscriberExt, Registry},
-    zeek_lsp::lsp::run,
-};
+#[cfg(feature = "jaeger")]
+use tracing_subscriber::{layer::SubscriberExt, Registry};
+
+use {clap::Parser, eyre::Result, tracing::info, zeek_lsp::lsp::run};
 
 #[derive(Parser, Debug)]
 #[clap(about, version)]
 struct Args {
-    #[clap(short, long, default_value = "/tmp")]
-    log_directory: PathBuf,
+    #[cfg(feature = "jaeger")]
+    #[clap(short, long, default_value = "http://127.0.0.1:14268/api/traces")]
+    collector_endpoint: String,
+}
 
-    #[clap(flatten)]
-    verbose: Verbosity,
+#[cfg(feature = "jaeger")]
+fn init_logging(args: &Args) -> Result<()> {
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_collector_endpoint(&args.collector_endpoint)
+        .with_service_name(env!("CARGO_BIN_NAME"))
+        .install_batch(opentelemetry::runtime::Tokio)?;
+
+    tracing::subscriber::set_global_default(
+        Registry::default().with(tracing_opentelemetry::layer().with_tracer(tracer)),
+    )
+    .map_err(Into::into)
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let opts = Args::parse();
-
-    let log_file =
-        tracing_appender::rolling::never(&opts.log_directory, "zeek-language-server.log");
-    let (log_writer, _guard) = tracing_appender::non_blocking(log_file);
-
-    LogTracer::init_with_filter(
-        opts.verbose
-            .log_level()
-            .ok_or_else(|| eyre!("invalid logging level"))?
-            .to_level_filter(),
-    )?;
-
-    tracing::subscriber::set_global_default(
-        Registry::default().with(tracing_subscriber::fmt::layer().with_writer(log_writer)),
-    )?;
+    #[cfg(feature = "jaeger")]
+    init_logging(&Args::parse())?;
 
     info!("starting Zeek language server");
 

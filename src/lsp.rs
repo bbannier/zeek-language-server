@@ -1,7 +1,7 @@
 use {
     crate::{
         parse::Parse,
-        query::{self, default_module_name, Decl, DeclKind},
+        query::{self, decls, default_module_name, Decl, DeclKind},
         to_range, ID,
     },
     std::{
@@ -12,10 +12,11 @@ use {
     tower_lsp::{
         jsonrpc::{Error, ErrorCode, Result},
         lsp_types::{
-            DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbol,
-            DocumentSymbolParams, DocumentSymbolResponse, Hover, HoverContents, HoverParams,
-            HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-            MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
+            CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
+            CompletionResponse, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+            DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Hover, HoverContents,
+            HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+            InitializedParams, MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
             TextDocumentIdentifier, TextDocumentSyncCapability, TextDocumentSyncKind,
             VersionedTextDocumentIdentifier,
         },
@@ -72,6 +73,10 @@ impl LanguageServer for Backend {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec!["$".into(), "?".into()]),
+                    ..CompletionOptions::default()
+                }),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -229,6 +234,57 @@ impl LanguageServer for Backend {
             }]),
         ))
     }
+
+    #[instrument]
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let position = params.text_document_position;
+
+        let (source, tree) = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| Error::new(ErrorCode::InternalError))?;
+
+            let doc_id = match state.get_file(&position.text_document) {
+                Some(id) => id,
+                None => return Ok(None),
+            };
+
+            (state.db.source(doc_id.clone()), state.db.parse(doc_id))
+        };
+
+        let tree = match tree.as_ref() {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let node = match tree.descendant_for_position(&position.position) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        let items: Vec<_> = {
+            let mut items = Vec::new();
+            let mut node = node;
+            loop {
+                items.append(&mut decls(node, &source));
+                node = match node.parent() {
+                    Some(n) => n,
+                    None => break,
+                };
+            }
+            items
+                .into_iter()
+                .map(|i| CompletionItem {
+                    label: i.id,
+                    kind: Some(to_completion_item_kind(i.kind)),
+                    ..CompletionItem::default()
+                })
+                .collect()
+        };
+
+        Ok(Some(CompletionResponse::from(items)))
+    }
 }
 
 fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
@@ -242,6 +298,20 @@ fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
         DeclKind::Func => SymbolKind::Function,
         DeclKind::Hook => SymbolKind::Operator,
         DeclKind::Event => SymbolKind::Event,
+    }
+}
+
+fn to_completion_item_kind(kind: DeclKind) -> CompletionItemKind {
+    match kind {
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => CompletionItemKind::Variable,
+        DeclKind::Option => CompletionItemKind::Property,
+        DeclKind::Const => CompletionItemKind::Constant,
+        DeclKind::RedefEnum => CompletionItemKind::Enum,
+        DeclKind::RedefRecord => CompletionItemKind::Interface,
+        DeclKind::Type => CompletionItemKind::Class,
+        DeclKind::Func => CompletionItemKind::Function,
+        DeclKind::Hook => CompletionItemKind::Operator,
+        DeclKind::Event => CompletionItemKind::Event,
     }
 }
 

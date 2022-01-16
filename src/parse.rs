@@ -22,7 +22,6 @@ pub(crate) fn parse_(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Optio
 pub struct Tree(pub tree_sitter::Tree);
 
 impl Tree {
-    // FIXME(bbannier): do not leak `Node` type here.
     #[must_use]
     pub fn named_descendant_for_position(&self, position: &Position) -> Option<tree_sitter::Node> {
         let start = Point::new(position.line as usize, position.character as usize);
@@ -30,6 +29,13 @@ impl Tree {
         self.0
             .root_node()
             .named_descendant_for_point_range(start, start)
+    }
+
+    #[must_use]
+    pub fn descendant_for_position(&self, position: &Position) -> Option<tree_sitter::Node> {
+        let start = Point::new(position.line as usize, position.character as usize);
+
+        self.0.root_node().descendant_for_point_range(start, start)
     }
 }
 

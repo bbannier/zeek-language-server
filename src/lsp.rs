@@ -2,8 +2,9 @@ use {
     crate::{
         parse::Parse,
         query::{self, decls, default_module_name, Decl, DeclKind},
-        to_range, ID,
+        to_range, zeek, ID,
     },
+    log::warn,
     std::{
         collections::HashSet,
         fmt::Debug,
@@ -13,11 +14,12 @@ use {
         jsonrpc::{Error, ErrorCode, Result},
         lsp_types::{
             CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-            CompletionResponse, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-            DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Hover, HoverContents,
-            HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-            InitializedParams, MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
-            TextDocumentIdentifier, TextDocumentSyncCapability, TextDocumentSyncKind,
+            CompletionResponse, CreateFilesParams, DidChangeTextDocumentParams,
+            DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
+            DocumentSymbolResponse, FileCreate, Hover, HoverContents, HoverParams,
+            HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+            MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
+            TextDocumentIdentifier, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
             VersionedTextDocumentIdentifier,
         },
         Client, LanguageServer, LspService, Server,
@@ -85,14 +87,72 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
+        // discover_system_files;
         self.client
             .log_message(MessageType::Info, "server initialized!")
             .await;
+
+        match zeek::system_files().await {
+            Ok(files) => {
+                self.did_create_files(CreateFilesParams {
+                    files: files
+                        .into_iter()
+                        .filter_map(|f| {
+                            Some(FileCreate {
+                                uri: f.path.into_os_string().into_string().ok()?,
+                            })
+                        })
+                        .collect(),
+                })
+                .await;
+            }
+            Err(e) => {
+                self.client.log_message(MessageType::Error, e).await;
+            }
+        }
     }
 
     #[instrument]
     async fn shutdown(&self) -> Result<()> {
         Ok(())
+    }
+
+    #[instrument]
+    async fn did_create_files(&self, params: CreateFilesParams) {
+        let _process = params
+            .files
+            .iter()
+            .filter_map(|f| {
+                let uri = if let Ok(uri) = Url::from_file_path(&f.uri) {
+                    uri
+                } else {
+                    warn!(
+                        "ignoring {} since its path cannot be converted to an URI",
+                        &f.uri
+                    );
+                    return None;
+                };
+
+                let version = 0;
+                let id: ID = VersionedTextDocumentIdentifier::new(uri, version).into();
+
+                let source = match std::fs::read_to_string(&f.uri) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!("failed to read '{}': {}", &f.uri, e);
+                        return None;
+                    }
+                };
+
+                if let Ok(state) = self.state.lock().as_deref_mut() {
+                    state.files.insert(id.clone());
+                    state.db.set_source(id.clone(), std::sync::Arc::new(source));
+                    let _parse = state.db.parse(id);
+                };
+
+                Some(())
+            })
+            .collect::<Vec<_>>();
     }
 
     #[instrument]
@@ -109,8 +169,6 @@ impl LanguageServer for Backend {
                 .db
                 .set_source(id, std::sync::Arc::new(params.text_document.text));
         }
-
-        return;
     }
 
     #[instrument]

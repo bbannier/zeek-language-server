@@ -7,6 +7,7 @@ use {
 pub mod lsp;
 pub mod parse;
 pub mod query;
+pub mod zeek;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ID(Arc<lsp_types::VersionedTextDocumentIdentifier>);

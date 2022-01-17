@@ -27,6 +27,7 @@ pub struct Decl {
     pub is_export: bool,
     pub range: Range,
     pub selection_range: Range,
+    pub documentation: String,
 }
 
 #[derive(Debug)]
@@ -179,12 +180,23 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
             let selection_range = to_range(id.range()).ok()?;
 
             let id = id.utf8_text(source.as_bytes()).ok()?.into();
+
+            // TODO(bbannier): This just extracts the first line of the decl as documentation. We
+            // should implement something richer, e.g., also extract (zeekygen) comments close by.
+            let documentation = decl
+                .utf8_text(&source.as_bytes())
+                .ok()?
+                .lines()
+                .next()?
+                .into();
+
             Some(Decl {
                 id,
                 kind,
                 is_export: in_export(decl),
                 range,
                 selection_range,
+                documentation,
             })
         })
         .collect()

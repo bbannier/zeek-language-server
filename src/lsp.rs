@@ -1,17 +1,15 @@
-use std::{path::PathBuf, str::FromStr};
-
-use crate::query::module;
-
 use {
     crate::{
         parse::Parse,
-        query::{self, decls, default_module_name, loads, Decl, DeclKind},
+        query::{self, decls, default_module_name, loads, module, Decl, DeclKind},
         to_range, zeek, ID,
     },
     log::warn,
     std::{
         collections::HashSet,
         fmt::Debug,
+        path::PathBuf,
+        str::FromStr,
         sync::{Arc, Mutex},
     },
     tower_lsp::{
@@ -20,7 +18,7 @@ use {
             CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
             CompletionResponse, CreateFilesParams, DidChangeTextDocumentParams,
             DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
-            DocumentSymbolResponse, FileCreate, Hover, HoverContents, HoverParams,
+            DocumentSymbolResponse, Documentation, FileCreate, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
             MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
             TextDocumentSyncCapability, TextDocumentSyncKind, Url, VersionedTextDocumentIdentifier,
@@ -326,6 +324,7 @@ impl LanguageServer for Backend {
         let to_completion_item = |d: Decl| CompletionItem {
             label: d.id,
             kind: Some(to_completion_item_kind(d.kind)),
+            documentation: Some(Documentation::String(d.documentation)),
             ..CompletionItem::default()
         };
 

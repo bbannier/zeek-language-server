@@ -1,7 +1,7 @@
 ---
 source: src/query.rs
-assertion_line: 231
-expression: stmt_decls
+assertion_line: 293
+expression: func_decls
 
 ---
 [
@@ -29,5 +29,6 @@ expression: stmt_decls
                 character: 41,
             },
         },
+        documentation: "local x=1;",
     },
 ]

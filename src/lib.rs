@@ -1,6 +1,6 @@
 use {
     eyre::Result,
-    std::{hash::Hash, ops::Deref, sync::Arc},
+    std::{fmt, hash::Hash, ops::Deref, sync::Arc},
     tower_lsp::lsp_types,
 };
 
@@ -9,12 +9,21 @@ pub mod parse;
 pub mod query;
 pub mod zeek;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ID(Arc<lsp_types::VersionedTextDocumentIdentifier>);
 
 impl From<lsp_types::VersionedTextDocumentIdentifier> for ID {
     fn from(id: lsp_types::VersionedTextDocumentIdentifier) -> Self {
         Self(Arc::new(id))
+    }
+}
+
+impl fmt::Debug for ID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ID")
+            .field("uri", &format!("{}", &self.0.uri))
+            .field("version", &self.0.version)
+            .finish()
     }
 }
 

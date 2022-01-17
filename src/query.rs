@@ -236,7 +236,7 @@ mod test {
         File,
     };
     use insta::assert_debug_snapshot;
-    use tower_lsp::lsp_types::{Url, VersionedTextDocumentIdentifier};
+    use tower_lsp::lsp_types::Url;
 
     const SOURCE: &str = "module test;
 
@@ -255,11 +255,7 @@ mod test {
 
     fn parse(source: &str) -> Option<Arc<Tree>> {
         Database::default().parse(Arc::new(File {
-            id: VersionedTextDocumentIdentifier::new(
-                Url::from_file_path("/dev/zero").expect("valid uri"),
-                0,
-            )
-            .into(),
+            id: Url::from_file_path("/dev/zero").expect("valid uri").into(),
             source: source.to_string(),
         }))
     }

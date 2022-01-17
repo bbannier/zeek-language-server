@@ -21,7 +21,7 @@ use {
             DocumentSymbolResponse, Documentation, FileCreate, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
             MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
-            TextDocumentSyncCapability, TextDocumentSyncKind, Url, VersionedTextDocumentIdentifier,
+            TextDocumentSyncCapability, TextDocumentSyncKind, Url,
         },
         Client, LanguageServer, LspService, Server,
     },
@@ -38,11 +38,7 @@ pub struct Database {
 impl Database {
     #[must_use]
     pub fn get_file(&self, uri: &Url) -> Option<Arc<File>> {
-        self.files
-            .iter()
-            .filter(|f| &f.id.uri == uri)
-            .max_by_key(|f| f.id.version)
-            .map(Clone::clone)
+        self.files.iter().find(|f| &f.id.0 == uri).map(Clone::clone)
     }
 }
 
@@ -134,9 +130,6 @@ impl LanguageServer for Backend {
                     return None;
                 };
 
-                let version = 0;
-                let id: FileId = VersionedTextDocumentIdentifier::new(uri, version).into();
-
                 let source = match std::fs::read_to_string(&f.uri) {
                     Ok(s) => s,
                     Err(e) => {
@@ -147,7 +140,7 @@ impl LanguageServer for Backend {
 
                 if let Ok(state) = self.state.lock().as_deref_mut() {
                     let file = Arc::new(File {
-                        id: id.clone(),
+                        id: uri.into(),
                         source,
                     });
 
@@ -162,11 +155,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let id: FileId = VersionedTextDocumentIdentifier::new(
-            params.text_document.uri,
-            params.text_document.version,
-        )
-        .into();
+        let id: FileId = params.text_document.uri.into();
 
         let source = params.text_document.text;
 
@@ -191,7 +180,7 @@ impl LanguageServer for Backend {
         let changes = changes.get(0).unwrap();
         assert!(changes.range.is_none(), "unexpected diff mode");
 
-        let id: FileId = params.text_document.into();
+        let id: FileId = params.text_document.uri.into();
         let source = changes.text.to_string();
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
@@ -361,14 +350,14 @@ impl Backend {
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
         let implicit_load = if let Some(l) = state.db.files.iter().find(|&f| {
-            f.id.uri.path_segments().and_then(Iterator::last) == Some(zeek::init_script_filename())
+            f.id.path_segments().and_then(Iterator::last) == Some(zeek::init_script_filename())
         }) {
             l
         } else {
             return Ok(vec![]);
         };
 
-        let file = match state.db.get_file(&implicit_load.id.uri) {
+        let file = match state.db.get_file(&implicit_load.id) {
             Some(id) => id,
             None => {
                 return Err(Error::new(ErrorCode::InvalidParams));
@@ -388,9 +377,7 @@ impl Backend {
             .files
             .iter()
             .filter_map(|f| {
-                let stem = PathBuf::from_str(f.id.uri.as_str())
-                    .ok()?
-                    .with_extension("");
+                let stem = PathBuf::from_str(f.id.as_str()).ok()?.with_extension("");
                 if loads.iter().find(|l| stem.ends_with(l)).is_some() {
                     Some(f)
                 } else {
@@ -408,7 +395,7 @@ impl Backend {
                 let module = module(tree.root_node(), &file.source);
                 let module_id = match &module.id {
                     Some(id) => id,
-                    None => default_module_name(&file.id.uri)?,
+                    None => default_module_name(&file.id)?,
                 };
 
                 Some(

@@ -78,7 +78,7 @@ mod test {
         eyre::Result,
         insta::assert_debug_snapshot,
         std::sync::Arc,
-        tower_lsp::lsp_types::{Url, VersionedTextDocumentIdentifier},
+        tower_lsp::lsp_types::Url,
     };
 
     const SOURCE: &'static str = "event zeek_init() {}";
@@ -86,7 +86,7 @@ mod test {
     #[test]
     fn can_parse() -> Result<()> {
         let uri = Url::from_file_path("/foo/bar.zeek").unwrap();
-        let id: FileId = VersionedTextDocumentIdentifier::new(uri, 0).into();
+        let id: FileId = uri.into();
 
         let tree = Database::default().parse(Arc::new(File {
             id,

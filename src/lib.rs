@@ -1,6 +1,6 @@
 use {
     eyre::Result,
-    std::{fmt, hash::Hash, ops::Deref, sync::Arc},
+    std::{fmt, hash::Hash, ops::Deref},
     tower_lsp::lsp_types,
 };
 
@@ -9,37 +9,20 @@ pub mod parse;
 pub mod query;
 pub mod zeek;
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct FileId(Arc<lsp_types::VersionedTextDocumentIdentifier>);
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct FileId(lsp_types::Url);
 
-impl From<lsp_types::VersionedTextDocumentIdentifier> for FileId {
-    fn from(id: lsp_types::VersionedTextDocumentIdentifier) -> Self {
-        Self(Arc::new(id))
-    }
-}
-
-impl fmt::Debug for FileId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FileId")
-            .field("uri", &format!("{}", &self.0.uri))
-            .field("version", &self.0.version)
-            .finish()
+impl From<lsp_types::Url> for FileId {
+    fn from(uri: lsp_types::Url) -> Self {
+        Self(uri)
     }
 }
 
 impl Deref for FileId {
-    type Target = Arc<lsp_types::VersionedTextDocumentIdentifier>;
+    type Target = lsp_types::Url;
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-#[allow(clippy::derive_hash_xor_eq)]
-impl Hash for FileId {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.uri.hash(state);
-        self.0.version.hash(state);
     }
 }
 

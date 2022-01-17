@@ -67,6 +67,11 @@ pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
         .collect())
 }
 
+pub(crate) fn init_script_filename() -> &'static str {
+    // TODO(bbannier): does this function need a flag for bare mode?
+    "init-default.zeek"
+}
+
 #[cfg(test)]
 mod test {
     use super::{script_dir, system_files};

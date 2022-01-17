@@ -1,7 +1,11 @@
+use std::{path::PathBuf, str::FromStr};
+
+use crate::query::module;
+
 use {
     crate::{
         parse::Parse,
-        query::{self, decls, default_module_name, Decl, DeclKind},
+        query::{self, decls, default_module_name, loads, Decl, DeclKind},
         to_range, zeek, ID,
     },
     log::warn,
@@ -19,8 +23,7 @@ use {
             DocumentSymbolResponse, FileCreate, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
             MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
-            TextDocumentIdentifier, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-            VersionedTextDocumentIdentifier,
+            TextDocumentSyncCapability, TextDocumentSyncKind, Url, VersionedTextDocumentIdentifier,
         },
         Client, LanguageServer, LspService, Server,
     },
@@ -31,6 +34,7 @@ use {
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
+    files: HashSet<ID>,
 }
 
 impl salsa::Database for Database {}
@@ -43,16 +47,15 @@ impl Debug for Database {
 
 #[derive(Debug, Default)]
 struct State {
-    files: HashSet<ID>,
     db: Database,
 }
 
-impl State {
+impl Database {
     #[must_use]
-    pub fn get_file(&self, id: &TextDocumentIdentifier) -> Option<ID> {
+    pub fn get_file(&self, uri: &Url) -> Option<ID> {
         self.files
             .iter()
-            .filter(|f| f.uri == id.uri)
+            .filter(|f| &f.uri == uri)
             .max_by_key(|f| f.version)
             .map(Clone::clone)
     }
@@ -145,7 +148,7 @@ impl LanguageServer for Backend {
                 };
 
                 if let Ok(state) = self.state.lock().as_deref_mut() {
-                    state.files.insert(id.clone());
+                    state.db.files.insert(id.clone());
                     state.db.set_source(id.clone(), std::sync::Arc::new(source));
                     let _parse = state.db.parse(id);
                 };
@@ -164,7 +167,7 @@ impl LanguageServer for Backend {
         .into();
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
-            state.files.insert(id.clone());
+            state.db.files.insert(id.clone());
             state
                 .db
                 .set_source(id, std::sync::Arc::new(params.text_document.text));
@@ -187,7 +190,7 @@ impl LanguageServer for Backend {
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
             state.db.set_source(id.clone(), Arc::new(source));
-            state.files.insert(id);
+            state.db.files.insert(id);
             // FIXME(bbannier): implement gc of old versions.
         }
     }
@@ -201,7 +204,7 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let doc_id = match state.get_file(&params.text_document) {
+        let doc_id = match state.db.get_file(&params.text_document.uri) {
             Some(id) => id,
             None => {
                 return Err(Error::new(ErrorCode::InvalidParams));
@@ -241,7 +244,7 @@ impl LanguageServer for Backend {
                 .lock()
                 .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let doc_id = match state.get_file(&params.text_document) {
+            let doc_id = match state.db.get_file(&params.text_document.uri) {
                 Some(id) => id,
                 None => return Ok(None),
             };
@@ -275,12 +278,11 @@ impl LanguageServer for Backend {
         Ok(Some(
             #[allow(deprecated)]
             DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                name: module
-                    .id
-                    .unwrap_or_else(|| {
-                        default_module_name(&params.text_document.uri).unwrap_or("<invalid>")
-                    })
-                    .into(),
+                name: module.id.unwrap_or_else(|| {
+                    default_module_name(&params.text_document.uri)
+                        .unwrap_or("<invalid>")
+                        .to_string()
+                }),
                 kind: SymbolKind::Module,
                 range,
                 selection_range: range,
@@ -303,7 +305,7 @@ impl LanguageServer for Backend {
                 .lock()
                 .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let doc_id = match state.get_file(&position.text_document) {
+            let doc_id = match state.db.get_file(&position.text_document.uri) {
                 Some(id) => id,
                 None => return Ok(None),
             };
@@ -321,7 +323,13 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let items: Vec<_> = {
+        let to_completion_item = |d: Decl| CompletionItem {
+            label: d.id,
+            kind: Some(to_completion_item_kind(d.kind)),
+            ..CompletionItem::default()
+        };
+
+        let mut items: Vec<_> = {
             let mut items = Vec::new();
             let mut node = node;
             loop {
@@ -331,17 +339,88 @@ impl LanguageServer for Backend {
                     None => break,
                 };
             }
-            items
-                .into_iter()
-                .map(|i| CompletionItem {
-                    label: i.id,
-                    kind: Some(to_completion_item_kind(i.kind)),
-                    ..CompletionItem::default()
-                })
-                .collect()
+            items.into_iter().map(to_completion_item).collect()
         };
 
+        items.extend(self.implicit_decls()?.into_iter().map(to_completion_item));
+
         Ok(Some(CompletionResponse::from(items)))
+    }
+}
+
+impl Backend {
+    fn implicit_decls(&self) -> Result<Vec<Decl>> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| Error::new(ErrorCode::InternalError))?;
+
+        let implicit_load = if let Some(l) = state.db.files.iter().find(|&f| {
+            (f as &ID).uri.path_segments().and_then(Iterator::last)
+                == Some(zeek::init_script_filename())
+        }) {
+            l
+        } else {
+            return Ok(vec![]);
+        };
+
+        let doc_id = match state.db.get_file(&implicit_load.uri) {
+            Some(id) => id,
+            None => {
+                return Err(Error::new(ErrorCode::InvalidParams));
+            }
+        };
+
+        let source = state.db.source(doc_id.clone());
+
+        let tree = state.db.parse(doc_id);
+        let tree = match tree.as_ref() {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+
+        let loads = loads(tree.root_node(), &source);
+
+        Ok(state
+            .db
+            .files
+            .iter()
+            .filter_map(|f| {
+                let stem = PathBuf::from_str(f.uri.as_str()).ok()?.with_extension("");
+                if loads.iter().find(|l| stem.ends_with(l)).is_some() {
+                    Some(f)
+                } else {
+                    None
+                }
+            })
+            .map(|file| {
+                let tree = state.db.parse(file.clone());
+                let source = state.db.source(file.clone());
+                (tree, source, file)
+            })
+            .filter_map(|(tree, source, file)| {
+                //
+                let tree = tree.as_deref()?;
+
+                let module = module(tree.root_node(), &source);
+                let module_id = match &module.id {
+                    Some(id) => id,
+                    None => default_module_name(&file.uri)?,
+                };
+
+                Some(
+                    module
+                        .decls
+                        .into_iter()
+                        .map(|mut d| {
+                            d.id = format!("{m}::{d}", m = module_id, d = d.id);
+                            d
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .flatten()
+            .collect())
     }
 }
 

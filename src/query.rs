@@ -30,15 +30,15 @@ pub struct Decl {
 }
 
 #[derive(Debug)]
-pub struct Module<'a> {
+pub struct Module {
     /// ID of this module.
-    pub id: Option<&'a str>,
+    pub id: Option<String>,
 
     /// Declarations in this module.
     pub decls: Vec<Decl>,
 
     /// Other modules explicitly loaded by this module.
-    pub loads: Vec<&'a str>,
+    pub loads: Vec<String>,
 }
 
 #[must_use]
@@ -87,10 +87,10 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 
 #[instrument]
 #[must_use]
-pub fn module<'a>(node: Node, source: &'a str) -> Module<'a> {
-    let id = module_id(node, source).get(0).copied();
+pub fn module(node: Node, source: &str) -> Module {
+    let id = module_id(node, source).get(0).copied().map(String::from);
     let decls = decls(node, source);
-    let loads = loads(node, source);
+    let loads = loads(node, source).into_iter().map(String::from).collect();
 
     Module { id, decls, loads }
 }
@@ -179,7 +179,6 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
             let selection_range = to_range(id.range()).ok()?;
 
             let id = id.utf8_text(source.as_bytes()).ok()?.into();
-
             Some(Decl {
                 id,
                 kind,

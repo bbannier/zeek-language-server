@@ -1,6 +1,6 @@
 use {
-    crate::FileId,
-    std::{ops::Deref, sync::Arc},
+    crate::File,
+    std::{hash::Hash, ops::Deref, sync::Arc},
     tower_lsp::lsp_types::Position,
     tracing::instrument,
     tree_sitter::{Language, Parser, Point},
@@ -8,14 +8,6 @@ use {
 
 extern "C" {
     pub(crate) fn tree_sitter_zeek() -> Language;
-}
-
-pub(crate) fn parse_(source: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree> {
-    let language = unsafe { tree_sitter_zeek() };
-    let mut parser = Parser::new();
-    parser.set_language(language).ok();
-
-    parser.parse(source, old_tree.map(|t| &t.0)).map(Tree)
 }
 
 #[derive(Clone, Debug)]
@@ -47,6 +39,12 @@ impl PartialEq for Tree {
 
 impl Eq for Tree {}
 
+impl Hash for Tree {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.root_node().id().hash(state);
+    }
+}
+
 impl Deref for Tree {
     type Target = tree_sitter::Tree;
 
@@ -57,25 +55,27 @@ impl Deref for Tree {
 
 #[salsa::query_group(ParseStorage)]
 pub trait Parse: salsa::Database {
-    #[salsa::input]
-    fn source(&self, id: FileId) -> Arc<String>;
-
     #[must_use]
-    fn parse(&self, id: FileId) -> Arc<Option<Tree>>;
+    fn parse(&self, file: Arc<File>) -> Option<Arc<Tree>>;
 }
 
-#[instrument(skip(db))]
-fn parse(db: &dyn Parse, id: FileId) -> Arc<Option<Tree>> {
-    let source = db.source(id);
-    Arc::new(parse_(source.as_str(), None))
+#[instrument(skip(_db))]
+fn parse(_db: &dyn Parse, file: Arc<File>) -> Option<Arc<Tree>> {
+    let language = unsafe { tree_sitter_zeek() };
+    let mut parser = Parser::new();
+    parser
+        .set_language(language)
+        .expect("cannot set parser language");
+
+    parser.parse(&file.source, None).map(Tree).map(Arc::new)
 }
 
 #[cfg(test)]
 mod test {
     use {
-        super::{parse_, FileId, Parse},
-        crate::lsp::Database,
-        eyre::{eyre, Result},
+        crate::File,
+        crate::{lsp::Database, parse::Parse, FileId},
+        eyre::Result,
         insta::assert_debug_snapshot,
         std::sync::Arc,
         tower_lsp::lsp_types::{Url, VersionedTextDocumentIdentifier},
@@ -84,27 +84,17 @@ mod test {
     const SOURCE: &'static str = "event zeek_init() {}";
 
     #[test]
-    fn can_parse_() -> Result<()> {
-        let tree = parse_(&SOURCE, None).ok_or_else(|| eyre!("parser returned no tree"))?;
-        assert_debug_snapshot!(&tree.root_node().to_sexp());
-
-        Ok(())
-    }
-
-    #[test]
     fn can_parse() -> Result<()> {
         let uri = Url::from_file_path("/foo/bar.zeek").unwrap();
         let id: FileId = VersionedTextDocumentIdentifier::new(uri, 0).into();
 
-        let mut db = Database::default();
-        db.set_source(id.clone(), Arc::new(SOURCE.to_owned()));
+        let tree = Database::default().parse(Arc::new(File {
+            id,
+            source: SOURCE.to_owned(),
+        }));
 
-        let tree = db.parse(id.clone());
-        let tree = tree
-            .as_ref()
-            .as_ref()
-            .ok_or_else(|| eyre!("parser returned no tree"))?;
-        assert_debug_snapshot!(&tree.root_node().to_sexp());
+        let sexp = tree.map(|t| t.root_node().to_sexp());
+        assert_debug_snapshot!(sexp);
 
         Ok(())
     }

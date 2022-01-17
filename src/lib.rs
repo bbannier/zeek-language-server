@@ -43,6 +43,18 @@ impl Hash for FileId {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct File {
+    id: FileId,
+    source: String,
+}
+
+impl fmt::Debug for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("File").field("id", &self.id).finish()
+    }
+}
+
 fn to_offset(x: usize) -> Result<u32> {
     u32::try_from(x).map_err(Into::into)
 }

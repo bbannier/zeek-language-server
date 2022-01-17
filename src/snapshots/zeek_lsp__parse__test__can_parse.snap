@@ -1,7 +1,9 @@
 ---
 source: src/parse.rs
-assertion_line: 101
-expression: "&tree.root_node().to_sexp()"
+assertion_line: 98
+expression: sexp
 
 ---
-"(module (event_decl id: (id) (func_params) (func_body)))"
+Some(
+    "(module (event_decl id: (id) (func_params) (func_body)))",
+)

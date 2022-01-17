@@ -226,9 +226,17 @@ pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use super::{decls, loads, module, module_id};
-    use crate::{parse::parse_, query::in_export};
+    use crate::{
+        lsp::Database,
+        parse::{Parse, Tree},
+        query::in_export,
+        File,
+    };
     use insta::assert_debug_snapshot;
+    use tower_lsp::lsp_types::{Url, VersionedTextDocumentIdentifier};
 
     const SOURCE: &str = "module test;
 
@@ -245,13 +253,21 @@ mod test {
                   # Comment.
               }";
 
+    fn parse(source: &str) -> Option<Arc<Tree>> {
+        Database::default().parse(Arc::new(File {
+            id: VersionedTextDocumentIdentifier::new(
+                Url::from_file_path("/dev/zero").expect("valid uri"),
+                0,
+            )
+            .into(),
+            source: source.to_string(),
+        }))
+    }
+
     #[test]
     fn test_loads() {
-        let loads = |source| {
-            loads(
-                parse_(source, None).expect("cannot parse").root_node(),
-                source,
-            )
+        let loads = |source: &'static str| {
+            loads(parse(&source).expect("cannot parse").root_node(), &source)
         };
 
         assert_eq!(loads(""), Vec::<&str>::new());
@@ -264,14 +280,14 @@ mod test {
 
     #[test]
     fn test_module() {
-        let tree = parse_(SOURCE, None).expect("cannot parse");
+        let tree = parse(SOURCE).expect("cannot parse");
 
         assert_debug_snapshot!(module(tree.root_node(), SOURCE));
     }
 
     #[test]
     fn test_decls() {
-        let tree = parse_(SOURCE, None).expect("cannot parse");
+        let tree = parse(SOURCE).expect("cannot parse");
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
@@ -295,7 +311,7 @@ mod test {
 
     #[test]
     fn test_in_export() {
-        let tree = parse_(SOURCE, None).expect("cannot parse");
+        let tree = parse(SOURCE).expect("cannot parse");
         assert!(!in_export(tree.root_node()));
 
         let const_node = tree
@@ -316,7 +332,7 @@ mod test {
 
     #[test]
     fn test_module_id() {
-        let module_id = |source| module_id(parse_(source, None).unwrap().root_node(), source);
+        let module_id = |source| module_id(parse(source).unwrap().root_node(), source);
 
         assert!(module_id("").is_empty());
         assert!(module_id("event zeek_init() {}").is_empty());

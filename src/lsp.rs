@@ -2,7 +2,7 @@ use {
     crate::{
         parse::Parse,
         query::{self, decls, default_module_name, loads, module, Decl, DeclKind},
-        to_range, zeek, FileId,
+        to_range, zeek, File, FileId,
     },
     log::warn,
     std::{
@@ -32,7 +32,18 @@ use {
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    files: HashSet<FileId>,
+    files: HashSet<Arc<File>>,
+}
+
+impl Database {
+    #[must_use]
+    pub fn get_file(&self, uri: &Url) -> Option<Arc<File>> {
+        self.files
+            .iter()
+            .filter(|f| &f.id.uri == uri)
+            .max_by_key(|f| f.id.version)
+            .map(Clone::clone)
+    }
 }
 
 impl salsa::Database for Database {}
@@ -46,17 +57,6 @@ impl Debug for Database {
 #[derive(Debug, Default)]
 struct State {
     db: Database,
-}
-
-impl Database {
-    #[must_use]
-    pub fn get_file(&self, uri: &Url) -> Option<FileId> {
-        self.files
-            .iter()
-            .filter(|f| &f.uri == uri)
-            .max_by_key(|f| f.version)
-            .map(Clone::clone)
-    }
 }
 
 #[derive(Debug)]
@@ -146,9 +146,13 @@ impl LanguageServer for Backend {
                 };
 
                 if let Ok(state) = self.state.lock().as_deref_mut() {
-                    state.db.files.insert(id.clone());
-                    state.db.set_source(id.clone(), std::sync::Arc::new(source));
-                    let _parse = state.db.parse(id);
+                    let file = Arc::new(File {
+                        id: id.clone(),
+                        source,
+                    });
+
+                    state.db.files.insert(file.clone());
+                    let _parse = state.db.parse(file);
                 };
 
                 Some(())
@@ -164,11 +168,15 @@ impl LanguageServer for Backend {
         )
         .into();
 
+        let source = params.text_document.text;
+
         if let Ok(state) = self.state.lock().as_deref_mut() {
-            state.db.files.insert(id.clone());
-            state
-                .db
-                .set_source(id, std::sync::Arc::new(params.text_document.text));
+            let file = Arc::new(File {
+                id: id.clone(),
+                source,
+            });
+
+            state.db.files.insert(file);
         }
     }
 
@@ -187,9 +195,7 @@ impl LanguageServer for Backend {
         let source = changes.text.to_string();
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
-            state.db.set_source(id.clone(), Arc::new(source));
-            state.db.files.insert(id);
-            // FIXME(bbannier): implement gc of old versions.
+            state.db.files.insert(Arc::new(File { id, source }));
         }
     }
 
@@ -202,7 +208,7 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let doc_id = match state.db.get_file(&params.text_document.uri) {
+        let file = match state.db.get_file(&params.text_document.uri) {
             Some(id) => id,
             None => {
                 return Err(Error::new(ErrorCode::InvalidParams));
@@ -212,7 +218,7 @@ impl LanguageServer for Backend {
         // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
         // should return some nice rendering of the hovered node.
 
-        let tree = state.db.parse(doc_id);
+        let tree = state.db.parse(file);
         let tree = match tree.as_ref() {
             Some(t) => t,
             None => return Ok(None),
@@ -242,12 +248,12 @@ impl LanguageServer for Backend {
                 .lock()
                 .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let doc_id = match state.db.get_file(&params.text_document.uri) {
+            let file = match state.db.get_file(&params.text_document.uri) {
                 Some(id) => id,
                 None => return Ok(None),
             };
 
-            (state.db.source(doc_id.clone()), state.db.parse(doc_id))
+            (file.source.clone(), state.db.parse(file))
         };
         let tree = match tree.as_ref() {
             Some(t) => t,
@@ -303,12 +309,12 @@ impl LanguageServer for Backend {
                 .lock()
                 .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let doc_id = match state.db.get_file(&position.text_document.uri) {
+            let file = match state.db.get_file(&position.text_document.uri) {
                 Some(id) => id,
                 None => return Ok(None),
             };
 
-            (state.db.source(doc_id.clone()), state.db.parse(doc_id))
+            (file.source.clone(), state.db.parse(file))
         };
 
         let tree = match tree.as_ref() {
@@ -355,37 +361,36 @@ impl Backend {
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
         let implicit_load = if let Some(l) = state.db.files.iter().find(|&f| {
-            (f as &FileId).uri.path_segments().and_then(Iterator::last)
-                == Some(zeek::init_script_filename())
+            f.id.uri.path_segments().and_then(Iterator::last) == Some(zeek::init_script_filename())
         }) {
             l
         } else {
             return Ok(vec![]);
         };
 
-        let doc_id = match state.db.get_file(&implicit_load.uri) {
+        let file = match state.db.get_file(&implicit_load.id.uri) {
             Some(id) => id,
             None => {
                 return Err(Error::new(ErrorCode::InvalidParams));
             }
         };
 
-        let source = state.db.source(doc_id.clone());
-
-        let tree = state.db.parse(doc_id);
+        let tree = state.db.parse(file.clone());
         let tree = match tree.as_ref() {
             Some(t) => t,
             None => return Ok(Vec::new()),
         };
 
-        let loads = loads(tree.root_node(), &source);
+        let loads = loads(tree.root_node(), &file.source);
 
         Ok(state
             .db
             .files
             .iter()
             .filter_map(|f| {
-                let stem = PathBuf::from_str(f.uri.as_str()).ok()?.with_extension("");
+                let stem = PathBuf::from_str(f.id.uri.as_str())
+                    .ok()?
+                    .with_extension("");
                 if loads.iter().find(|l| stem.ends_with(l)).is_some() {
                     Some(f)
                 } else {
@@ -394,17 +399,16 @@ impl Backend {
             })
             .map(|file| {
                 let tree = state.db.parse(file.clone());
-                let source = state.db.source(file.clone());
-                (tree, source, file)
+                (tree, file)
             })
-            .filter_map(|(tree, source, file)| {
+            .filter_map(|(tree, file)| {
                 //
                 let tree = tree.as_deref()?;
 
-                let module = module(tree.root_node(), &source);
+                let module = module(tree.root_node(), &file.source);
                 let module_id = match &module.id {
                     Some(id) => id,
-                    None => default_module_name(&file.uri)?,
+                    None => default_module_name(&file.id.uri)?,
                 };
 
                 Some(

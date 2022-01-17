@@ -10,24 +10,24 @@ pub mod query;
 pub mod zeek;
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct ID(Arc<lsp_types::VersionedTextDocumentIdentifier>);
+pub struct FileId(Arc<lsp_types::VersionedTextDocumentIdentifier>);
 
-impl From<lsp_types::VersionedTextDocumentIdentifier> for ID {
+impl From<lsp_types::VersionedTextDocumentIdentifier> for FileId {
     fn from(id: lsp_types::VersionedTextDocumentIdentifier) -> Self {
         Self(Arc::new(id))
     }
 }
 
-impl fmt::Debug for ID {
+impl fmt::Debug for FileId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ID")
+        f.debug_struct("FileId")
             .field("uri", &format!("{}", &self.0.uri))
             .field("version", &self.0.version)
             .finish()
     }
 }
 
-impl Deref for ID {
+impl Deref for FileId {
     type Target = Arc<lsp_types::VersionedTextDocumentIdentifier>;
 
     fn deref(&self) -> &Self::Target {
@@ -36,7 +36,7 @@ impl Deref for ID {
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
-impl Hash for ID {
+impl Hash for FileId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.uri.hash(state);
         self.0.version.hash(state);

@@ -2,7 +2,7 @@ use {
     crate::{
         parse::Parse,
         query::{self, decls, default_module_name, loads, module, Decl, DeclKind},
-        to_range, zeek, ID,
+        to_range, zeek, FileId,
     },
     log::warn,
     std::{
@@ -32,7 +32,7 @@ use {
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    files: HashSet<ID>,
+    files: HashSet<FileId>,
 }
 
 impl salsa::Database for Database {}
@@ -50,7 +50,7 @@ struct State {
 
 impl Database {
     #[must_use]
-    pub fn get_file(&self, uri: &Url) -> Option<ID> {
+    pub fn get_file(&self, uri: &Url) -> Option<FileId> {
         self.files
             .iter()
             .filter(|f| &f.uri == uri)
@@ -135,7 +135,7 @@ impl LanguageServer for Backend {
                 };
 
                 let version = 0;
-                let id: ID = VersionedTextDocumentIdentifier::new(uri, version).into();
+                let id: FileId = VersionedTextDocumentIdentifier::new(uri, version).into();
 
                 let source = match std::fs::read_to_string(&f.uri) {
                     Ok(s) => s,
@@ -158,7 +158,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let id: ID = VersionedTextDocumentIdentifier::new(
+        let id: FileId = VersionedTextDocumentIdentifier::new(
             params.text_document.uri,
             params.text_document.version,
         )
@@ -183,7 +183,7 @@ impl LanguageServer for Backend {
         let changes = changes.get(0).unwrap();
         assert!(changes.range.is_none(), "unexpected diff mode");
 
-        let id: ID = params.text_document.into();
+        let id: FileId = params.text_document.into();
         let source = changes.text.to_string();
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
@@ -355,7 +355,7 @@ impl Backend {
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
         let implicit_load = if let Some(l) = state.db.files.iter().find(|&f| {
-            (f as &ID).uri.path_segments().and_then(Iterator::last)
+            (f as &FileId).uri.path_segments().and_then(Iterator::last)
                 == Some(zeek::init_script_filename())
         }) {
             l

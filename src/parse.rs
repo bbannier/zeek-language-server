@@ -1,5 +1,5 @@
 use {
-    crate::ID,
+    crate::FileId,
     std::{ops::Deref, sync::Arc},
     tower_lsp::lsp_types::Position,
     tracing::instrument,
@@ -58,14 +58,14 @@ impl Deref for Tree {
 #[salsa::query_group(ParseStorage)]
 pub trait Parse: salsa::Database {
     #[salsa::input]
-    fn source(&self, id: ID) -> Arc<String>;
+    fn source(&self, id: FileId) -> Arc<String>;
 
     #[must_use]
-    fn parse(&self, id: ID) -> Arc<Option<Tree>>;
+    fn parse(&self, id: FileId) -> Arc<Option<Tree>>;
 }
 
 #[instrument(skip(db))]
-fn parse(db: &dyn Parse, id: ID) -> Arc<Option<Tree>> {
+fn parse(db: &dyn Parse, id: FileId) -> Arc<Option<Tree>> {
     let source = db.source(id);
     Arc::new(parse_(source.as_str(), None))
 }
@@ -73,7 +73,7 @@ fn parse(db: &dyn Parse, id: ID) -> Arc<Option<Tree>> {
 #[cfg(test)]
 mod test {
     use {
-        super::{parse_, Parse, ID},
+        super::{parse_, FileId, Parse},
         crate::lsp::Database,
         eyre::{eyre, Result},
         insta::assert_debug_snapshot,
@@ -94,7 +94,7 @@ mod test {
     #[test]
     fn can_parse() -> Result<()> {
         let uri = Url::from_file_path("/foo/bar.zeek").unwrap();
-        let id: ID = VersionedTextDocumentIdentifier::new(uri, 0).into();
+        let id: FileId = VersionedTextDocumentIdentifier::new(uri, 0).into();
 
         let mut db = Database::default();
         db.set_source(id.clone(), Arc::new(SOURCE.to_owned()));

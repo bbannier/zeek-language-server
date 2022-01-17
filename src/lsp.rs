@@ -1,7 +1,9 @@
+use log::debug;
+
 use {
     crate::{
         parse::Parse,
-        query::{self, decls, default_module_name, loads, module, Decl, DeclKind},
+        query::{decls, default_module_name, loads, Decl, DeclKind, Query},
         to_range, zeek, File, FileId,
     },
     log::warn,
@@ -28,7 +30,7 @@ use {
     tracing::instrument,
 };
 
-#[salsa::database(crate::parse::ParseStorage)]
+#[salsa::database(crate::parse::ParseStorage, crate::query::QueryStorage)]
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
@@ -145,7 +147,6 @@ impl LanguageServer for Backend {
                     });
 
                     state.db.files.insert(file.clone());
-                    let _parse = state.db.parse(file);
                 };
 
                 Some(())
@@ -167,6 +168,9 @@ impl LanguageServer for Backend {
 
             state.db.files.insert(file);
         }
+
+        debug!("precomputing implicit module declarations");
+        let _implicit_decls = self.implicit_decls();
     }
 
     #[instrument]
@@ -231,30 +235,20 @@ impl LanguageServer for Backend {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let (source, tree) = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| Error::new(ErrorCode::InternalError))?;
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let file = match state.db.get_file(&params.text_document.uri) {
-                Some(id) => id,
-                None => return Ok(None),
-            };
-
-            (file.source.clone(), state.db.parse(file))
-        };
-        let tree = match tree.as_ref() {
-            Some(t) => t,
+        let file = match state.db.get_file(&params.text_document.uri) {
+            Some(id) => id,
             None => return Ok(None),
         };
 
-        let module = query::module(tree.root_node(), &source);
-
-        let symbol = |d: Decl| -> DocumentSymbol {
+        let symbol = |d: &Decl| -> DocumentSymbol {
             #[allow(deprecated)]
             DocumentSymbol {
-                name: d.id,
+                name: d.id.clone(),
                 range: d.range,
                 selection_range: d.selection_range,
                 kind: to_symbol_kind(d.kind),
@@ -265,25 +259,31 @@ impl LanguageServer for Backend {
             }
         };
 
-        let range = to_range(tree.root_node().range())
-            .map_err(|_| Error::new(ErrorCode::ContentModified))?;
+        let module = state
+            .db
+            .module(file.clone())
+            .ok_or_else(|| Error::new(ErrorCode::InternalError))?;
 
         Ok(Some(
             #[allow(deprecated)]
             DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                name: module.id.unwrap_or_else(|| {
-                    default_module_name(&params.text_document.uri)
-                        .unwrap_or("<invalid>")
-                        .to_string()
-                }),
+                name: module
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| {
+                        default_module_name(&params.text_document.uri)
+                            .unwrap_or("<invalid>")
+                            .to_string()
+                    })
+                    .clone(),
                 kind: SymbolKind::Module,
-                range,
-                selection_range: range,
+                range: module.range,
+                selection_range: module.range,
                 deprecated: None,
 
                 detail: None,
                 tags: None,
-                children: Some(module.decls.into_iter().map(symbol).collect()),
+                children: Some(module.decls.iter().map(symbol).collect()),
             }]),
         ))
     }
@@ -384,15 +384,8 @@ impl Backend {
                     None
                 }
             })
-            .map(|file| {
-                let tree = state.db.parse(file.clone());
-                (tree, file)
-            })
-            .filter_map(|(tree, file)| {
-                //
-                let tree = tree.as_deref()?;
-
-                let module = module(tree.root_node(), &file.source);
+            .filter_map(|file| state.db.module(file.clone()))
+            .filter_map(|module| {
                 let module_id = match &module.id {
                     Some(id) => id,
                     None => default_module_name(&file.id)?,
@@ -401,6 +394,7 @@ impl Backend {
                 Some(
                     module
                         .decls
+                        .clone()
                         .into_iter()
                         .map(|mut d| {
                             d.id = format!("{m}::{d}", m = module_id, d = d.id);

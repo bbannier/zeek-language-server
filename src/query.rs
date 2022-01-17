@@ -1,11 +1,16 @@
+use std::sync::Arc;
+
 use log::error;
 use tower_lsp::lsp_types::{Range, Url};
 use tracing::instrument;
 use tree_sitter::Node;
 
-use crate::{parse::tree_sitter_zeek, to_range};
+use crate::{
+    parse::{tree_sitter_zeek, Parse, Tree},
+    to_range, File,
+};
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq)]
 pub enum DeclKind {
     Global,
     Option,
@@ -20,7 +25,7 @@ pub enum DeclKind {
     Variable,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Decl {
     pub id: String,
     pub kind: DeclKind,
@@ -30,7 +35,7 @@ pub struct Decl {
     pub documentation: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Module {
     /// ID of this module.
     pub id: Option<String>,
@@ -40,6 +45,9 @@ pub struct Module {
 
     /// Other modules explicitly loaded by this module.
     pub loads: Vec<String>,
+
+    /// Source range of this module.
+    pub range: Range,
 }
 
 #[must_use]
@@ -86,14 +94,23 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
-#[instrument]
+#[instrument(skip(source))]
 #[must_use]
-pub fn module(node: Node, source: &str) -> Module {
+// FIXME(bbannier): priv.
+pub fn module_(tree: &Tree, source: &str) -> Module {
+    let node = tree.root_node();
+
     let id = module_id(node, source).get(0).copied().map(String::from);
     let decls = decls(node, source);
     let loads = loads(node, source).into_iter().map(String::from).collect();
+    let range = to_range(node.range()).expect("invalid range");
 
-    Module { id, decls, loads }
+    Module {
+        id,
+        decls,
+        loads,
+        range,
+    }
 }
 
 #[instrument]
@@ -224,11 +241,24 @@ pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
+#[salsa::query_group(QueryStorage)]
+pub trait Query: Parse {
+    #[must_use]
+    fn module(&self, file: Arc<File>) -> Option<Arc<Module>>;
+}
+
+#[instrument(skip(db))]
+fn module(db: &dyn Query, file: Arc<File>) -> Option<Arc<Module>> {
+    let source = file.source.clone();
+    let tree = db.parse(file)?;
+    Some(Arc::new(module_(&tree, &source)))
+}
+
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
-    use super::{decls, loads, module, module_id};
+    use super::{decls, loads, module_, module_id};
     use crate::{
         lsp::Database,
         parse::{Parse, Tree},
@@ -278,7 +308,7 @@ mod test {
     fn test_module() {
         let tree = parse(SOURCE).expect("cannot parse");
 
-        assert_debug_snapshot!(module(tree.root_node(), SOURCE));
+        assert_debug_snapshot!(module_(&tree, SOURCE));
     }
 
     #[test]

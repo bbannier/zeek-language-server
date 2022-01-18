@@ -6,7 +6,7 @@ use {
     },
     log::warn,
     std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         fmt::Debug,
         path::PathBuf,
         sync::{Arc, Mutex},
@@ -31,14 +31,16 @@ use {
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    files: HashSet<Arc<File>>,
+    files: HashMap<Arc<FileId>, Arc<File>>,
     prefixes: HashSet<PathBuf>,
 }
 
 impl Database {
     #[must_use]
     pub fn get_file(&self, uri: &Url) -> Option<Arc<File>> {
-        self.files.iter().find(|f| &f.id.0 == uri).map(Clone::clone)
+        self.files
+            .get(&Arc::new(uri.clone().into()))
+            .map(Clone::clone)
     }
 }
 
@@ -148,14 +150,9 @@ impl LanguageServer for Backend {
                     .load_pattern(&uri)
                     .expect("uri corresponds to a filename");
 
-                if let Ok(state) = self.state.lock().as_deref_mut() {
-                    let file = Arc::new(File {
-                        id: uri.into(),
-                        source,
-                        load,
-                    });
-
-                    state.db.files.insert(file);
+                if let Ok(mut state) = self.state.lock() {
+                    let file = Arc::new(File { source, load });
+                    state.db.files.insert(Arc::new(uri.into()), file);
                 };
 
                 Some(())
@@ -171,14 +168,10 @@ impl LanguageServer for Backend {
             .load_pattern(&uri)
             .expect("uri corresponds to a filename");
 
-        if let Ok(state) = self.state.lock().as_deref_mut() {
-            let file = Arc::new(File {
-                id: uri.into(),
-                source,
-                load,
-            });
+        if let Ok(mut state) = self.state.lock() {
+            let file = Arc::new(File { source, load });
 
-            state.db.files.insert(file);
+            state.db.files.insert(Arc::new(uri.into()), file);
         }
     }
 
@@ -198,11 +191,11 @@ impl LanguageServer for Backend {
         let load = self
             .load_pattern(&uri)
             .expect("uri corresponds to a filename");
-        let id: FileId = uri.into();
         let source = changes.text.to_string();
+        let file = File { source, load };
 
-        if let Ok(state) = self.state.lock().as_deref_mut() {
-            state.db.files.insert(Arc::new(File { id, source, load }));
+        if let Ok(mut state) = self.state.lock() {
+            state.db.files.insert(Arc::new(uri.into()), Arc::new(file));
         }
     }
 
@@ -386,31 +379,34 @@ impl Backend {
             .db
             .files
             .iter()
-            .filter(|f| {
+            .filter_map(|(id, f)| {
                 // TODO(bbannier): Report unloadable modules.
-                loads.iter().any(|l| &f.load == l)
+                if loads.iter().any(|l| &f.load == l) {
+                    Some((id.clone(), f.clone()))
+                } else {
+                    None
+                }
             })
-            .cloned()
-            .collect::<HashSet<_>>();
+            .collect::<HashMap<_, _>>();
 
         // Recursively resolve all pulled in files.
         loop {
-            let mut new_files = HashSet::new();
+            let mut new_files = HashMap::new();
 
-            for file in &files {
+            for (id, file) in &files {
                 let module = match state.db.module(file.clone()) {
                     Some(m) => m,
                     None => continue,
                 };
 
                 for load in &module.loads {
-                    if let Some(file) = state.db.files.iter().find(|f| &f.load == load) {
-                        if files.contains(file) {
+                    if let Some(file) = state.db.files.values().find(|f| &f.load == load) {
+                        if files.contains_key(id) {
                             // Already known.
                             continue;
                         }
 
-                        new_files.insert(file.clone());
+                        new_files.insert(id.clone(), file.clone());
                     } else {
                         // TODO(bbannier): report unresolvable loads.
                     }
@@ -421,15 +417,15 @@ impl Backend {
                 break;
             }
 
-            for f in new_files {
-                files.insert(f);
-            }
+            files.extend(new_files);
         }
 
-        let modules = files.into_iter().filter_map(|file| state.db.module(file));
+        let modules = files
+            .iter()
+            .filter_map(|(id, file)| state.db.module(file.clone()).map(|m| (id, m)));
 
         Ok(modules
-            .filter_map(|module| {
+            .filter_map(|(id, module)| {
                 Some(
                     module
                         .decls
@@ -440,7 +436,7 @@ impl Backend {
                                 ModuleId::String(s) => format!("{}::{}", s, d.id),
                                 ModuleId::Global => d.id,
                                 ModuleId::Implicit => {
-                                    format!("{}::{}", implicit_module_name(&file.id)?, d.id)
+                                    format!("{}::{}", implicit_module_name(&id)?, d.id)
                                 }
                             };
 

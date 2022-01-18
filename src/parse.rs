@@ -74,24 +74,18 @@ fn parse(_db: &dyn Parse, file: Arc<File>) -> Option<Arc<Tree>> {
 mod test {
     use {
         crate::File,
-        crate::{lsp::Database, parse::Parse, FileId},
+        crate::{lsp::Database, parse::Parse},
         eyre::Result,
         insta::assert_debug_snapshot,
         std::sync::Arc,
-        tower_lsp::lsp_types::Url,
     };
 
     const SOURCE: &'static str = "event zeek_init() {}";
 
     #[test]
     fn can_parse() -> Result<()> {
-        let uri = Url::from_file_path("/foo/bar.zeek").unwrap();
-        let load = "foo/bar".into();
-        let id: FileId = uri.into();
-
         let tree = Database::default().parse(Arc::new(File {
-            id,
-            load,
+            load: "foo/bar".into(),
             source: SOURCE.to_owned(),
         }));
 

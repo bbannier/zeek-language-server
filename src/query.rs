@@ -283,7 +283,6 @@ mod test {
         File,
     };
     use insta::assert_debug_snapshot;
-    use tower_lsp::lsp_types::Url;
 
     const SOURCE: &str = "module test;
 
@@ -302,7 +301,6 @@ mod test {
 
     fn parse(source: &str) -> Option<Arc<Tree>> {
         Database::default().parse(Arc::new(File {
-            id: Url::from_file_path("/test.zeek").expect("valid uri").into(),
             source: source.to_string(),
             load: "./test".into(),
         }))

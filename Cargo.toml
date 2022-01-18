@@ -22,7 +22,7 @@ log = "0.4.14"
 opentelemetry = { version = "0.16.0", features = ["trace", "rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.15.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true}
 salsa = "0.16.1"
-tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread", "io-std", "process", "fs"] }
+tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread", "io-std", "process"] }
 tower-lsp = "0.14.1"
 tracing = "0.1.29"
 tracing-opentelemetry = { version = "0.16.0", optional = true }

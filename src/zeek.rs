@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::str;
+use std::{collections::HashSet, path::PathBuf};
 
 use eyre::{eyre, Result};
 use walkdir::WalkDir;
@@ -16,6 +16,17 @@ async fn script_dir() -> Result<PathBuf> {
         .ok_or_else(|| eyre!("'zeek-config --script_dir' returned no output"))?;
 
     Ok(dir.into())
+}
+
+/// Get all prefixes understood by Zeek.
+///
+/// # Errors
+///
+/// Will return `Err` if Zeek cannot be queried.
+pub async fn prefixes() -> Result<HashSet<PathBuf>> {
+    let mut prefixes = HashSet::new();
+    prefixes.insert(script_dir().await?);
+    Ok(prefixes)
 }
 
 #[derive(Debug, PartialEq)]
@@ -69,7 +80,7 @@ pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
 
 pub(crate) fn init_script_filename() -> &'static str {
     // TODO(bbannier): does this function need a flag for bare mode?
-    "init-default.zeek"
+    "base/init-default.zeek"
 }
 
 #[cfg(test)]

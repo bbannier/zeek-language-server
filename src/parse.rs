@@ -86,10 +86,12 @@ mod test {
     #[test]
     fn can_parse() -> Result<()> {
         let uri = Url::from_file_path("/foo/bar.zeek").unwrap();
+        let load = "foo/bar".into();
         let id: FileId = uri.into();
 
         let tree = Database::default().parse(Arc::new(File {
             id,
+            load,
             source: SOURCE.to_owned(),
         }));
 

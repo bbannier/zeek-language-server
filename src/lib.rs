@@ -28,13 +28,22 @@ impl Deref for FileId {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct File {
+    /// Identifier for this file.
     id: FileId,
+
+    /// Source of the file.
     source: String,
+
+    /// Identifier to load this file.
+    load: String,
 }
 
 impl fmt::Debug for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("File").field("id", &self.id).finish()
+        f.debug_struct("File")
+            .field("id", &self.id.path())
+            .field("load", &self.load)
+            .finish()
     }
 }
 

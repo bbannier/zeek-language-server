@@ -1,5 +1,3 @@
-use log::debug;
-
 use {
     crate::{
         parse::Parse,
@@ -11,7 +9,6 @@ use {
         collections::HashSet,
         fmt::Debug,
         path::PathBuf,
-        str::FromStr,
         sync::{Arc, Mutex},
     },
     tower_lsp::{
@@ -35,6 +32,7 @@ use {
 pub struct Database {
     storage: salsa::Storage<Self>,
     files: HashSet<Arc<File>>,
+    prefixes: HashSet<PathBuf>,
 }
 
 impl Database {
@@ -86,10 +84,16 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
-        // discover_system_files;
         self.client
             .log_message(MessageType::Info, "server initialized!")
             .await;
+
+        // Set up prefixes for normalization of system files.
+        if let Ok(prefixes) = zeek::prefixes().await {
+            if let Ok(mut state) = self.state.lock() {
+                state.db.prefixes = prefixes;
+            }
+        }
 
         match zeek::system_files().await {
             Ok(files) => {
@@ -140,13 +144,18 @@ impl LanguageServer for Backend {
                     }
                 };
 
+                let load = self
+                    .load_pattern(&uri)
+                    .expect("uri corresponds to a filename");
+
                 if let Ok(state) = self.state.lock().as_deref_mut() {
                     let file = Arc::new(File {
                         id: uri.into(),
                         source,
+                        load,
                     });
 
-                    state.db.files.insert(file.clone());
+                    state.db.files.insert(file);
                 };
 
                 Some(())
@@ -156,21 +165,21 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let id: FileId = params.text_document.uri.into();
-
+        let uri = params.text_document.uri;
         let source = params.text_document.text;
+        let load = self
+            .load_pattern(&uri)
+            .expect("uri corresponds to a filename");
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
             let file = Arc::new(File {
-                id: id.clone(),
+                id: uri.into(),
                 source,
+                load,
             });
 
             state.db.files.insert(file);
         }
-
-        debug!("precomputing implicit module declarations");
-        let _implicit_decls = self.implicit_decls();
     }
 
     #[instrument]
@@ -184,11 +193,16 @@ impl LanguageServer for Backend {
         let changes = changes.get(0).unwrap();
         assert!(changes.range.is_none(), "unexpected diff mode");
 
-        let id: FileId = params.text_document.uri.into();
+        let uri = params.text_document.uri;
+
+        let load = self
+            .load_pattern(&uri)
+            .expect("uri corresponds to a filename");
+        let id: FileId = uri.into();
         let source = changes.text.to_string();
 
         if let Ok(state) = self.state.lock().as_deref_mut() {
-            state.db.files.insert(Arc::new(File { id, source }));
+            state.db.files.insert(Arc::new(File { id, source, load }));
         }
     }
 
@@ -261,21 +275,17 @@ impl LanguageServer for Backend {
 
         let module = state
             .db
-            .module(file.clone())
+            .module(file)
             .ok_or_else(|| Error::new(ErrorCode::InternalError))?;
 
         Ok(Some(
             #[allow(deprecated)]
             DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                name: module
-                    .id
-                    .clone()
-                    .unwrap_or_else(|| {
-                        default_module_name(&params.text_document.uri)
-                            .unwrap_or("<invalid>")
-                            .to_string()
-                    })
-                    .clone(),
+                name: module.id.clone().unwrap_or_else(|| {
+                    default_module_name(&params.text_document.uri)
+                        .unwrap_or("<invalid>")
+                        .to_string()
+                }),
                 kind: SymbolKind::Module,
                 range: module.range,
                 selection_range: module.range,
@@ -292,7 +302,7 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let position = params.text_document_position;
 
-        let (source, tree) = {
+        let (file, tree) = {
             let state = self
                 .state
                 .lock()
@@ -303,12 +313,12 @@ impl LanguageServer for Backend {
                 None => return Ok(None),
             };
 
-            (file.source.clone(), state.db.parse(file))
-        };
+            let tree = match state.db.parse(file.clone()) {
+                Some(t) => t,
+                None => return Ok(None),
+            };
 
-        let tree = match tree.as_ref() {
-            Some(t) => t,
-            None => return Ok(None),
+            (file, tree)
         };
 
         let node = match tree.descendant_for_position(&position.position) {
@@ -327,7 +337,7 @@ impl LanguageServer for Backend {
             let mut items = Vec::new();
             let mut node = node;
             loop {
-                items.append(&mut decls(node, &source));
+                items.append(&mut decls(node, &file.source));
                 node = match node.parent() {
                     Some(n) => n,
                     None => break,
@@ -336,33 +346,25 @@ impl LanguageServer for Backend {
             items.into_iter().map(to_completion_item).collect()
         };
 
-        items.extend(self.implicit_decls()?.into_iter().map(to_completion_item));
+        // Add an decls found in implicitly or explicitly loaded modules.
+        items.extend(
+            self.external_decls(&file)?
+                .into_iter()
+                .map(to_completion_item),
+        );
 
         Ok(Some(CompletionResponse::from(items)))
     }
 }
 
 impl Backend {
-    fn implicit_decls(&self) -> Result<Vec<Decl>> {
+    // TODO(bbannier): move this into query.rs and cache it.
+    fn external_decls(&self, file: &Arc<File>) -> Result<Vec<Decl>> {
+        // TODO(bbannier): Refactor this pattern into a helper lock: Self -> Result<State>.
         let state = self
             .state
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
-
-        let implicit_load = if let Some(l) = state.db.files.iter().find(|&f| {
-            f.id.path_segments().and_then(Iterator::last) == Some(zeek::init_script_filename())
-        }) {
-            l
-        } else {
-            return Ok(vec![]);
-        };
-
-        let file = match state.db.get_file(&implicit_load.id) {
-            Some(id) => id,
-            None => {
-                return Err(Error::new(ErrorCode::InvalidParams));
-            }
-        };
 
         let tree = state.db.parse(file.clone());
         let tree = match tree.as_ref() {
@@ -370,21 +372,60 @@ impl Backend {
             None => return Ok(Vec::new()),
         };
 
-        let loads = loads(tree.root_node(), &file.source);
+        // Get loaded modules for this file.
+        let loads = loads(tree.root_node(), &file.source)
+            .into_iter()
+            .map(String::from)
+            .collect::<HashSet<_>>();
 
-        Ok(state
+        // The list of pulled in files.
+        let mut files = state
             .db
             .files
             .iter()
-            .filter_map(|f| {
-                let stem = PathBuf::from_str(f.id.as_str()).ok()?.with_extension("");
-                if loads.iter().find(|l| stem.ends_with(l)).is_some() {
-                    Some(f)
-                } else {
-                    None
-                }
+            .filter(|f| {
+                // TODO(bbannier): Report unloadable modules.
+                loads.iter().any(|l| &f.load == l)
             })
-            .filter_map(|file| state.db.module(file.clone()))
+            .cloned()
+            .collect::<HashSet<_>>();
+
+        // Recursively resolve all pulled in files.
+        loop {
+            let mut new_files = HashSet::new();
+
+            for file in &files {
+                let module = match state.db.module(file.clone()) {
+                    Some(m) => m,
+                    None => continue,
+                };
+
+                for load in &module.loads {
+                    if let Some(file) = state.db.files.iter().find(|f| &f.load == load) {
+                        if files.contains(file) {
+                            // Already known.
+                            continue;
+                        }
+
+                        new_files.insert(file.clone());
+                    } else {
+                        // TODO(bbannier): report unresolvable loads.
+                    }
+                }
+            }
+
+            if new_files.is_empty() {
+                break;
+            }
+
+            for f in new_files {
+                files.insert(f);
+            }
+        }
+
+        let modules = files.into_iter().filter_map(|file| state.db.module(file));
+
+        Ok(modules
             .filter_map(|module| {
                 let module_id = match &module.id {
                     Some(id) => id,
@@ -405,6 +446,41 @@ impl Backend {
             })
             .flatten()
             .collect())
+    }
+
+    /// The pattern under which the give uri can be loaded.
+    fn load_pattern(&self, uri: &Url) -> Option<String> {
+        let file = uri.to_file_path().expect("uri should be a valid path");
+
+        if let Ok(state) = self.state.lock() {
+            if let Some(file) = state.db.get_file(uri) {
+                // File is known.
+                return Some(file.load.clone());
+            }
+
+            if let Some(from_prefix) = state
+                .db
+                .prefixes
+                .iter()
+                .find_map(|p| file.strip_prefix(p).ok())
+                .map(|p| {
+                    if p.ends_with("__load__.zeek") || p.ends_with("__preload__.zeek") {
+                        p.to_path_buf()
+                    } else {
+                        p.with_extension("")
+                    }
+                })
+            {
+                // File is from a known prefix.
+                return Some(from_prefix.as_os_str().to_string_lossy().into());
+            }
+        }
+
+        // TODO(bbannier): take the workspace (explicit from initialization or implicit from
+        // presence of `__(pre)load__.zeek` files) into account.
+        file.file_stem()
+            .map(|s| format!("./{}", s.to_string_lossy()))
+        // TODO(bbannier): report uris without file stem?
     }
 }
 

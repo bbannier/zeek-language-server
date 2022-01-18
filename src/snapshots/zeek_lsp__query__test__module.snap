@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 311
+assertion_line: 324
 expression: "module_(&tree, SOURCE)"
 
 ---
@@ -114,7 +114,9 @@ Module {
             documentation: "event zeek_init() { local x=1; ",
         },
     ],
-    loads: [],
+    loads: [
+        "base/init-default",
+    ],
     range: Range {
         start: Position {
             line: 0,

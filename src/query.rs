@@ -7,7 +7,7 @@ use tree_sitter::Node;
 
 use crate::{
     parse::{tree_sitter_zeek, Parse, Tree},
-    to_range, File,
+    to_range, zeek, File,
 };
 
 #[derive(Debug, PartialEq, Copy, Clone, Eq)]
@@ -96,8 +96,7 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 
 #[instrument(skip(source))]
 #[must_use]
-// FIXME(bbannier): priv.
-pub fn module_(tree: &Tree, source: &str) -> Module {
+fn module_(tree: &Tree, source: &str) -> Module {
     let node = tree.root_node();
 
     let id = module_id(node, source).get(0).copied().map(String::from);
@@ -201,7 +200,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
             // TODO(bbannier): This just extracts the first line of the decl as documentation. We
             // should implement something richer, e.g., also extract (zeekygen) comments close by.
             let documentation = decl
-                .utf8_text(&source.as_bytes())
+                .utf8_text(source.as_bytes())
                 .ok()?
                 .lines()
                 .next()?
@@ -234,10 +233,19 @@ pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .capture_index_for_name("file")
         .expect("file should be captured");
 
-    tree_sitter::QueryCursor::new()
-        .matches(&query, node, source.as_bytes())
-        .filter_map(|c| c.nodes_for_capture_index(c_file).next())
-        .filter_map(|f| f.utf8_text(&source.as_bytes()).ok())
+    let implicit_module = if let Some(m) = zeek::init_script_filename().strip_suffix(".zeek") {
+        m
+    } else {
+        zeek::init_script_filename()
+    };
+
+    std::iter::once(implicit_module)
+        .chain(
+            tree_sitter::QueryCursor::new()
+                .matches(&query, node, source.as_bytes())
+                .filter_map(|c| c.nodes_for_capture_index(c_file).next())
+                .filter_map(|f| f.utf8_text(source.as_bytes()).ok()),
+        )
         .collect()
 }
 
@@ -285,8 +293,9 @@ mod test {
 
     fn parse(source: &str) -> Option<Arc<Tree>> {
         Database::default().parse(Arc::new(File {
-            id: Url::from_file_path("/dev/zero").expect("valid uri").into(),
+            id: Url::from_file_path("/test.zeek").expect("valid uri").into(),
             source: source.to_string(),
+            load: "./test".into(),
         }))
     }
 
@@ -296,11 +305,11 @@ mod test {
             loads(parse(&source).expect("cannot parse").root_node(), &source)
         };
 
-        assert_eq!(loads(""), Vec::<&str>::new());
+        assert_eq!(loads(""), vec!["base/init-default"]);
 
         assert_eq!(
             loads("@load ./main; @load base/misc/version;"),
-            vec!["./main", "base/misc/version"]
+            vec!["base/init-default", "./main", "base/misc/version"]
         );
     }
 

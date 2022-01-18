@@ -228,6 +228,22 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
 }
 
 #[instrument]
+pub fn decl_at(id: &str, mut node: Node, source: &str) -> Option<Decl> {
+    loop {
+        if let Some(decl) = decls(node, source).into_iter().find(|d| &d.id == id) {
+            return Some(decl);
+        }
+
+        node = match node.parent() {
+            Some(p) => p,
+            None => break,
+        };
+    }
+
+    None
+}
+
+#[instrument]
 pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
     let query =
         match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(\"@load\") (file)@file") {

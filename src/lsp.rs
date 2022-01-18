@@ -1,10 +1,10 @@
 use {
     crate::{
         parse::Parse,
-        query::{decls, implicit_module_name, loads, Decl, DeclKind, ModuleId, Query},
+        query::{decl_at, decls, implicit_module_name, loads, Decl, DeclKind, ModuleId, Query},
         to_range, zeek, File, FileId,
     },
-    log::warn,
+    log::{error, warn},
     std::{
         collections::{HashMap, HashSet},
         fmt::Debug,
@@ -19,7 +19,7 @@ use {
             DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
             DocumentSymbolResponse, Documentation, FileCreate, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-            MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
+            LanguageString, MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
             TextDocumentSyncCapability, TextDocumentSyncKind, Url,
         },
         Client, LanguageServer, LspService, Server,
@@ -218,19 +218,45 @@ impl LanguageServer for Backend {
         // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
         // should return some nice rendering of the hovered node.
 
+        let source = file.source.clone();
+
         let tree = state.db.parse(file);
         let tree = match tree.as_ref() {
             Some(t) => t,
-            None => return Ok(None),
+            None => return dbg!(Ok(None)),
         };
 
-        let node = match tree.named_descendant_for_position(&params.position) {
+        let node = match dbg!(tree.named_descendant_for_position(&params.position)) {
             Some(n) => n,
             None => return Ok(None),
         };
 
+        let text = node.utf8_text(source.as_bytes()).map_err(|e| {
+            error!("could not get source text: {}", e);
+            Error::new(ErrorCode::InternalError)
+        })?;
+
+        let mut contents = vec![
+            MarkedString::LanguageString(LanguageString {
+                value: text.into(),
+                language: "zeek".into(),
+            }),
+            #[cfg(debug_assertions)]
+            MarkedString::LanguageString(LanguageString {
+                value: node.to_sexp(),
+                language: "lisp".into(),
+            }),
+        ];
+
+        if node.kind() == "id" {
+            let id = text;
+            if let Some(decl) = decl_at(id, node, &source) {
+                contents.push(MarkedString::String(decl.documentation));
+            }
+        }
+
         let hover = Hover {
-            contents: HoverContents::Scalar(MarkedString::String(node.to_sexp())),
+            contents: HoverContents::Array(contents),
             range: to_range(node.range()).ok(),
         };
 

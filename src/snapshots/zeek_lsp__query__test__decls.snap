@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 280
+assertion_line: 340
 expression: root_decls
 
 ---
@@ -29,7 +29,7 @@ expression: root_decls
                 character: 25,
             },
         },
-        documentation: "const x = 1 &redef;",
+        documentation: "```zeek\nconst x = 1 &redef;\n```",
     },
     Decl {
         id: "y",
@@ -55,7 +55,7 @@ expression: root_decls
                 character: 26,
             },
         },
-        documentation: "global y = 1;",
+        documentation: "```zeek\nglobal y = 1;\n```",
     },
     Decl {
         id: "Y",
@@ -81,7 +81,7 @@ expression: root_decls
                 character: 20,
             },
         },
-        documentation: "type Y: record {",
+        documentation: "```zeek\ntype Y: record {\n                  y: vector of count &optional;\n              };\n```",
     },
     Decl {
         id: "zeek_init",
@@ -107,6 +107,6 @@ expression: root_decls
                 character: 29,
             },
         },
-        documentation: "event zeek_init() { local x=1; ",
+        documentation: "```zeek\nevent zeek_init() { local x=1; \n\n                  # Comment.\n              }\n```",
     },
 ]

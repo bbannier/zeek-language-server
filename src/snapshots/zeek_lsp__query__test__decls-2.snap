@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 293
+assertion_line: 353
 expression: func_decls
 
 ---
@@ -29,6 +29,6 @@ expression: func_decls
                 character: 41,
             },
         },
-        documentation: "local x=1;",
+        documentation: "```zeek\nlocal x=1;\n```",
     },
 ]

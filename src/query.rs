@@ -212,12 +212,8 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
 
             // TODO(bbannier): This just extracts the first line of the decl as documentation. We
             // should implement something richer, e.g., also extract (zeekygen) comments close by.
-            let documentation = decl
-                .utf8_text(source.as_bytes())
-                .ok()?
-                .lines()
-                .next()?
-                .into();
+            let documentation =
+                format!("```zeek\n{}\n```", decl.utf8_text(source.as_bytes()).ok()?);
 
             Some(Decl {
                 id,

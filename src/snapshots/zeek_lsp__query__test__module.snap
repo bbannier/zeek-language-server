@@ -1,11 +1,11 @@
 ---
 source: src/query.rs
-assertion_line: 324
+assertion_line: 334
 expression: "module_(&tree, SOURCE)"
 
 ---
 Module {
-    id: Some(
+    id: String(
         "test",
     ),
     decls: [

@@ -1,7 +1,7 @@
 use {
     crate::{
         parse::Parse,
-        query::{decls, default_module_name, loads, Decl, DeclKind, Query},
+        query::{decls, implicit_module_name, loads, Decl, DeclKind, ModuleId, Query},
         to_range, zeek, File, FileId,
     },
     log::warn,
@@ -281,11 +281,14 @@ impl LanguageServer for Backend {
         Ok(Some(
             #[allow(deprecated)]
             DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                name: module.id.clone().unwrap_or_else(|| {
-                    default_module_name(&params.text_document.uri)
-                        .unwrap_or("<invalid>")
-                        .to_string()
-                }),
+                name: match &module.id {
+                    ModuleId::Global => "<global>",
+                    ModuleId::Implicit => {
+                        implicit_module_name(&params.text_document.uri).unwrap_or("<invalid")
+                    }
+                    ModuleId::String(s) => s.as_str(),
+                }
+                .into(),
                 kind: SymbolKind::Module,
                 range: module.range,
                 selection_range: module.range,
@@ -427,19 +430,21 @@ impl Backend {
 
         Ok(modules
             .filter_map(|module| {
-                let module_id = match &module.id {
-                    Some(id) => id,
-                    None => default_module_name(&file.id)?,
-                };
-
                 Some(
                     module
                         .decls
                         .clone()
                         .into_iter()
-                        .map(|mut d| {
-                            d.id = format!("{m}::{d}", m = module_id, d = d.id);
-                            d
+                        .filter_map(|mut d| {
+                            d.id = match &module.id {
+                                ModuleId::String(s) => format!("{}::{}", s, d.id),
+                                ModuleId::Global => d.id,
+                                ModuleId::Implicit => {
+                                    format!("{}::{}", implicit_module_name(&file.id)?, d.id)
+                                }
+                            };
+
+                            Some(d)
                         })
                         .collect::<Vec<_>>(),
                 )

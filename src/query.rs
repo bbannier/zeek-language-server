@@ -35,10 +35,17 @@ pub struct Decl {
     pub documentation: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModuleId {
+    String(String),
+    Global,
+    Implicit,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Module {
     /// ID of this module.
-    pub id: Option<String>,
+    pub id: ModuleId,
 
     /// Declarations in this module.
     pub decls: Vec<Decl>,
@@ -51,7 +58,7 @@ pub struct Module {
 }
 
 #[must_use]
-pub fn default_module_name(uri: &Url) -> Option<&str> {
+pub fn implicit_module_name(uri: &Url) -> Option<&str> {
     uri
         // Assume that text documents refer to file paths.
         .path_segments()
@@ -99,7 +106,13 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 fn module_(tree: &Tree, source: &str) -> Module {
     let node = tree.root_node();
 
-    let id = module_id(node, source).get(0).copied().map(String::from);
+    let id = module_id(node, source)
+        .get(0)
+        .copied()
+        .map_or(ModuleId::Implicit, |id| match id {
+            "GLOBAL" => ModuleId::Global,
+            _ => ModuleId::String(id.to_string()),
+        });
     let decls = decls(node, source);
     let loads = loads(node, source).into_iter().map(String::from).collect();
     let range = to_range(node.range()).expect("invalid range");

@@ -1,7 +1,7 @@
 use {
     crate::{
         parse::Parse,
-        query::{decl_at, decls, implicit_module_name, loads, Decl, DeclKind, ModuleId, Query},
+        query::{decl_at, decls, loads, Decl, DeclKind, ModuleId, Query},
         to_range, zeek, File, FileId,
     },
     log::{error, warn},
@@ -300,11 +300,8 @@ impl LanguageServer for Backend {
         Ok(Some(
             #[allow(deprecated)]
             DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                name: match &module.id {
-                    ModuleId::Global => "<global>",
-                    ModuleId::Implicit => {
-                        implicit_module_name(&params.text_document.uri).unwrap_or("<invalid")
-                    }
+                name: match dbg!(&module.id) {
+                    ModuleId::Global => "GLOBAL",
                     ModuleId::String(s) => s.as_str(),
                 }
                 .into(),
@@ -447,31 +444,25 @@ impl Backend {
         }
 
         let modules = files
-            .iter()
-            .filter_map(|(id, file)| state.db.module(file.clone()).map(|m| (id, m)));
+            .values()
+            .filter_map(|file| state.db.module(file.clone()));
 
         Ok(modules
-            .filter_map(|(id, module)| {
-                Some(
-                    module
-                        .decls
-                        .clone()
-                        .into_iter()
-                        .filter_map(|mut d| {
-                            d.id = match &module.id {
-                                ModuleId::String(s) => format!("{}::{}", s, d.id),
-                                ModuleId::Global => d.id,
-                                ModuleId::Implicit => {
-                                    format!("{}::{}", implicit_module_name(&id)?, d.id)
-                                }
-                            };
+            .flat_map(|module| {
+                module
+                    .decls
+                    .clone()
+                    .into_iter()
+                    .map(|mut d| {
+                        d.id = match &module.id {
+                            ModuleId::String(s) => format!("{}::{}", s, d.id),
+                            ModuleId::Global => d.id,
+                        };
 
-                            Some(d)
-                        })
-                        .collect::<Vec<_>>(),
-                )
+                        d
+                    })
+                    .collect::<Vec<_>>()
             })
-            .flatten()
             .collect())
     }
 

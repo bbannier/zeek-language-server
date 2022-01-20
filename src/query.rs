@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use log::error;
-use tower_lsp::lsp_types::{Range, Url};
+use tower_lsp::lsp_types::Range;
 use tracing::instrument;
 use tree_sitter::Node;
 
@@ -39,7 +39,6 @@ pub struct Decl {
 pub enum ModuleId {
     String(String),
     Global,
-    Implicit,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -57,19 +56,6 @@ pub struct Module {
     pub range: Range,
 }
 
-#[must_use]
-pub fn implicit_module_name(uri: &Url) -> Option<&str> {
-    uri
-        // Assume that text documents refer to file paths.
-        .path_segments()
-        // The last path component would be the file name.
-        .and_then(Iterator::last)
-        // Assume that implicit module names only exist for files name like `mod.zeek`, and
-        // e.g., multiple `.` are not allowed.
-        .and_then(|s| s.split('.').next())
-    // If we still cannot extract a name at least provide _something_.
-}
-
 fn in_export(mut node: Node) -> bool {
     loop {
         node = match node.parent() {
@@ -83,9 +69,14 @@ fn in_export(mut node: Node) -> bool {
     }
 }
 
-fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
-    let query = tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(module (id)*@module_id)")
-        .expect("could not construct module query");
+// FIXME(bbannier): this function makes no sense. A decl's module is determined by the previous
+// module_decl (or GLOBAL). A file can have multiple modules.
+fn module_id(node: Node, source: &str) -> ModuleId {
+    let query = tree_sitter::Query::new(
+        unsafe { tree_sitter_zeek() },
+        "(module_decl (id)*@module_id)",
+    )
+    .expect("could not construct module query");
 
     let c_module_id = query
         .capture_index_for_name("module_id")
@@ -98,7 +89,8 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
                 .next()
                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
         })
-        .collect()
+        .last()
+        .map_or(ModuleId::Global, |id| ModuleId::String(id.to_string()))
 }
 
 #[instrument(skip(source))]
@@ -106,13 +98,7 @@ fn module_id<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 fn module_(tree: &Tree, source: &str) -> Module {
     let node = tree.root_node();
 
-    let id = module_id(node, source)
-        .get(0)
-        .copied()
-        .map_or(ModuleId::Implicit, |id| match id {
-            "GLOBAL" => ModuleId::Global,
-            _ => ModuleId::String(id.to_string()),
-        });
+    let id = module_id(node, source);
     let decls = decls(node, source);
     let loads = loads(node, source).into_iter().map(String::from).collect();
     let range = to_range(node.range()).expect("invalid range");
@@ -158,10 +144,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
     tree_sitter::QueryCursor::new()
         .matches(&query, node, source.as_bytes())
         .filter_map(|c| {
-            let decl = c
-                .nodes_for_capture_index(c_decl)
-                .next()
-                .expect("decl should be present");
+            let decl = c.nodes_for_capture_index(c_decl).next()?;
 
             // Skip children not directly below the node or in an `export` below the node.
             // TODO(bbannier): this would probably be better handled directly in the query.
@@ -230,7 +213,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
 #[instrument]
 pub fn decl_at(id: &str, mut node: Node, source: &str) -> Option<Decl> {
     loop {
-        if let Some(decl) = decls(node, source).into_iter().find(|d| &d.id == id) {
+        if let Some(decl) = decls(node, source).into_iter().find(|d| d.id == id) {
             return Some(decl);
         }
 
@@ -295,7 +278,7 @@ mod test {
     use crate::{
         lsp::Database,
         parse::{Parse, Tree},
-        query::in_export,
+        query::{in_export, ModuleId},
         File,
     };
     use insta::assert_debug_snapshot;
@@ -357,7 +340,7 @@ mod test {
         // above), they should be visible inside the scope.
         let func_body = tree
             .root_node()
-            .child(5)
+            .child(tree.root_node().child_count() - 1)
             .expect("cannot get event_decl")
             .child(3)
             .expect("cannot get func_body");
@@ -392,15 +375,18 @@ mod test {
     fn test_module_id() {
         let module_id = |source| module_id(parse(source).unwrap().root_node(), source);
 
-        assert!(module_id("").is_empty());
-        assert!(module_id("event zeek_init() {}").is_empty());
-        assert!(module_id("export {}").is_empty());
-        assert_eq!(module_id("module test;"), vec!["test"]);
+        assert_eq!(module_id(""), ModuleId::Global);
+        assert_eq!(module_id("event zeek_init() {}"), ModuleId::Global);
+        assert_eq!(module_id("export {}"), ModuleId::Global);
+        assert_eq!(
+            module_id("# Comment.\n@load foo\nmodule test;"),
+            ModuleId::String("test".to_string())
+        );
 
-        // Multiple occurrences of `module` currently disallowed by grammar.
-        // assert_eq!(
-        //     module_name("module test1; module test2;"),
-        //     vec!["test1", "test2"]
-        // );
+        // For multiple module decls Zeek seems to use the last one.
+        assert_eq!(
+            module_id("module test1; module test2;"),
+            ModuleId::String("test2".to_string())
+        );
     }
 }

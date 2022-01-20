@@ -1,9 +1,9 @@
 ---
 source: src/parse.rs
-assertion_line: 98
+assertion_line: 94
 expression: sexp
 
 ---
 Some(
-    "(module (event_decl id: (id) (func_params) (func_body)))",
+    "(source_file (event_decl id: (id) (func_params) (func_body)))",
 )

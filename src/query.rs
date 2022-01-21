@@ -63,7 +63,7 @@ fn in_export(mut node: Node) -> bool {
             None => return false,
         };
 
-        if node.kind() == "export" {
+        if node.kind() == "export_decl" {
             return true;
         }
     }
@@ -153,7 +153,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
                 .next()
                 .expect("outer node should be present");
             if outer_node != node
-                && (outer_node.kind() != "export" && outer_node.parent() != Some(node))
+                && (outer_node.kind() != "export_decl" && outer_node.parent() != Some(node))
             {
                 return None;
             }

@@ -1,8 +1,13 @@
 use std::str;
+use std::sync::Arc;
 use std::{ffi::OsStr, path::PathBuf};
 
 use eyre::{eyre, Result};
+use tower_lsp::lsp_types::Url;
 use walkdir::WalkDir;
+
+use crate::parse::Parse;
+use crate::query;
 
 async fn zeek_config<I, S>(args: I) -> Result<std::process::Output>
 where
@@ -92,6 +97,25 @@ pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
 pub(crate) fn init_script_filename() -> &'static str {
     // TODO(bbannier): does this function need a flag for bare mode?
     "base/init-default.zeek"
+}
+
+#[salsa::query_group(ZeekStorage)]
+pub trait Zeek: salsa::Database + Parse {
+    #[must_use]
+    fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Url>>;
+}
+
+fn loaded_files(db: &dyn Zeek, url: Arc<Url>) -> Arc<Vec<Url>> {
+    let file = db.file(url);
+
+    let tree = match db.parse(file.clone()) {
+        Some(t) => t,
+        None => return Arc::new(Vec::new()),
+    };
+
+    query::loads(tree.root_node(), &file.source);
+
+    todo!()
 }
 
 #[cfg(test)]

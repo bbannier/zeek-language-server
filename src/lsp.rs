@@ -29,12 +29,21 @@ use {
     tracing::instrument,
 };
 
-#[salsa::database(crate::parse::ParseStorage, crate::query::QueryStorage)]
+#[salsa::database(
+    crate::parse::ParseStorage,
+    crate::query::QueryStorage,
+    ServerStateStorage
+)]
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
     files: HashSet<Arc<Url>>,
-    prefixes: Vec<PathBuf>,
+}
+
+#[salsa::query_group(ServerStateStorage)]
+pub trait ServerState: Parse {
+    #[salsa::input]
+    fn prefixes(&self) -> Arc<Vec<PathBuf>>;
 }
 
 impl salsa::Database for Database {}
@@ -87,7 +96,7 @@ impl LanguageServer for Backend {
         // Set up prefixes for normalization of system files.
         if let Ok(prefixes) = zeek::prefixes().await {
             if let Ok(mut state) = self.state.lock() {
-                state.db.prefixes = prefixes;
+                state.db.set_prefixes(Arc::new(prefixes));
             }
         }
 

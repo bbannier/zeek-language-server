@@ -1,6 +1,6 @@
 use {
     eyre::Result,
-    std::{fmt, hash::Hash, ops::Deref},
+    std::{fmt, hash::Hash},
     tower_lsp::lsp_types,
 };
 
@@ -9,25 +9,11 @@ pub mod parse;
 pub mod query;
 pub mod zeek;
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub struct FileId(lsp_types::Url);
-
-impl From<lsp_types::Url> for FileId {
-    fn from(uri: lsp_types::Url) -> Self {
-        Self(uri)
-    }
-}
-
-impl Deref for FileId {
-    type Target = lsp_types::Url;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct File {
+    /// URI of the file.
+    uri: lsp_types::Url,
+
     /// Source of the file.
     source: String,
 }

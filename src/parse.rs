@@ -2,6 +2,7 @@ use {
     crate::File,
     std::{hash::Hash, ops::Deref, sync::Arc},
     tower_lsp::lsp_types::Position,
+    tower_lsp::lsp_types::Url,
     tracing::instrument,
     tree_sitter::{Language, Parser, Point},
 };
@@ -55,6 +56,9 @@ impl Deref for Tree {
 
 #[salsa::query_group(ParseStorage)]
 pub trait Parse: salsa::Database {
+    #[salsa::input]
+    fn file(&self, uri: Arc<Url>) -> Arc<File>;
+
     #[must_use]
     fn parse(&self, file: Arc<File>) -> Option<Arc<Tree>>;
 }
@@ -72,6 +76,8 @@ fn parse(_db: &dyn Parse, file: Arc<File>) -> Option<Arc<Tree>> {
 
 #[cfg(test)]
 mod test {
+    use tower_lsp::lsp_types::Url;
+
     use {
         crate::File,
         crate::{lsp::Database, parse::Parse},
@@ -85,6 +91,7 @@ mod test {
     #[test]
     fn can_parse() -> Result<()> {
         let tree = Database::default().parse(Arc::new(File {
+            uri: Url::from_file_path("/foo/bar.zeek").unwrap(),
             source: SOURCE.to_owned(),
         }));
 

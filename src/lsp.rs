@@ -2,12 +2,12 @@ use {
     crate::{
         parse::Parse,
         query::{decl_at, decls_, Decl, DeclKind, Query},
-        to_range, zeek, File, FileId,
+        to_range, zeek, File,
     },
     itertools::Itertools,
     log::{error, warn},
     std::{
-        collections::{HashMap, HashSet},
+        collections::HashSet,
         fmt::Debug,
         path::PathBuf,
         sync::{Arc, Mutex},
@@ -33,17 +33,8 @@ use {
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    files: HashMap<Arc<FileId>, Arc<File>>,
+    files: HashSet<Arc<Url>>,
     prefixes: Vec<PathBuf>,
-}
-
-impl Database {
-    #[must_use]
-    pub fn get_file(&self, uri: &Url) -> Option<Arc<File>> {
-        self.files
-            .get(&Arc::new(uri.clone().into()))
-            .map(Clone::clone)
-    }
 }
 
 impl salsa::Database for Database {}
@@ -150,8 +141,15 @@ impl LanguageServer for Backend {
                 };
 
                 if let Ok(mut state) = self.state.lock() {
-                    let file = Arc::new(File { source });
-                    state.db.files.insert(Arc::new(uri.into()), file);
+                    let file = Arc::new(File {
+                        uri: uri.clone(),
+                        source,
+                    });
+
+                    let uri = Arc::new(uri);
+
+                    state.db.set_file(uri.clone(), file);
+                    state.db.files.insert(uri);
                 };
 
                 Some(())
@@ -165,9 +163,15 @@ impl LanguageServer for Backend {
         let source = params.text_document.text;
 
         if let Ok(mut state) = self.state.lock() {
-            let file = Arc::new(File { source });
+            let file = Arc::new(File {
+                uri: uri.clone(),
+                source,
+            });
 
-            state.db.files.insert(Arc::new(uri.into()), file);
+            let uri = Arc::new(uri);
+
+            state.db.set_file(uri.clone(), file);
+            state.db.files.insert(uri);
         }
     }
 
@@ -185,10 +189,15 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
 
         let source = changes.text.to_string();
-        let file = File { source };
+        let file = File {
+            uri: uri.clone(),
+            source,
+        };
 
         if let Ok(mut state) = self.state.lock() {
-            state.db.files.insert(Arc::new(uri.into()), Arc::new(file));
+            let uri = Arc::new(uri);
+            state.db.set_file(uri.clone(), Arc::new(file));
+            state.db.files.insert(uri);
         }
     }
 
@@ -201,12 +210,7 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let file = match state.db.get_file(&params.text_document.uri) {
-            Some(id) => id,
-            None => {
-                return Err(Error::new(ErrorCode::InvalidParams));
-            }
-        };
+        let file = state.db.file(Arc::new(params.text_document.uri.clone()));
 
         // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
         // should return some nice rendering of the hovered node.
@@ -266,10 +270,7 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let file = match state.db.get_file(&params.text_document.uri) {
-            Some(id) => id,
-            None => return Ok(None),
-        };
+        let file = state.db.file(Arc::new(params.text_document.uri.clone()));
 
         let symbol = |d: &Decl| -> DocumentSymbol {
             #[allow(deprecated)]
@@ -320,11 +321,10 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let symbols = state.db.files.iter().flat_map(|(id, f)| {
-            //
+        let symbols = state.db.files.iter().flat_map(|id| {
             state
                 .db
-                .decls(f.clone())
+                .decls(state.db.file(id.clone()))
                 .iter()
                 .map(|d| {
                     let url: &Url = &**id;
@@ -357,10 +357,7 @@ impl LanguageServer for Backend {
                 .lock()
                 .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let file = match state.db.get_file(&position.text_document.uri) {
-                Some(id) => id,
-                None => return Ok(None),
-            };
+            let file = state.db.file(Arc::new(position.text_document.uri.clone()));
 
             let tree = match state.db.parse(file.clone()) {
                 Some(t) => t,

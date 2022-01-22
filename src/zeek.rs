@@ -1,14 +1,36 @@
-use std::path::PathBuf;
 use std::str;
+use std::{ffi::OsStr, path::PathBuf};
 
 use eyre::{eyre, Result};
 use walkdir::WalkDir;
 
-async fn script_dir() -> Result<PathBuf> {
-    let output = tokio::process::Command::new("zeek-config")
-        .arg("--script_dir")
+async fn zeek_config<I, S>(args: I) -> Result<std::process::Output>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    tokio::process::Command::new("zeek-config")
+        .args(args)
         .output()
-        .await?;
+        .await
+        .map_err(Into::into)
+}
+
+#[derive(Copy, Debug, Clone)]
+enum ZeekDir {
+    ScriptDir,
+    PluginDir,
+    SiteDir,
+}
+
+async fn dir(dir: ZeekDir) -> Result<PathBuf> {
+    let flag = match dir {
+        ZeekDir::ScriptDir => "--script_dir",
+        ZeekDir::PluginDir => "--plugin_dir",
+        ZeekDir::SiteDir => "--site_dir",
+    };
+
+    let output = zeek_config(&[flag]).await?;
 
     let dir = str::from_utf8(&output.stdout)?
         .lines()
@@ -24,9 +46,11 @@ async fn script_dir() -> Result<PathBuf> {
 ///
 /// Will return `Err` if Zeek cannot be queried.
 pub async fn prefixes() -> Result<Vec<PathBuf>> {
-    let mut prefixes = Vec::new();
-    prefixes.push(script_dir().await?);
-    Ok(prefixes)
+    Ok(vec![
+        dir(ZeekDir::ScriptDir).await?,
+        dir(ZeekDir::PluginDir).await?,
+        dir(ZeekDir::SiteDir).await?,
+    ])
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,19 +69,24 @@ impl SystemFile {
 }
 
 pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
-    let dir = script_dir().await?;
-
-    Ok(WalkDir::new(dir.clone())
+    Ok(prefixes()
+        .await?
         .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| !e.file_type().is_dir())
-        .filter_map(|f| {
-            if f.path().extension()? != "zeek" {
-                return None;
-            }
+        .map(|dir| {
+            WalkDir::new(dir.clone())
+                .into_iter()
+                .filter_map(std::result::Result::ok)
+                .filter(|e| !e.file_type().is_dir())
+                .filter_map(|f| {
+                    if f.path().extension()? != "zeek" {
+                        return None;
+                    }
 
-            Some(SystemFile::new(f.path().into(), dir.clone()))
+                    Some(SystemFile::new(f.path().into(), dir.clone()))
+                })
+                .collect::<Vec<_>>()
         })
+        .flatten()
         .collect())
 }
 
@@ -68,11 +97,11 @@ pub(crate) fn init_script_filename() -> &'static str {
 
 #[cfg(test)]
 mod test {
-    use super::{script_dir, system_files};
+    use crate::zeek;
 
     #[tokio::test]
-    async fn test_script_dir() {
-        assert!(script_dir()
+    async fn script_dir() {
+        assert!(zeek::dir(zeek::ZeekDir::ScriptDir)
             .await
             .expect("script_dir failed")
             .join("base/init-default.zeek")
@@ -80,8 +109,8 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_system_files() {
-        let files = system_files().await.expect("can read system files");
+    async fn system_files() {
+        let files = zeek::system_files().await.expect("can read system files");
 
         assert_ne!(files, vec![]);
     }

@@ -5,5 +5,5 @@ expression: sexp
 
 ---
 Some(
-    "(source_file (event_decl id: (id) (func_params) (func_body)))",
+    "(source_file (event_decl (id) (func_params) (func_body)))",
 )

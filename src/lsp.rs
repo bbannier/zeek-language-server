@@ -37,13 +37,15 @@ use {
 #[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    files: HashSet<Arc<Url>>,
 }
 
 #[salsa::query_group(ServerStateStorage)]
 pub trait ServerState: Parse {
     #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
+
+    #[salsa::input]
+    fn files(&self) -> Arc<HashSet<Arc<Url>>>;
 }
 
 impl salsa::Database for Database {}
@@ -69,6 +71,34 @@ struct Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+        if let Ok(prefixes) = zeek::prefixes().await {
+            if let Ok(mut state) = self.state.lock() {
+                // Set up prefixes for normalization of system files.
+                state.db.set_prefixes(Arc::new(prefixes));
+
+                state.db.set_files(Arc::new(HashSet::new()));
+            }
+        }
+
+        match zeek::system_files().await {
+            Ok(files) => {
+                self.did_create_files(CreateFilesParams {
+                    files: files
+                        .into_iter()
+                        .filter_map(|f| {
+                            Some(FileCreate {
+                                uri: f.path.into_os_string().into_string().ok()?,
+                            })
+                        })
+                        .collect(),
+                })
+                .await;
+            }
+            Err(e) => {
+                self.client.log_message(MessageType::Error, e).await;
+            }
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -92,32 +122,6 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::Info, "server initialized!")
             .await;
-
-        // Set up prefixes for normalization of system files.
-        if let Ok(prefixes) = zeek::prefixes().await {
-            if let Ok(mut state) = self.state.lock() {
-                state.db.set_prefixes(Arc::new(prefixes));
-            }
-        }
-
-        match zeek::system_files().await {
-            Ok(files) => {
-                self.did_create_files(CreateFilesParams {
-                    files: files
-                        .into_iter()
-                        .filter_map(|f| {
-                            Some(FileCreate {
-                                uri: f.path.into_os_string().into_string().ok()?,
-                            })
-                        })
-                        .collect(),
-                })
-                .await;
-            }
-            Err(e) => {
-                self.client.log_message(MessageType::Error, e).await;
-            }
-        }
     }
 
     #[instrument]
@@ -158,7 +162,11 @@ impl LanguageServer for Backend {
                     let uri = Arc::new(uri);
 
                     state.db.set_file(uri.clone(), file);
-                    state.db.files.insert(uri);
+
+                    let mut files = state.db.files();
+                    let files = Arc::make_mut(&mut files);
+                    files.insert(uri);
+                    state.db.set_files(Arc::new(files.clone()));
                 };
 
                 Some(())
@@ -180,7 +188,11 @@ impl LanguageServer for Backend {
             let uri = Arc::new(uri);
 
             state.db.set_file(uri.clone(), file);
-            state.db.files.insert(uri);
+
+            let mut files = state.db.files();
+            let files = Arc::make_mut(&mut files);
+            files.insert(uri);
+            state.db.set_files(Arc::new(files.clone()));
         }
     }
 
@@ -206,7 +218,11 @@ impl LanguageServer for Backend {
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
             state.db.set_file(uri.clone(), Arc::new(file));
-            state.db.files.insert(uri);
+
+            let mut files = state.db.files();
+            let files = Arc::make_mut(&mut files);
+            files.insert(uri);
+            state.db.set_files(Arc::new(files.clone()));
         }
     }
 
@@ -279,7 +295,7 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let file = state.db.file(Arc::new(params.text_document.uri.clone()));
+        let file = state.db.file(Arc::new(params.text_document.uri));
 
         let symbol = |d: &Decl| -> DocumentSymbol {
             #[allow(deprecated)]
@@ -330,7 +346,8 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let symbols = state.db.files.iter().flat_map(|id| {
+        let files = state.db.files();
+        let symbols = files.iter().flat_map(|id| {
             state
                 .db
                 .decls(state.db.file(id.clone()))

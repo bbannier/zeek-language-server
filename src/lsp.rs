@@ -1,7 +1,7 @@
 use {
     crate::{
         parse::Parse,
-        query::{decl_at, decls_, Decl, DeclKind, ModuleId, Query},
+        query::{decl_at, decls_, Decl, DeclKind, Query},
         to_range, zeek, File, FileId,
     },
     itertools::Itertools,
@@ -20,8 +20,9 @@ use {
             DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
             DocumentSymbolResponse, Documentation, FileCreate, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-            LanguageString, MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities,
-            SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+            LanguageString, Location, MarkedString, MessageType, OneOf, Position, Range,
+            ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+            TextDocumentSyncKind, Url, WorkspaceSymbolParams,
         },
         Client, LanguageServer, LspService, Server,
     },
@@ -75,6 +76,7 @@ impl LanguageServer for Backend {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec!["$".into(), "?".into()]),
                     ..CompletionOptions::default()
@@ -292,11 +294,7 @@ impl LanguageServer for Backend {
             .map(|(m, decls)| {
                 #[allow(deprecated)]
                 DocumentSymbol {
-                    name: match m {
-                        ModuleId::Global => "GLOBAL",
-                        ModuleId::String(s) => s.as_str(),
-                    }
-                    .into(),
+                    name: format!("{}", m),
                     kind: SymbolKind::Module,
                     children: Some(decls.map(symbol).collect()),
 
@@ -313,6 +311,40 @@ impl LanguageServer for Backend {
             .collect();
 
         Ok(Some(DocumentSymbolResponse::Nested(modules)))
+    }
+
+    #[instrument]
+    async fn symbol(&self, _: WorkspaceSymbolParams) -> Result<Option<Vec<SymbolInformation>>> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| Error::new(ErrorCode::InternalError))?;
+
+        let symbols = state.db.files.iter().flat_map(|(id, f)| {
+            //
+            state
+                .db
+                .decls(f.clone())
+                .iter()
+                .map(|d| {
+                    let url: &Url = &**id;
+
+                    #[allow(deprecated)]
+                    SymbolInformation {
+                        name: format!("{}::{}", &d.module, &d.id),
+                        kind: to_symbol_kind(d.kind),
+
+                        location: Location::new(url.clone(), d.range),
+                        container_name: Some(format!("{}", &d.module)),
+
+                        tags: None,
+                        deprecated: None,
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
+
+        Ok(Some(symbols.collect()))
     }
 
     #[instrument]

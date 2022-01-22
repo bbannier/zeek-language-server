@@ -18,16 +18,16 @@ where
 
 #[derive(Copy, Debug, Clone)]
 enum ZeekDir {
-    ScriptDir,
-    PluginDir,
-    SiteDir,
+    Script,
+    Plugin,
+    Site,
 }
 
 async fn dir(dir: ZeekDir) -> Result<PathBuf> {
     let flag = match dir {
-        ZeekDir::ScriptDir => "--script_dir",
-        ZeekDir::PluginDir => "--plugin_dir",
-        ZeekDir::SiteDir => "--site_dir",
+        ZeekDir::Script => "--script_dir",
+        ZeekDir::Plugin => "--plugin_dir",
+        ZeekDir::Site => "--site_dir",
     };
 
     let output = zeek_config(&[flag]).await?;
@@ -47,9 +47,9 @@ async fn dir(dir: ZeekDir) -> Result<PathBuf> {
 /// Will return `Err` if Zeek cannot be queried.
 pub async fn prefixes() -> Result<Vec<PathBuf>> {
     Ok(vec![
-        dir(ZeekDir::ScriptDir).await?,
-        dir(ZeekDir::PluginDir).await?,
-        dir(ZeekDir::SiteDir).await?,
+        dir(ZeekDir::Script).await?,
+        dir(ZeekDir::Plugin).await?,
+        dir(ZeekDir::Site).await?,
     ])
 }
 
@@ -72,7 +72,7 @@ pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
     Ok(prefixes()
         .await?
         .into_iter()
-        .map(|dir| {
+        .flat_map(|dir| {
             WalkDir::new(dir.clone())
                 .into_iter()
                 .filter_map(std::result::Result::ok)
@@ -86,7 +86,6 @@ pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
                 })
                 .collect::<Vec<_>>()
         })
-        .flatten()
         .collect())
 }
 
@@ -101,7 +100,7 @@ mod test {
 
     #[tokio::test]
     async fn script_dir() {
-        assert!(zeek::dir(zeek::ZeekDir::ScriptDir)
+        assert!(zeek::dir(zeek::ZeekDir::Script)
             .await
             .expect("script_dir failed")
             .join("base/init-default.zeek")

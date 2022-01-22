@@ -1,4 +1,4 @@
-use std::{collections::HashSet, hash::Hash, sync::Arc};
+use std::{collections::HashSet, fmt, hash::Hash, sync::Arc};
 
 use log::error;
 use tower_lsp::lsp_types::Range;
@@ -59,6 +59,19 @@ impl Hash for Decl {
 pub enum ModuleId {
     String(String),
     Global,
+}
+
+impl fmt::Display for ModuleId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ModuleId::Global => "GLOBAL",
+                ModuleId::String(s) => s.as_str(),
+            }
+        )
+    }
 }
 
 fn in_export(mut node: Node) -> bool {

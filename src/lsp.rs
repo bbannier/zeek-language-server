@@ -33,7 +33,7 @@ use {
 pub struct Database {
     storage: salsa::Storage<Self>,
     files: HashMap<Arc<FileId>, Arc<File>>,
-    prefixes: HashSet<PathBuf>,
+    prefixes: Vec<PathBuf>,
 }
 
 impl Database {

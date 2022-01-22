@@ -1,5 +1,5 @@
+use std::path::PathBuf;
 use std::str;
-use std::{collections::HashSet, path::PathBuf};
 
 use eyre::{eyre, Result};
 use walkdir::WalkDir;
@@ -23,9 +23,9 @@ async fn script_dir() -> Result<PathBuf> {
 /// # Errors
 ///
 /// Will return `Err` if Zeek cannot be queried.
-pub async fn prefixes() -> Result<HashSet<PathBuf>> {
-    let mut prefixes = HashSet::new();
-    prefixes.insert(script_dir().await?);
+pub async fn prefixes() -> Result<Vec<PathBuf>> {
+    let mut prefixes = Vec::new();
+    prefixes.push(script_dir().await?);
     Ok(prefixes)
 }
 

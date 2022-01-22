@@ -31,5 +31,6 @@ fn main() {
 
     Build::new()
         .file(src_dir.join("parser.c"))
+        .warnings(false)
         .compile("tree-sitter-zeek");
 }

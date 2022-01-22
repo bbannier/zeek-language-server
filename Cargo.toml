@@ -18,6 +18,7 @@ jaeger = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracin
 [dependencies]
 clap = { version = "3.0.13", features = ["derive"] }
 eyre = "0.6.6"
+itertools = "0.10.3"
 log = "0.4.14"
 opentelemetry = { version = "0.16.0", features = ["trace", "rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.15.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }

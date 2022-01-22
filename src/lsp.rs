@@ -1,9 +1,10 @@
 use {
     crate::{
         parse::Parse,
-        query::{decl_at, decls, loads, Decl, DeclKind, ModuleId, Query},
+        query::{decl_at, decls_, Decl, DeclKind, ModuleId, Query},
         to_range, zeek, File, FileId,
     },
+    itertools::Itertools,
     log::{error, warn},
     std::{
         collections::{HashMap, HashSet},
@@ -19,8 +20,8 @@ use {
             DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
             DocumentSymbolResponse, Documentation, FileCreate, Hover, HoverContents, HoverParams,
             HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-            LanguageString, MarkedString, MessageType, OneOf, ServerCapabilities, SymbolKind,
-            TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+            LanguageString, MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities,
+            SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
         },
         Client, LanguageServer, LspService, Server,
     },
@@ -223,10 +224,10 @@ impl LanguageServer for Backend {
         let tree = state.db.parse(file);
         let tree = match tree.as_ref() {
             Some(t) => t,
-            None => return dbg!(Ok(None)),
+            None => return Ok(None),
         };
 
-        let node = match dbg!(tree.named_descendant_for_position(&params.position)) {
+        let node = match tree.named_descendant_for_position(&params.position) {
             Some(n) => n,
             None => return Ok(None),
         };
@@ -292,36 +293,43 @@ impl LanguageServer for Backend {
             }
         };
 
-        let module = state
+        let modules = state
             .db
-            .module(file)
-            .ok_or_else(|| Error::new(ErrorCode::InternalError))?;
+            .decls(file)
+            .iter()
+            .group_by(|d| &d.module)
+            .into_iter()
+            .map(|(m, decls)| {
+                #[allow(deprecated)]
+                DocumentSymbol {
+                    name: match m {
+                        ModuleId::Global => "GLOBAL",
+                        ModuleId::String(s) => s.as_str(),
+                    }
+                    .into(),
+                    kind: SymbolKind::Module,
+                    children: Some(decls.map(symbol).collect()),
 
-        Ok(Some(
-            #[allow(deprecated)]
-            DocumentSymbolResponse::Nested(vec![DocumentSymbol {
-                name: match dbg!(&module.id) {
-                    ModuleId::Global => "GLOBAL",
-                    ModuleId::String(s) => s.as_str(),
+                    // FIXME(bbannier): Weird ranges.
+                    range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+
+                    deprecated: None,
+
+                    detail: None,
+                    tags: None,
                 }
-                .into(),
-                kind: SymbolKind::Module,
-                range: module.range,
-                selection_range: module.range,
-                deprecated: None,
+            })
+            .collect();
 
-                detail: None,
-                tags: None,
-                children: Some(module.decls.iter().map(symbol).collect()),
-            }]),
-        ))
+        Ok(Some(DocumentSymbolResponse::Nested(modules)))
     }
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let position = params.text_document_position;
 
-        let (file, tree) = {
+        let (tree, source) = {
             let state = self
                 .state
                 .lock()
@@ -337,7 +345,9 @@ impl LanguageServer for Backend {
                 None => return Ok(None),
             };
 
-            (file, tree)
+            let source = file.source.clone();
+
+            (tree, source)
         };
 
         let node = match tree.descendant_for_position(&position.position) {
@@ -352,120 +362,30 @@ impl LanguageServer for Backend {
             ..CompletionItem::default()
         };
 
-        let mut items: Vec<_> = {
-            let mut items = Vec::new();
+        let items: Vec<_> = {
+            let mut items = HashSet::new();
             let mut node = node;
             loop {
-                items.append(&mut decls(node, &file.source));
+                for d in decls_(node, &source) {
+                    items.insert(d);
+                }
+
                 node = match node.parent() {
                     Some(n) => n,
                     None => break,
                 };
             }
+
             items.into_iter().map(to_completion_item).collect()
         };
 
-        // Add an decls found in implicitly or explicitly loaded modules.
-        items.extend(
-            self.external_decls(&file)?
-                .into_iter()
-                .map(to_completion_item),
-        );
+        // TODO: Add an decls found in implicitly or explicitly loaded modules.
 
         Ok(Some(CompletionResponse::from(items)))
     }
 }
 
 impl Backend {
-    // TODO(bbannier): move this into query.rs and cache it.
-    fn external_decls(&self, file: &Arc<File>) -> Result<Vec<Decl>> {
-        // TODO(bbannier): Refactor this pattern into a helper lock: Self -> Result<State>.
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| Error::new(ErrorCode::InternalError))?;
-
-        let tree = state.db.parse(file.clone());
-        let tree = match tree.as_ref() {
-            Some(t) => t,
-            None => return Ok(Vec::new()),
-        };
-
-        // Get loaded modules for this file.
-        let loads = loads(tree.root_node(), &file.source)
-            .into_iter()
-            .map(String::from)
-            .collect::<HashSet<_>>();
-
-        // The list of pulled in files.
-        let mut files = state
-            .db
-            .files
-            .iter()
-            .filter_map(|(id, f)| {
-                // TODO(bbannier): Report unloadable modules.
-                if loads.iter().any(|l| &f.load == l) {
-                    Some((id.clone(), f.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect::<HashMap<_, _>>();
-
-        // Recursively resolve all pulled in files.
-        loop {
-            let mut new_files = HashMap::new();
-
-            for (id, file) in &files {
-                let module = match state.db.module(file.clone()) {
-                    Some(m) => m,
-                    None => continue,
-                };
-
-                for load in &module.loads {
-                    if let Some(file) = state.db.files.values().find(|f| &f.load == load) {
-                        if files.contains_key(id) {
-                            // Already known.
-                            continue;
-                        }
-
-                        new_files.insert(id.clone(), file.clone());
-                    } else {
-                        // TODO(bbannier): report unresolvable loads.
-                    }
-                }
-            }
-
-            if new_files.is_empty() {
-                break;
-            }
-
-            files.extend(new_files);
-        }
-
-        let modules = files
-            .values()
-            .filter_map(|file| state.db.module(file.clone()));
-
-        Ok(modules
-            .flat_map(|module| {
-                module
-                    .decls
-                    .clone()
-                    .into_iter()
-                    .map(|mut d| {
-                        d.id = match &module.id {
-                            ModuleId::String(s) => format!("{}::{}", s, d.id),
-                            ModuleId::Global => d.id,
-                        };
-
-                        d
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect())
-    }
-
     /// The pattern under which the give uri can be loaded.
     fn load_pattern(&self, uri: &Url) -> Option<String> {
         let file = uri.to_file_path().expect("uri should be a valid path");

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use log::error;
 use tower_lsp::lsp_types::Range;
@@ -6,11 +6,11 @@ use tracing::instrument;
 use tree_sitter::Node;
 
 use crate::{
-    parse::{tree_sitter_zeek, Parse, Tree},
+    parse::{tree_sitter_zeek, Parse},
     to_range, zeek, File,
 };
 
-#[derive(Debug, PartialEq, Copy, Clone, Eq)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub enum DeclKind {
     Global,
     Option,
@@ -27,6 +27,7 @@ pub enum DeclKind {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Decl {
+    pub module: ModuleId,
     pub id: String,
     pub kind: DeclKind,
     pub is_export: bool,
@@ -35,25 +36,29 @@ pub struct Decl {
     pub documentation: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Decl {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.module.hash(state);
+        self.id.hash(state);
+        self.kind.hash(state);
+        self.is_export.hash(state);
+        self.is_export.hash(state);
+
+        self.range.start.line.hash(state);
+        self.range.start.character.hash(state);
+
+        self.range.end.line.hash(state);
+        self.range.end.character.hash(state);
+
+        self.documentation.hash(state);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ModuleId {
     String(String),
     Global,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Module {
-    /// ID of this module.
-    pub id: ModuleId,
-
-    /// Declarations in this module.
-    pub decls: Vec<Decl>,
-
-    /// Other modules explicitly loaded by this module.
-    pub loads: Vec<String>,
-
-    /// Source range of this module.
-    pub range: Range,
 }
 
 fn in_export(mut node: Node) -> bool {
@@ -69,51 +74,9 @@ fn in_export(mut node: Node) -> bool {
     }
 }
 
-// FIXME(bbannier): this function makes no sense. A decl's module is determined by the previous
-// module_decl (or GLOBAL). A file can have multiple modules.
-fn module_id(node: Node, source: &str) -> ModuleId {
-    let query = tree_sitter::Query::new(
-        unsafe { tree_sitter_zeek() },
-        "(module_decl (id)*@module_id)",
-    )
-    .expect("could not construct module query");
-
-    let c_module_id = query
-        .capture_index_for_name("module_id")
-        .expect("module_id should be captured");
-
-    tree_sitter::QueryCursor::new()
-        .matches(&query, node, source.as_bytes())
-        .filter_map(|c| {
-            c.nodes_for_capture_index(c_module_id)
-                .next()
-                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-        })
-        .last()
-        .map_or(ModuleId::Global, |id| ModuleId::String(id.to_string()))
-}
-
-#[instrument(skip(source))]
-#[must_use]
-fn module_(tree: &Tree, source: &str) -> Module {
-    let node = tree.root_node();
-
-    let id = module_id(node, source);
-    let decls = decls(node, source);
-    let loads = loads(node, source).into_iter().map(String::from).collect();
-    let range = to_range(node.range()).expect("invalid range");
-
-    Module {
-        id,
-        decls,
-        loads,
-        range,
-    }
-}
-
 #[instrument]
 #[must_use]
-pub fn decls(node: Node, source: &str) -> Vec<Decl> {
+pub fn decls_(node: Node, source: &str) -> HashSet<Decl> {
     let query = match tree_sitter::Query::new(
         unsafe { tree_sitter_zeek() },
         "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id)@decl)@outer_node",
@@ -121,7 +84,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
-            return Vec::new();
+            return HashSet::new();
         }
     };
 
@@ -157,6 +120,35 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
             {
                 return None;
             }
+
+            // Figure out the module this decl is for.
+            let module = {
+                let mut module_id = None;
+
+                let mut node = decl;
+                while let Some(n) = node.parent() {
+                    if n.kind() == "source_file" {
+                        // Found a source file. Now find the most recent
+                        // module decl when looking backwards from `node`.
+                        while let Some(m) = node.prev_named_sibling() {
+                            if m.kind() == "module_decl" {
+                                module_id = Some(ModuleId::String(
+                                    m.named_child(0)?.utf8_text(source.as_bytes()).ok()?.into(),
+                                ));
+                                break;
+                            }
+
+                            // Go to sibling before.
+                            node = m;
+                        }
+                    }
+
+                    // Go one level higher.
+                    node = n;
+                }
+
+                module_id.unwrap_or(ModuleId::Global)
+            };
 
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
@@ -199,6 +191,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
                 format!("```zeek\n{}\n```", decl.utf8_text(source.as_bytes()).ok()?);
 
             Some(Decl {
+                module,
                 id,
                 kind,
                 is_export: in_export(decl),
@@ -213,7 +206,7 @@ pub fn decls(node: Node, source: &str) -> Vec<Decl> {
 #[instrument]
 pub fn decl_at(id: &str, mut node: Node, source: &str) -> Option<Decl> {
     loop {
-        if let Some(decl) = decls(node, source).into_iter().find(|d| d.id == id) {
+        if let Some(decl) = decls_(node, source).into_iter().find(|d| d.id == id) {
             return Some(decl);
         }
 
@@ -260,28 +253,33 @@ pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[salsa::query_group(QueryStorage)]
 pub trait Query: Parse {
     #[must_use]
-    fn module(&self, file: Arc<File>) -> Option<Arc<Module>>;
+    fn decls(&self, file: Arc<File>) -> Arc<HashSet<Decl>>;
 }
 
 #[instrument(skip(db))]
-fn module(db: &dyn Query, file: Arc<File>) -> Option<Arc<Module>> {
+fn decls(db: &dyn Query, file: Arc<File>) -> Arc<HashSet<Decl>> {
     let source = file.source.clone();
-    let tree = db.parse(file)?;
-    Some(Arc::new(module_(&tree, &source)))
+    let tree = match db.parse(file) {
+        Some(t) => t,
+        None => return Arc::new(HashSet::new()),
+    };
+
+    Arc::new(decls_(tree.root_node(), &source))
 }
 
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
-    use super::{decls, loads, module_, module_id};
+    use super::{decls_, loads};
     use crate::{
         lsp::Database,
         parse::{Parse, Tree},
-        query::{in_export, ModuleId},
+        query::in_export,
         File,
     };
     use insta::assert_debug_snapshot;
+    use tree_sitter::Node;
 
     const SOURCE: &str = "module test;
 
@@ -294,6 +292,7 @@ mod test {
                   y: vector of count &optional;
               };
 
+              module bar;
               event zeek_init() { local x=1; \n
                   # Comment.
               }";
@@ -320,19 +319,18 @@ mod test {
     }
 
     #[test]
-    fn test_module() {
-        let tree = parse(SOURCE).expect("cannot parse");
+    fn test_decls_() {
+        let decls_ = |n: Node| {
+            let mut xs = decls_(n, SOURCE).into_iter().collect::<Vec<_>>();
+            xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+            xs
+        };
 
-        assert_debug_snapshot!(module_(&tree, SOURCE));
-    }
-
-    #[test]
-    fn test_decls() {
         let tree = parse(SOURCE).expect("cannot parse");
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
-        let root_decls = decls(tree.root_node(), SOURCE);
+        let root_decls = decls_(tree.root_node());
         assert_eq!(4, root_decls.len());
         assert_debug_snapshot!(root_decls);
 
@@ -345,7 +343,7 @@ mod test {
             .child(3)
             .expect("cannot get func_body");
         assert_eq!(func_body.kind(), "func_body");
-        let func_decls = decls(func_body, SOURCE);
+        let func_decls = decls_(func_body);
         assert_eq!(func_decls.len(), 1);
         assert_debug_snapshot!(func_decls);
     }
@@ -369,24 +367,5 @@ mod test {
             .unwrap();
         assert_eq!(zeek_init_node.kind(), "event_decl");
         assert!(!in_export(zeek_init_node));
-    }
-
-    #[test]
-    fn test_module_id() {
-        let module_id = |source| module_id(parse(source).unwrap().root_node(), source);
-
-        assert_eq!(module_id(""), ModuleId::Global);
-        assert_eq!(module_id("event zeek_init() {}"), ModuleId::Global);
-        assert_eq!(module_id("export {}"), ModuleId::Global);
-        assert_eq!(
-            module_id("# Comment.\n@load foo\nmodule test;"),
-            ModuleId::String("test".to_string())
-        );
-
-        // For multiple module decls Zeek seems to use the last one.
-        assert_eq!(
-            module_id("module test1; module test2;"),
-            ModuleId::String("test2".to_string())
-        );
     }
 }

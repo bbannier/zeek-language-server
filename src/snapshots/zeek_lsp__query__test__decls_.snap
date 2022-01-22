@@ -1,11 +1,14 @@
 ---
 source: src/query.rs
-assertion_line: 340
+assertion_line: 335
 expression: root_decls
 
 ---
 [
     Decl {
+        module: String(
+            "test",
+        ),
         id: "x",
         kind: Const,
         is_export: true,
@@ -32,6 +35,9 @@ expression: root_decls
         documentation: "```zeek\nconst x = 1 &redef;\n```",
     },
     Decl {
+        module: String(
+            "test",
+        ),
         id: "y",
         kind: Global,
         is_export: true,
@@ -58,6 +64,9 @@ expression: root_decls
         documentation: "```zeek\nglobal y = 1;\n```",
     },
     Decl {
+        module: String(
+            "test",
+        ),
         id: "Y",
         kind: Type,
         is_export: false,
@@ -84,26 +93,29 @@ expression: root_decls
         documentation: "```zeek\ntype Y: record {\n                  y: vector of count &optional;\n              };\n```",
     },
     Decl {
+        module: String(
+            "bar",
+        ),
         id: "zeek_init",
         kind: Event,
         is_export: false,
         range: Range {
             start: Position {
-                line: 11,
+                line: 12,
                 character: 14,
             },
             end: Position {
-                line: 14,
+                line: 15,
                 character: 15,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 11,
+                line: 12,
                 character: 20,
             },
             end: Position {
-                line: 11,
+                line: 12,
                 character: 29,
             },
         },

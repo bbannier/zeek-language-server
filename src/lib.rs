@@ -30,14 +30,11 @@ impl Deref for FileId {
 pub struct File {
     /// Source of the file.
     source: String,
-
-    /// Identifier to load this file.
-    load: String,
 }
 
 impl fmt::Debug for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("File").field("load", &self.load).finish()
+        f.debug_struct("File").finish()
     }
 }
 

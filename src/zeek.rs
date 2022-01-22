@@ -36,28 +36,11 @@ pub(crate) struct SystemFile {
 
     /// Prefix under which the file was discovered.
     prefix: PathBuf,
-
-    /// String with which this file can be loaded.
-    pub load: String,
 }
 
 impl SystemFile {
     pub fn new(path: PathBuf, prefix: PathBuf) -> Self {
-        let mut load = path
-            .strip_prefix(&prefix)
-            .expect("file is always be constructed with 'path' under 'prefix'")
-            .with_extension("");
-
-        if load.file_name().expect("system file is not a file") == "__load__" {
-            load = load
-                .parent()
-                .expect("'__load__' file should be in some path")
-                .into();
-        }
-
-        let load = load.to_string_lossy().into();
-
-        Self { path, prefix, load }
+        Self { path, prefix }
     }
 }
 

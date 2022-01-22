@@ -147,12 +147,8 @@ impl LanguageServer for Backend {
                     }
                 };
 
-                let load = self
-                    .load_pattern(&uri)
-                    .expect("uri corresponds to a filename");
-
                 if let Ok(mut state) = self.state.lock() {
-                    let file = Arc::new(File { source, load });
+                    let file = Arc::new(File { source });
                     state.db.files.insert(Arc::new(uri.into()), file);
                 };
 
@@ -165,12 +161,9 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let source = params.text_document.text;
-        let load = self
-            .load_pattern(&uri)
-            .expect("uri corresponds to a filename");
 
         if let Ok(mut state) = self.state.lock() {
-            let file = Arc::new(File { source, load });
+            let file = Arc::new(File { source });
 
             state.db.files.insert(Arc::new(uri.into()), file);
         }
@@ -189,11 +182,8 @@ impl LanguageServer for Backend {
 
         let uri = params.text_document.uri;
 
-        let load = self
-            .load_pattern(&uri)
-            .expect("uri corresponds to a filename");
         let source = changes.text.to_string();
-        let file = File { source, load };
+        let file = File { source };
 
         if let Ok(mut state) = self.state.lock() {
             state.db.files.insert(Arc::new(uri.into()), Arc::new(file));
@@ -375,43 +365,6 @@ impl LanguageServer for Backend {
         // TODO: Add an decls found in implicitly or explicitly loaded modules.
 
         Ok(Some(CompletionResponse::from(items)))
-    }
-}
-
-impl Backend {
-    /// The pattern under which the give uri can be loaded.
-    fn load_pattern(&self, uri: &Url) -> Option<String> {
-        let file = uri.to_file_path().expect("uri should be a valid path");
-
-        if let Ok(state) = self.state.lock() {
-            if let Some(file) = state.db.get_file(uri) {
-                // File is known.
-                return Some(file.load.clone());
-            }
-
-            if let Some(from_prefix) = state
-                .db
-                .prefixes
-                .iter()
-                .find_map(|p| file.strip_prefix(p).ok())
-                .map(|p| {
-                    if p.ends_with("__load__.zeek") || p.ends_with("__preload__.zeek") {
-                        p.to_path_buf()
-                    } else {
-                        p.with_extension("")
-                    }
-                })
-            {
-                // File is from a known prefix.
-                return Some(from_prefix.as_os_str().to_string_lossy().into());
-            }
-        }
-
-        // TODO(bbannier): take the workspace (explicit from initialization or implicit from
-        // presence of `__(pre)load__.zeek` files) into account.
-        file.file_stem()
-            .map(|s| format!("./{}", s.to_string_lossy()))
-        // TODO(bbannier): report uris without file stem?
     }
 }
 

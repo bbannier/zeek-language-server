@@ -85,7 +85,6 @@ mod test {
     #[test]
     fn can_parse() -> Result<()> {
         let tree = Database::default().parse(Arc::new(File {
-            load: "foo/bar".into(),
             source: SOURCE.to_owned(),
         }));
 

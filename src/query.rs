@@ -300,7 +300,6 @@ mod test {
     fn parse(source: &str) -> Option<Arc<Tree>> {
         Database::default().parse(Arc::new(File {
             source: source.to_string(),
-            load: "./test".into(),
         }))
     }
 

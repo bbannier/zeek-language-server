@@ -509,6 +509,19 @@ impl LanguageServer for Backend {
     }
 }
 
+/// Extract all error nodes under the given node.
+fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
+    let mut cur = n.walk();
+
+    let res = n.children(&mut cur).flat_map(_errors);
+
+    if n.is_error() || n.is_missing() {
+        res.chain(std::iter::once(n)).collect()
+    } else {
+        res.collect()
+    }
+}
+
 fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
     match kind {
         DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::Variable,

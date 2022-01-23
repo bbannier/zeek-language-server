@@ -355,13 +355,6 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let to_completion_item = |d: Decl| CompletionItem {
-            label: d.id,
-            kind: Some(to_completion_item_kind(d.kind)),
-            documentation: Some(Documentation::String(d.documentation)),
-            ..CompletionItem::default()
-        };
-
         let items: Vec<_> = {
             let mut items = HashSet::new();
             let mut node = node;
@@ -433,6 +426,15 @@ fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
         DeclKind::Func => SymbolKind::Function,
         DeclKind::Hook => SymbolKind::Operator,
         DeclKind::Event => SymbolKind::Event,
+    }
+}
+
+fn to_completion_item(d: Decl) -> CompletionItem {
+    CompletionItem {
+        label: format!("{}::{}", d.module, d.id),
+        kind: Some(to_completion_item_kind(d.kind)),
+        documentation: Some(Documentation::String(d.documentation)),
+        ..CompletionItem::default()
     }
 }
 

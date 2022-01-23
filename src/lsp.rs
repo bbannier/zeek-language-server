@@ -2,7 +2,7 @@ use {
     crate::{
         parse::Parse,
         query::{self, Decl, DeclKind, Query},
-        to_range, zeek, File,
+        to_range, zeek, Files,
     },
     itertools::Itertools,
     log::{error, warn},
@@ -32,7 +32,8 @@ use {
 #[salsa::database(
     crate::parse::ParseStorage,
     crate::query::QueryStorage,
-    ServerStateStorage
+    ServerStateStorage,
+    crate::FilesStorage
 )]
 #[derive(Default)]
 pub struct Database {
@@ -48,7 +49,7 @@ impl Debug for Database {
 }
 
 #[salsa::query_group(ServerStateStorage)]
-pub trait ServerState: Parse {
+pub trait ServerState: Parse + Files {
     #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
 
@@ -68,9 +69,9 @@ fn loaded_files(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
         .ok()
         .and_then(|f| f.parent().map(Path::to_path_buf));
 
-    let file = db.file(url);
+    let source = db.source(url.clone());
 
-    let tree = match db.parse(file.clone()) {
+    let tree = match db.parse(url) {
         Some(t) => t,
         None => return Arc::new(Vec::new()),
     };
@@ -79,7 +80,7 @@ fn loaded_files(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
     let prefixes = db.prefixes();
 
-    let loads: Vec<_> = query::loads(tree.root_node(), &file.source)
+    let loads: Vec<_> = query::loads(tree.root_node(), source.as_str())
         .iter()
         .map(PathBuf::from)
         .collect();
@@ -256,14 +257,11 @@ impl LanguageServer for Backend {
                 };
 
                 if let Ok(mut state) = self.state.lock() {
-                    let file = Arc::new(File {
-                        uri: uri.clone(),
-                        source,
-                    });
-
                     let uri = Arc::new(uri);
 
-                    state.db.set_file(uri.clone(), file);
+                    state
+                        .db
+                        .set_source(uri.clone(), Arc::new(source.to_string()));
 
                     let mut files = state.db.files();
                     let files = Arc::make_mut(&mut files);
@@ -282,14 +280,11 @@ impl LanguageServer for Backend {
         let source = params.text_document.text;
 
         if let Ok(mut state) = self.state.lock() {
-            let file = Arc::new(File {
-                uri: uri.clone(),
-                source,
-            });
-
             let uri = Arc::new(uri);
 
-            state.db.set_file(uri.clone(), file);
+            state
+                .db
+                .set_source(uri.clone(), Arc::new(source.to_string()));
 
             let mut files = state.db.files();
             let files = Arc::make_mut(&mut files);
@@ -312,14 +307,12 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
 
         let source = changes.text.to_string();
-        let file = File {
-            uri: uri.clone(),
-            source,
-        };
 
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
-            state.db.set_file(uri.clone(), Arc::new(file));
+            state
+                .db
+                .set_source(uri.clone(), Arc::new(source.to_string()));
 
             let mut files = state.db.files();
             let files = Arc::make_mut(&mut files);
@@ -332,19 +325,19 @@ impl LanguageServer for Backend {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let params = &params.text_document_position_params;
 
+        let uri = Arc::new(params.text_document.uri.clone());
+
         let state = self
             .state
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let file = state.db.file(Arc::new(params.text_document.uri.clone()));
-
         // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
         // should return some nice rendering of the hovered node.
 
-        let source = file.source.clone();
+        let source = state.db.source(uri.clone());
 
-        let tree = state.db.parse(file);
+        let tree = state.db.parse(uri);
         let tree = match tree.as_ref() {
             Some(t) => t,
             None => return Ok(None),
@@ -397,7 +390,7 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let file = state.db.file(Arc::new(params.text_document.uri));
+        let uri = Arc::new(params.text_document.uri);
 
         let symbol = |d: &Decl| -> DocumentSymbol {
             #[allow(deprecated)]
@@ -415,7 +408,7 @@ impl LanguageServer for Backend {
 
         let modules = state
             .db
-            .decls(file)
+            .decls(uri)
             .iter()
             .group_by(|d| &d.module)
             .into_iter()
@@ -449,13 +442,13 @@ impl LanguageServer for Backend {
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
         let files = state.db.files();
-        let symbols = files.iter().flat_map(|id| {
+        let symbols = files.iter().flat_map(|uri| {
             state
                 .db
-                .decls(state.db.file(id.clone()))
+                .decls(uri.clone())
                 .iter()
                 .map(|d| {
-                    let url: &Url = &**id;
+                    let url: &Url = &**uri;
 
                     #[allow(deprecated)]
                     SymbolInformation {
@@ -478,23 +471,18 @@ impl LanguageServer for Backend {
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let position = params.text_document_position;
+        let uri = Arc::new(position.text_document.uri);
 
-        let (tree, source) = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| Error::new(ErrorCode::InternalError))?;
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-            let file = state.db.file(Arc::new(position.text_document.uri.clone()));
+        let source = state.db.source(uri.clone());
 
-            let tree = match state.db.parse(file.clone()) {
-                Some(t) => t,
-                None => return Ok(None),
-            };
-
-            let source = file.source.clone();
-
-            (tree, source)
+        let tree = match state.db.parse(uri.clone()) {
+            Some(t) => t,
+            None => return Ok(None),
         };
 
         let node = match tree.descendant_for_position(&position.position) {
@@ -583,7 +571,7 @@ mod test {
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::Url;
 
-    use crate::{lsp, parse::Parse, File};
+    use crate::{lsp, Files};
 
     use super::ServerState;
 
@@ -598,9 +586,8 @@ mod test {
             Self(db)
         }
 
-        fn add_file(&mut self, file: File) {
-            let uri = Arc::new(file.uri.clone());
-            self.0.set_file(uri.clone(), Arc::new(file));
+        fn add_file(&mut self, uri: Arc<Url>, source: &str) {
+            self.0.set_source(uri.clone(), Arc::new(source.to_string()));
 
             let mut files = self.0.files();
             let files = Arc::make_mut(&mut files);
@@ -624,31 +611,22 @@ mod test {
         let pre1 = PathBuf::from_str("/tmp/p").unwrap();
         let p1 = Arc::new(Url::from_file_path(pre1.join("p1/p1.zeek")).unwrap());
         db.add_prefix(pre1);
-        db.add_file(File {
-            uri: p1.as_ref().clone(),
-            source: String::default(),
-        });
+        db.add_file(p1.clone(), "");
 
         // Prefix file in external directory.
         let pre2 = PathBuf::from_str("/p").unwrap();
         let p2 = Arc::new(Url::from_file_path(pre2.join("p2/p2.zeek")).unwrap());
         db.add_prefix(pre2);
-        db.add_file(File {
-            uri: p2.as_ref().clone(),
-            source: String::default(),
-        });
+        db.add_file(p2.clone(), "");
 
         let foo = Arc::new(Url::from_file_path("/tmp/foo.zeek").unwrap());
-        db.add_file(File {
-            uri: foo.as_ref().clone(),
-            source: "
-                    @load foo;
-                    @load foo.zeek;
-                    @load p1/p1;
-                    @load p2/p2;
-                "
-            .to_string(),
-        });
+        db.add_file(
+            foo.clone(),
+            "@load foo;
+             @load foo.zeek;
+             @load p1/p1;
+             @load p2/p2;",
+        );
 
         assert_debug_snapshot!(db.0.loaded_files(foo));
     }
@@ -657,29 +635,18 @@ mod test {
     fn loaded_files_recursive() {
         let mut db = TestDatabase::new();
 
-        let a = Url::from_file_path("/tmp/a.zeek").unwrap();
-        db.add_file(File {
-            uri: a.clone(),
-            source: "@load b; @load d;".to_string(),
-        });
+        let a = Arc::new(Url::from_file_path("/tmp/a.zeek").unwrap());
+        db.add_file(a.clone(), "@load b; @load d;");
 
-        let b = Url::from_file_path("/tmp/b.zeek").unwrap();
-        db.add_file(File {
-            uri: b.clone(),
-            source: "@load c;".to_string(),
-        });
+        let b = Arc::new(Url::from_file_path("/tmp/b.zeek").unwrap());
+        db.add_file(b.clone(), "@load c;");
 
-        let c = Url::from_file_path("/tmp/c.zeek").unwrap();
-        db.add_file(File {
-            uri: c.clone(),
-            source: "@load d;".to_string(),
-        });
+        let c = Arc::new(Url::from_file_path("/tmp/c.zeek").unwrap());
+        db.add_file(c.clone(), "@load d;");
 
-        let d = Url::from_file_path("/tmp/d.zeek").unwrap();
-        db.add_file(File {
-            uri: d.clone(),
-            source: String::new(),
-        });
-        assert_debug_snapshot!(db.0.loaded_files_recursive(Arc::new(a)));
+        let d = Arc::new(Url::from_file_path("/tmp/d.zeek").unwrap());
+        db.add_file(d.clone(), "");
+
+        assert_debug_snapshot!(db.0.loaded_files_recursive(a));
     }
 }

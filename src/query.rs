@@ -1,13 +1,13 @@
 use std::{collections::HashSet, fmt, hash::Hash, sync::Arc};
 
 use log::error;
-use tower_lsp::lsp_types::Range;
+use tower_lsp::lsp_types::{Range, Url};
 use tracing::instrument;
 use tree_sitter::Node;
 
 use crate::{
     parse::{tree_sitter_zeek, Parse},
-    to_range, zeek, File,
+    to_range, zeek,
 };
 
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
@@ -266,13 +266,13 @@ pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[salsa::query_group(QueryStorage)]
 pub trait Query: Parse {
     #[must_use]
-    fn decls(&self, file: Arc<File>) -> Arc<HashSet<Decl>>;
+    fn decls(&self, uri: Arc<Url>) -> Arc<HashSet<Decl>>;
 }
 
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, file: Arc<File>) -> Arc<HashSet<Decl>> {
-    let source = file.source.clone();
-    let tree = match db.parse(file) {
+fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<HashSet<Decl>> {
+    let source = db.source(uri.clone());
+    let tree = match db.parse(uri) {
         Some(t) => t,
         None => return Arc::new(HashSet::new()),
     };
@@ -285,12 +285,7 @@ mod test {
     use std::sync::Arc;
 
     use super::{decls_, loads};
-    use crate::{
-        lsp::Database,
-        parse::{Parse, Tree},
-        query::in_export,
-        File,
-    };
+    use crate::{lsp::Database, parse::Parse, query::in_export, Files};
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::Url;
     use tree_sitter::Node;
@@ -311,15 +306,16 @@ mod test {
                   # Comment.
               }";
 
-    fn parse(source: &str) -> Option<Arc<Tree>> {
-        Database::default().parse(Arc::new(File {
-            uri: Url::from_file_path("/foo/bar.zeek").unwrap(),
-            source: source.to_string(),
-        }))
-    }
-
     #[test]
     fn test_loads() {
+        let parse = |source: &str| {
+            let mut db = Database::default();
+            let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+
+            db.set_source(uri.clone(), Arc::new(source.to_string()));
+            db.parse(uri)
+        };
+
         let loads = |source: &'static str| {
             loads(parse(&source).expect("cannot parse").root_node(), &source)
         };
@@ -334,13 +330,17 @@ mod test {
 
     #[test]
     fn test_decls_() {
+        let mut db = Database::default();
+        let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
+
+        let tree = db.parse(uri).expect("cannot parse");
+
         let decls_ = |n: Node| {
             let mut xs = decls_(n, SOURCE).into_iter().collect::<Vec<_>>();
             xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
             xs
         };
-
-        let tree = parse(SOURCE).expect("cannot parse");
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
@@ -364,7 +364,11 @@ mod test {
 
     #[test]
     fn test_in_export() {
-        let tree = parse(SOURCE).expect("cannot parse");
+        let mut db = Database::default();
+        let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
+        let tree = db.parse(uri.clone()).unwrap();
+
         assert!(!in_export(tree.root_node()));
 
         let const_node = tree

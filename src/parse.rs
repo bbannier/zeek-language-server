@@ -1,11 +1,8 @@
-use {
-    crate::File,
-    std::{hash::Hash, ops::Deref, sync::Arc},
-    tower_lsp::lsp_types::Position,
-    tower_lsp::lsp_types::Url,
-    tracing::instrument,
-    tree_sitter::{Language, Parser, Point},
-};
+use crate::Files;
+use std::{hash::Hash, ops::Deref, sync::Arc};
+use tower_lsp::lsp_types::{Position, Url};
+use tracing::instrument;
+use tree_sitter::{Language, Parser, Point};
 
 extern "C" {
     pub(crate) fn tree_sitter_zeek() -> Language;
@@ -55,23 +52,21 @@ impl Deref for Tree {
 }
 
 #[salsa::query_group(ParseStorage)]
-pub trait Parse: salsa::Database {
-    #[salsa::input]
-    fn file(&self, uri: Arc<Url>) -> Arc<File>;
-
+pub trait Parse: Files {
     #[must_use]
-    fn parse(&self, file: Arc<File>) -> Option<Arc<Tree>>;
+    fn parse(&self, file: Arc<Url>) -> Option<Arc<Tree>>;
 }
 
-#[instrument(skip(_db))]
-fn parse(_db: &dyn Parse, file: Arc<File>) -> Option<Arc<Tree>> {
+#[instrument(skip(db))]
+fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
     let language = unsafe { tree_sitter_zeek() };
     let mut parser = Parser::new();
     parser
         .set_language(language)
         .expect("cannot set parser language");
 
-    parser.parse(&file.source, None).map(Tree).map(Arc::new)
+    let source = db.source(file.clone());
+    parser.parse(source.as_str(), None).map(Tree).map(Arc::new)
 }
 
 #[cfg(test)]
@@ -79,8 +74,7 @@ mod test {
     use tower_lsp::lsp_types::Url;
 
     use {
-        crate::File,
-        crate::{lsp::Database, parse::Parse},
+        crate::{lsp::Database, parse::Parse, Files},
         eyre::Result,
         insta::assert_debug_snapshot,
         std::sync::Arc,
@@ -90,11 +84,12 @@ mod test {
 
     #[test]
     fn can_parse() -> Result<()> {
-        let tree = Database::default().parse(Arc::new(File {
-            uri: Url::from_file_path("/foo/bar.zeek").unwrap(),
-            source: SOURCE.to_owned(),
-        }));
+        let mut db = Database::default();
+        let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
+        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
+
+        let tree = db.parse(uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
 

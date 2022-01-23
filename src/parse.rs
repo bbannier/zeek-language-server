@@ -65,7 +65,7 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
         .set_language(language)
         .expect("cannot set parser language");
 
-    let source = db.source(file.clone());
+    let source = db.source(file);
     parser.parse(source.as_str(), None).map(Tree).map(Arc::new)
 }
 

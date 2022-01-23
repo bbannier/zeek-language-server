@@ -233,7 +233,7 @@ pub fn decl_at(id: &str, mut node: Node, source: &str) -> Option<Decl> {
 }
 
 #[instrument]
-pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
+fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
     let query =
         match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(\"@load\") (file)@file") {
             Ok(q) => q,
@@ -267,6 +267,9 @@ pub fn loads<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 pub trait Query: Parse {
     #[must_use]
     fn decls(&self, uri: Arc<Url>) -> Arc<HashSet<Decl>>;
+
+    #[must_use]
+    fn loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
 }
 
 #[instrument(skip(db))]
@@ -280,11 +283,26 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<HashSet<Decl>> {
     Arc::new(decls_(tree.root_node(), &source))
 }
 
+fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
+    let tree = match db.parse(uri.clone()) {
+        Some(t) => t,
+        None => return Arc::new(Vec::new()),
+    };
+    let source = db.source(uri);
+
+    Arc::new(
+        loads_raw(tree.root_node(), &source)
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
-    use super::{decls_, loads};
+    use super::{decls_, loads_raw};
     use crate::{lsp::Database, parse::Parse, query::in_export, Files};
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::Url;
@@ -317,7 +335,7 @@ mod test {
         };
 
         let loads = |source: &'static str| {
-            loads(parse(&source).expect("cannot parse").root_node(), &source)
+            loads_raw(parse(&source).expect("cannot parse").root_node(), &source)
         };
 
         assert_eq!(loads(""), vec!["base/init-default"]);

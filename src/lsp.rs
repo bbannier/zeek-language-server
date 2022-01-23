@@ -63,27 +63,17 @@ pub trait ServerState: Parse + Files {
     fn loaded_files_recursive(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
 }
 
-fn loaded_files(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
-    let file_dir = url
+fn loaded_files(db: &dyn ServerState, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
+    let file_dir = uri
         .to_file_path()
         .ok()
         .and_then(|f| f.parent().map(Path::to_path_buf));
-
-    let source = db.source(url.clone());
-
-    let tree = match db.parse(url) {
-        Some(t) => t,
-        None => return Arc::new(Vec::new()),
-    };
 
     let files = db.files();
 
     let prefixes = db.prefixes();
 
-    let loads: Vec<_> = query::loads(tree.root_node(), source.as_str())
-        .iter()
-        .map(PathBuf::from)
-        .collect();
+    let loads: Vec<_> = db.loads(uri).iter().map(PathBuf::from).collect();
 
     let mut loaded_files = Vec::new();
 
@@ -259,9 +249,7 @@ impl LanguageServer for Backend {
                 if let Ok(mut state) = self.state.lock() {
                     let uri = Arc::new(uri);
 
-                    state
-                        .db
-                        .set_source(uri.clone(), Arc::new(source.to_string()));
+                    state.db.set_source(uri.clone(), Arc::new(source));
 
                     let mut files = state.db.files();
                     let files = Arc::make_mut(&mut files);
@@ -282,9 +270,7 @@ impl LanguageServer for Backend {
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
 
-            state
-                .db
-                .set_source(uri.clone(), Arc::new(source.to_string()));
+            state.db.set_source(uri.clone(), Arc::new(source));
 
             let mut files = state.db.files();
             let files = Arc::make_mut(&mut files);
@@ -310,9 +296,7 @@ impl LanguageServer for Backend {
 
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
-            state
-                .db
-                .set_source(uri.clone(), Arc::new(source.to_string()));
+            state.db.set_source(uri.clone(), Arc::new(source));
 
             let mut files = state.db.files();
             let files = Arc::make_mut(&mut files);

@@ -1,33 +1,30 @@
-use {
-    crate::{
-        parse::Parse,
-        query::{self, Decl, DeclKind, Query},
-        to_range, zeek, Files,
-    },
-    itertools::Itertools,
-    log::{error, warn},
-    std::{
-        collections::HashSet,
-        fmt::Debug,
-        path::{Path, PathBuf},
-        sync::{Arc, Mutex},
-    },
-    tower_lsp::{
-        jsonrpc::{Error, ErrorCode, Result},
-        lsp_types::{
-            CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-            CompletionResponse, CreateFilesParams, DidChangeTextDocumentParams,
-            DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
-            DocumentSymbolResponse, Documentation, FileCreate, Hover, HoverContents, HoverParams,
-            HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-            LanguageString, Location, MarkedString, MessageType, OneOf, Position, Range,
-            ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-            TextDocumentSyncKind, Url, WorkspaceSymbolParams,
-        },
-        Client, LanguageServer, LspService, Server,
-    },
-    tracing::instrument,
+use crate::{
+    parse::Parse,
+    query::{self, Decl, DeclKind, ModuleId, Query},
+    to_range, zeek, Files,
 };
+use itertools::Itertools;
+use log::{error, warn};
+use std::{
+    collections::HashSet,
+    fmt::Debug,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+use tower_lsp::{
+    jsonrpc::{Error, ErrorCode, Result},
+    lsp_types::{
+        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
+        CompletionResponse, CreateFilesParams, DidChangeTextDocumentParams,
+        DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+        Documentation, FileCreate, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, LanguageString, Location,
+        MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities, SymbolInformation,
+        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+    },
+    Client, LanguageServer, LspService, Server,
+};
+use tracing::instrument;
 
 #[salsa::database(
     crate::parse::ParseStorage,
@@ -49,7 +46,7 @@ impl Debug for Database {
 }
 
 #[salsa::query_group(ServerStateStorage)]
-pub trait ServerState: Parse + Files {
+pub trait ServerState: Files + Parse + Query {
     #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
 
@@ -61,6 +58,9 @@ pub trait ServerState: Parse + Files {
 
     #[must_use]
     fn loaded_files_recursive(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
+
+    #[must_use]
+    fn loaded_decls(&self, url: Arc<Url>) -> Arc<Vec<Decl>>;
 }
 
 fn loaded_files(db: &dyn ServerState, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
@@ -78,42 +78,37 @@ fn loaded_files(db: &dyn ServerState, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
     let mut loaded_files = Vec::new();
 
     for load in &loads {
-        let f = file_dir
-            .iter()
-            .chain(prefixes.iter())
-            .map(|prefix| {
-                // Files in the given prefix.
-                let files: Vec<_> = files
-                    .iter()
-                    .filter_map(|f| {
-                        if let Ok(p) = f.to_file_path().ok()?.strip_prefix(prefix) {
-                            Some((f, p.to_path_buf()))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+        let f = file_dir.iter().chain(prefixes.iter()).find_map(|prefix| {
+            // Files in the given prefix.
+            let files: Vec<_> = files
+                .iter()
+                .filter_map(|f| {
+                    if let Ok(p) = f.to_file_path().ok()?.strip_prefix(prefix) {
+                        Some((f, p.to_path_buf()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
-                // File known w/ extension.
-                let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
+            // File known w/ extension.
+            let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
 
-                // File known w/o extension.
-                let known_no_ext = files
-                    .iter()
-                    .find(|(_, p)| p.ends_with(load.with_extension("zeek")));
+            // File known w/o extension.
+            let known_no_ext = files
+                .iter()
+                .find(|(_, p)| p.ends_with(load.with_extension("zeek")));
 
-                // Load is directory with `__load__.zeek`.
-                let known_directory = files
-                    .iter()
-                    .find(|(_, p)| p.ends_with(load.join("__load__.zeek")));
+            // Load is directory with `__load__.zeek`.
+            let known_directory = files
+                .iter()
+                .find(|(_, p)| p.ends_with(load.join("__load__.zeek")));
 
-                known_exactly
-                    .or(known_no_ext)
-                    .or(known_directory)
-                    .map(|(f, _)| (*f).clone())
-            })
-            .flatten()
-            .next();
+            known_exactly
+                .or(known_no_ext)
+                .or(known_directory)
+                .map(|(f, _)| (*f).clone())
+        });
 
         if let Some(f) = f {
             loaded_files.push(f);
@@ -147,6 +142,19 @@ fn loaded_files_recursive(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Ur
     }
 
     Arc::new(files)
+}
+
+#[instrument(skip(db))]
+fn loaded_decls(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Decl>> {
+    let mut decls = Vec::new();
+
+    for load in db.loaded_files_recursive(url).as_ref() {
+        for decl in db.decls(load.clone()).iter() {
+            decls.push(decl.clone());
+        }
+    }
+
+    Arc::new(decls)
 }
 
 #[derive(Debug, Default)]
@@ -456,7 +464,6 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let position = params.text_document_position;
         let uri = Arc::new(position.text_document.uri);
-
         let state = self
             .state
             .lock()
@@ -477,6 +484,7 @@ impl LanguageServer for Backend {
         let items: Vec<_> = {
             let mut items = HashSet::new();
             let mut node = node;
+
             loop {
                 for d in query::decls_(node, &source) {
                     items.insert(d);
@@ -488,10 +496,14 @@ impl LanguageServer for Backend {
                 };
             }
 
+            for loaded in state.db.loaded_decls(uri).iter() {
+                if loaded.is_export || &loaded.module == &ModuleId::Global {
+                    items.insert(loaded.clone());
+                }
+            }
+
             items.into_iter().map(to_completion_item).collect()
         };
-
-        // TODO: Add an decls found in implicitly or explicitly loaded modules.
 
         Ok(Some(CompletionResponse::from(items)))
     }

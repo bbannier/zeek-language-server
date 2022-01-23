@@ -1,0 +1,52 @@
+---
+source: src/lsp.rs
+assertion_line: 622
+expression: db.0.loaded_files(foo)
+
+---
+[
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/tmp/foo.zeek",
+        query: None,
+        fragment: None,
+    },
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/tmp/foo.zeek",
+        query: None,
+        fragment: None,
+    },
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/tmp/p/p1/p1.zeek",
+        query: None,
+        fragment: None,
+    },
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/p/p2/p2.zeek",
+        query: None,
+        fragment: None,
+    },
+]

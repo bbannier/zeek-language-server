@@ -1,7 +1,7 @@
 use {
     crate::{
         parse::Parse,
-        query::{decl_at, decls_, Decl, DeclKind, Query},
+        query::{self, Decl, DeclKind, Query},
         to_range, zeek, File,
     },
     itertools::Itertools,
@@ -9,7 +9,7 @@ use {
     std::{
         collections::HashSet,
         fmt::Debug,
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::{Arc, Mutex},
     },
     tower_lsp::{
@@ -39,6 +39,14 @@ pub struct Database {
     storage: salsa::Storage<Self>,
 }
 
+impl salsa::Database for Database {}
+
+impl Debug for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database").finish()
+    }
+}
+
 #[salsa::query_group(ServerStateStorage)]
 pub trait ServerState: Parse {
     #[salsa::input]
@@ -46,14 +54,79 @@ pub trait ServerState: Parse {
 
     #[salsa::input]
     fn files(&self) -> Arc<HashSet<Arc<Url>>>;
+
+    #[must_use]
+    fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
 }
 
-impl salsa::Database for Database {}
+fn loaded_files(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
+    let file_dir = url
+        .to_file_path()
+        .ok()
+        .and_then(|f| f.parent().map(Path::to_path_buf));
 
-impl Debug for Database {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Database").finish()
+    let file = db.file(url);
+
+    let tree = match db.parse(file.clone()) {
+        Some(t) => t,
+        None => return Arc::new(Vec::new()),
+    };
+
+    let files = db.files();
+
+    let prefixes = db.prefixes();
+
+    let loads: Vec<_> = query::loads(tree.root_node(), &file.source)
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+
+    let mut loaded_files = Vec::new();
+
+    for load in &loads {
+        let f = file_dir
+            .iter()
+            .chain(prefixes.iter())
+            .map(|prefix| {
+                // Files in the given prefix.
+                let files: Vec<_> = files
+                    .iter()
+                    .filter_map(|f| {
+                        if let Ok(p) = f.to_file_path().ok()?.strip_prefix(prefix) {
+                            Some((f, p.to_path_buf()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                // File known w/ extension.
+                let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
+
+                // File known w/o extension.
+                let known_no_ext = files
+                    .iter()
+                    .find(|(_, p)| p.ends_with(load.with_extension("zeek")));
+
+                // Load is directory with `__load__.zeek`.
+                let known_directory = files
+                    .iter()
+                    .find(|(_, p)| p.ends_with(load.join("__load__.zeek")));
+
+                known_exactly
+                    .or(known_no_ext)
+                    .or(known_directory)
+                    .map(|(f, _)| (*f).clone())
+            })
+            .flatten()
+            .next();
+
+        if let Some(f) = f {
+            loaded_files.push(f);
+        }
     }
+
+    Arc::new(loaded_files)
 }
 
 #[derive(Debug, Default)]
@@ -272,7 +345,7 @@ impl LanguageServer for Backend {
 
         if node.kind() == "id" {
             let id = text;
-            if let Some(decl) = decl_at(id, node, &source) {
+            if let Some(decl) = query::decl_at(id, node, &source) {
                 contents.push(MarkedString::String(decl.documentation));
             }
         }
@@ -404,7 +477,7 @@ impl LanguageServer for Backend {
             let mut items = HashSet::new();
             let mut node = node;
             loop {
-                for d in decls_(node, &source) {
+                for d in query::decls_(node, &source) {
                     items.insert(d);
                 }
 
@@ -472,4 +545,82 @@ pub async fn run() {
         .interleave(messages)
         .serve(service)
         .await;
+}
+
+#[cfg(test)]
+mod test {
+    use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc};
+
+    use insta::assert_debug_snapshot;
+    use tower_lsp::lsp_types::Url;
+
+    use crate::{lsp, parse::Parse, File};
+
+    use super::ServerState;
+
+    struct TestDatabase(lsp::Database);
+
+    impl TestDatabase {
+        fn new() -> Self {
+            let mut db = lsp::Database::default();
+            db.set_files(Arc::new(HashSet::new()));
+            db.set_prefixes(Arc::new(Vec::new()));
+
+            Self(db)
+        }
+
+        fn add_file(&mut self, file: File) {
+            let uri = Arc::new(file.uri.clone());
+            self.0.set_file(uri.clone(), Arc::new(file));
+
+            let mut files = self.0.files();
+            let files = Arc::make_mut(&mut files);
+            files.insert(uri);
+            self.0.set_files(Arc::new(files.clone()));
+        }
+
+        fn add_prefix(&mut self, prefix: PathBuf) {
+            let mut prefixes = self.0.prefixes();
+            let prefixes = Arc::make_mut(&mut prefixes);
+            prefixes.push(prefix);
+            self.0.set_prefixes(Arc::new(prefixes.clone()));
+        }
+    }
+
+    #[test]
+    fn loaded_files() {
+        let mut db = TestDatabase::new();
+
+        // Prefix file both in file directory and in prefix. This should appear exactly once.
+        let pre1 = PathBuf::from_str("/tmp/p").unwrap();
+        let p1 = Arc::new(Url::from_file_path(pre1.join("p1/p1.zeek")).unwrap());
+        db.add_prefix(pre1);
+        db.add_file(File {
+            uri: p1.as_ref().clone(),
+            source: String::default(),
+        });
+
+        // Prefix file in external directory.
+        let pre2 = PathBuf::from_str("/p").unwrap();
+        let p2 = Arc::new(Url::from_file_path(pre2.join("p2/p2.zeek")).unwrap());
+        db.add_prefix(pre2);
+        db.add_file(File {
+            uri: p2.as_ref().clone(),
+            source: String::default(),
+        });
+
+        let foo = Arc::new(Url::from_file_path("/tmp/foo.zeek").unwrap());
+        db.add_file(File {
+            uri: foo.as_ref().clone(),
+            source: "
+                    @load foo;
+                    @load foo.zeek;
+                    @load p1/p1;
+                    @load p2/p2;
+                "
+            .to_string(),
+        });
+
+        assert_debug_snapshot!(db.0.loaded_files(foo));
+    }
 }

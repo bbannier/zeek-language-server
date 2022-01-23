@@ -4,9 +4,6 @@ use std::{ffi::OsStr, path::PathBuf};
 use eyre::{eyre, Result};
 use walkdir::WalkDir;
 
-use crate::lsp::ServerState;
-use crate::parse::Parse;
-
 async fn zeek_config<I, S>(args: I) -> Result<std::process::Output>
 where
     I: IntoIterator<Item = S>,
@@ -96,9 +93,6 @@ pub(crate) fn init_script_filename() -> &'static str {
     // TODO(bbannier): does this function need a flag for bare mode?
     "base/init-default.zeek"
 }
-
-#[salsa::query_group(ZeekStorage)]
-pub trait Zeek: salsa::Database + Parse + ServerState {}
 
 #[cfg(test)]
 mod test {

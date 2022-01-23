@@ -57,6 +57,9 @@ pub trait ServerState: Parse {
 
     #[must_use]
     fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
+
+    #[must_use]
+    fn loaded_files_recursive(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
 }
 
 fn loaded_files(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
@@ -127,6 +130,32 @@ fn loaded_files(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
     }
 
     Arc::new(loaded_files)
+}
+
+fn loaded_files_recursive(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
+    let mut files = db.loaded_files(url).as_ref().clone();
+
+    loop {
+        let mut new_files = Vec::new();
+
+        for f in &files {
+            for load in db.loaded_files(f.clone()).as_ref() {
+                if !files.iter().any(|f| f.as_ref() == load.as_ref()) {
+                    new_files.push(load.clone());
+                }
+            }
+        }
+
+        if new_files.is_empty() {
+            break;
+        }
+
+        for n in new_files {
+            files.push(n);
+        }
+    }
+
+    Arc::new(files)
 }
 
 #[derive(Debug, Default)]
@@ -622,5 +651,35 @@ mod test {
         });
 
         assert_debug_snapshot!(db.0.loaded_files(foo));
+    }
+
+    #[test]
+    fn loaded_files_recursive() {
+        let mut db = TestDatabase::new();
+
+        let a = Url::from_file_path("/tmp/a.zeek").unwrap();
+        db.add_file(File {
+            uri: a.clone(),
+            source: "@load b; @load d;".to_string(),
+        });
+
+        let b = Url::from_file_path("/tmp/b.zeek").unwrap();
+        db.add_file(File {
+            uri: b.clone(),
+            source: "@load c;".to_string(),
+        });
+
+        let c = Url::from_file_path("/tmp/c.zeek").unwrap();
+        db.add_file(File {
+            uri: c.clone(),
+            source: "@load d;".to_string(),
+        });
+
+        let d = Url::from_file_path("/tmp/d.zeek").unwrap();
+        db.add_file(File {
+            uri: d.clone(),
+            source: String::new(),
+        });
+        assert_debug_snapshot!(db.0.loaded_files_recursive(Arc::new(a)));
     }
 }

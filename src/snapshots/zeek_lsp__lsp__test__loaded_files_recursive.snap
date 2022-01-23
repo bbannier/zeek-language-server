@@ -1,0 +1,41 @@
+---
+source: src/lsp.rs
+assertion_line: 703
+expression: "db.0.loaded_files_recursive(Arc::new(a))"
+
+---
+[
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/tmp/b.zeek",
+        query: None,
+        fragment: None,
+    },
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/tmp/d.zeek",
+        query: None,
+        fragment: None,
+    },
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/tmp/c.zeek",
+        query: None,
+        fragment: None,
+    },
+]

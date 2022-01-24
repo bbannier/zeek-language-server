@@ -1,7 +1,7 @@
 ---
 source: src/lsp.rs
-assertion_line: 703
-expression: "db.0.loaded_files_recursive(Arc::new(a))"
+assertion_line: 663
+expression: db.0.loaded_files_recursive(a)
 
 ---
 [
@@ -23,7 +23,7 @@ expression: "db.0.loaded_files_recursive(Arc::new(a))"
         password: None,
         host: None,
         port: None,
-        path: "/tmp/d.zeek",
+        path: "/tmp/c.zeek",
         query: None,
         fragment: None,
     },
@@ -34,7 +34,7 @@ expression: "db.0.loaded_files_recursive(Arc::new(a))"
         password: None,
         host: None,
         port: None,
-        path: "/tmp/c.zeek",
+        path: "/tmp/d.zeek",
         query: None,
         fragment: None,
     },

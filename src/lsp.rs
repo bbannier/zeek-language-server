@@ -631,10 +631,10 @@ mod test {
         let foo = Arc::new(Url::from_file_path("/tmp/foo.zeek").unwrap());
         db.add_file(
             foo.clone(),
-            "@load foo;
-             @load foo.zeek;
-             @load p1/p1;
-             @load p2/p2;",
+            "@load foo\n
+             @load foo.zeek\n
+             @load p1/p1\n
+             @load p2/p2",
         );
 
         assert_debug_snapshot!(db.0.loaded_files(foo));
@@ -645,13 +645,17 @@ mod test {
         let mut db = TestDatabase::new();
 
         let a = Arc::new(Url::from_file_path("/tmp/a.zeek").unwrap());
-        db.add_file(a.clone(), "@load b; @load d;");
+        db.add_file(
+            a.clone(),
+            "@load b\n
+             @load d;",
+        );
 
         let b = Arc::new(Url::from_file_path("/tmp/b.zeek").unwrap());
-        db.add_file(b.clone(), "@load c;");
+        db.add_file(b.clone(), "@load c");
 
         let c = Arc::new(Url::from_file_path("/tmp/c.zeek").unwrap());
-        db.add_file(c.clone(), "@load d;");
+        db.add_file(c.clone(), "@load d");
 
         let d = Arc::new(Url::from_file_path("/tmp/d.zeek").unwrap());
         db.add_file(d.clone(), "");

@@ -341,7 +341,7 @@ mod test {
         assert_eq!(loads(""), vec!["base/init-default"]);
 
         assert_eq!(
-            loads("@load ./main; @load base/misc/version;"),
+            loads("@load ./main\n @load base/misc/version"),
             vec!["base/init-default", "./main", "base/misc/version"]
         );
     }

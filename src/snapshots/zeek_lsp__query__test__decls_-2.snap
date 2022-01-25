@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 341
+assertion_line: 388
 expression: func_decls
 
 ---
@@ -33,5 +33,16 @@ expression: func_decls
             },
         },
         documentation: "```zeek\nlocal x=1;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
     },
 ]

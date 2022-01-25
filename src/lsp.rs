@@ -329,7 +329,7 @@ impl LanguageServer for Backend {
 
         let source = state.db.source(uri.clone());
 
-        let tree = state.db.parse(uri);
+        let tree = state.db.parse(uri.clone());
         let tree = match tree.as_ref() {
             Some(t) => t,
             None => return Ok(None),
@@ -359,7 +359,7 @@ impl LanguageServer for Backend {
 
         if node.kind() == "id" {
             let id = text;
-            if let Some(decl) = query::decl_at(id, node, &source) {
+            if let Some(decl) = query::decl_at(id, node, uri, &source) {
                 contents.push(MarkedString::String(decl.documentation));
             }
         }
@@ -486,7 +486,7 @@ impl LanguageServer for Backend {
             let mut node = node;
 
             loop {
-                for d in query::decls_(node, &source) {
+                for d in query::decls_(node, uri.clone(), &source) {
                     items.insert(d);
                 }
 
@@ -497,12 +497,12 @@ impl LanguageServer for Backend {
             }
 
             for loaded in state.db.loaded_decls(uri).iter() {
-                if loaded.is_export || &loaded.module == &ModuleId::Global {
+                if loaded.is_export || loaded.module == ModuleId::Global {
                     items.insert(loaded.clone());
                 }
             }
 
-            items.into_iter().map(to_completion_item).collect()
+            items.iter().map(to_completion_item).collect()
         };
 
         Ok(Some(CompletionResponse::from(items)))
@@ -536,11 +536,11 @@ fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
     }
 }
 
-fn to_completion_item(d: Decl) -> CompletionItem {
+fn to_completion_item(d: &Decl) -> CompletionItem {
     CompletionItem {
-        label: format!("{}::{}", d.module, d.id),
+        label: d.fqid.clone(),
         kind: Some(to_completion_item_kind(d.kind)),
-        documentation: Some(Documentation::String(d.documentation)),
+        documentation: Some(Documentation::String(d.documentation.clone())),
         ..CompletionItem::default()
     }
 }

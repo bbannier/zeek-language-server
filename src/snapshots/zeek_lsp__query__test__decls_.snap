@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 335
+assertion_line: 374
 expression: root_decls
 
 ---
@@ -33,6 +33,17 @@ expression: root_decls
             },
         },
         documentation: "```zeek\nconst x = 1 &redef;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
     },
     Decl {
         module: String(
@@ -62,6 +73,17 @@ expression: root_decls
             },
         },
         documentation: "```zeek\nglobal y = 1;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
     },
     Decl {
         module: String(
@@ -91,6 +113,17 @@ expression: root_decls
             },
         },
         documentation: "```zeek\ntype Y: record {\n                  y: vector of count &optional;\n              };\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
     },
     Decl {
         module: String(
@@ -120,5 +153,16 @@ expression: root_decls
             },
         },
         documentation: "```zeek\nevent zeek_init() { local x=1; \n\n                  # Comment.\n              }\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
     },
 ]

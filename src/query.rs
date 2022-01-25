@@ -34,6 +34,7 @@ pub struct Decl {
     pub range: Range,
     pub selection_range: Range,
     pub documentation: String,
+    pub uri: Arc<Url>,
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
@@ -52,6 +53,7 @@ impl Hash for Decl {
         self.range.end.character.hash(state);
 
         self.documentation.hash(state);
+        self.uri.hash(state);
     }
 }
 
@@ -89,7 +91,7 @@ fn in_export(mut node: Node) -> bool {
 
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, source: &str) -> HashSet<Decl> {
+pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
     let query = match tree_sitter::Query::new(
         unsafe { tree_sitter_zeek() },
         "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id)@decl)@outer_node",
@@ -211,15 +213,19 @@ pub fn decls_(node: Node, source: &str) -> HashSet<Decl> {
                 range,
                 selection_range,
                 documentation,
+                uri: uri.clone(),
             })
         })
         .collect()
 }
 
 #[instrument]
-pub fn decl_at(id: &str, mut node: Node, source: &str) -> Option<Decl> {
+pub fn decl_at(id: &str, mut node: Node, uri: Arc<Url>, source: &str) -> Option<Decl> {
     loop {
-        if let Some(decl) = decls_(node, source).into_iter().find(|d| d.id == id) {
+        if let Some(decl) = decls_(node, uri.clone(), source)
+            .into_iter()
+            .find(|d| d.id == id)
+        {
             return Some(decl);
         }
 
@@ -275,12 +281,12 @@ pub trait Query: Parse {
 #[instrument(skip(db))]
 fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<HashSet<Decl>> {
     let source = db.source(uri.clone());
-    let tree = match db.parse(uri) {
+    let tree = match db.parse(uri.clone()) {
         Some(t) => t,
         None => return Arc::new(HashSet::new()),
     };
 
-    Arc::new(decls_(tree.root_node(), &source))
+    Arc::new(decls_(tree.root_node(), uri, &source))
 }
 
 fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
@@ -352,10 +358,12 @@ mod test {
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
         db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
 
-        let tree = db.parse(uri).expect("cannot parse");
+        let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| {
-            let mut xs = decls_(n, SOURCE).into_iter().collect::<Vec<_>>();
+            let mut xs = decls_(n, uri.clone(), SOURCE)
+                .into_iter()
+                .collect::<Vec<_>>();
             xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
             xs
         };

@@ -29,6 +29,7 @@ pub enum DeclKind {
 pub struct Decl {
     pub module: ModuleId,
     pub id: String,
+    pub fqid: String,
     pub kind: DeclKind,
     pub is_export: bool,
     pub range: Range,
@@ -198,16 +199,22 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
             let range = to_range(decl.range()).ok()?;
             let selection_range = to_range(id.range()).ok()?;
 
-            let id = id.utf8_text(source.as_bytes()).ok()?.into();
+            let id = id.utf8_text(source.as_bytes()).ok()?.to_string();
 
             // TODO(bbannier): This just extracts the first line of the decl as documentation. We
             // should implement something richer, e.g., also extract (zeekygen) comments close by.
             let documentation =
                 format!("```zeek\n{}\n```", decl.utf8_text(source.as_bytes()).ok()?);
 
+            let fqid = match &module {
+                ModuleId::Global => id.clone(),
+                ModuleId::String(m) => format!("{}::{}", &m, &id),
+            };
+
             Some(Decl {
                 module,
                 id,
+                fqid,
                 kind,
                 is_export: in_export(decl),
                 range,

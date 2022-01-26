@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 388
+assertion_line: 387
 expression: func_decls
 
 ---
@@ -10,6 +10,7 @@ expression: func_decls
             "bar",
         ),
         id: "x",
+        fqid: "bar::x",
         kind: Variable,
         is_export: false,
         range: Range {

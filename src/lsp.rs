@@ -476,7 +476,7 @@ impl LanguageServer for Backend {
 
                     #[allow(deprecated)]
                     SymbolInformation {
-                        name: format!("{}::{}", &d.module, &d.id),
+                        name: d.fqid.clone(),
                         kind: to_symbol_kind(d.kind),
 
                         location: Location::new(url.clone(), d.range),

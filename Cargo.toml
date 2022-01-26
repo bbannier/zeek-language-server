@@ -22,6 +22,7 @@ itertools = "0.10.3"
 log = "0.4.14"
 opentelemetry = { version = "0.16.0", features = ["trace", "rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.15.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
+rust-fuzzy-search = "0.1.1"
 salsa = "0.16.1"
 tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread", "io-std", "process"] }
 tower-lsp = "0.14.1"

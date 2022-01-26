@@ -1,6 +1,6 @@
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, ModuleId, Query},
+    query::{self, Decl, DeclKind, Query},
     to_range, zeek, Files,
 };
 use itertools::Itertools;
@@ -341,7 +341,7 @@ impl LanguageServer for Backend {
 
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
-            state.db.set_source(uri.clone(), Arc::new(source));
+            state.db.set_source(uri, Arc::new(source));
         }
     }
 
@@ -459,11 +459,16 @@ impl LanguageServer for Backend {
     }
 
     #[instrument]
-    async fn symbol(&self, _: WorkspaceSymbolParams) -> Result<Option<Vec<SymbolInformation>>> {
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
         let state = self
             .state
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
+
+        let query = params.query.to_lowercase();
 
         let files = state.db.files();
         let symbols = files.iter().flat_map(|uri| {
@@ -471,6 +476,7 @@ impl LanguageServer for Backend {
                 .db
                 .decls(uri.clone())
                 .iter()
+                .filter(|d| rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase()) > 0.0)
                 .map(|d| {
                     let url: &Url = &**uri;
 
@@ -513,6 +519,18 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
+        let text_at_completion = node
+            .utf8_text(source.as_bytes())
+            // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
+            .map_err(|_| Error::new(ErrorCode::InternalError))?
+            .lines()
+            .next()
+            .map(str::trim)
+            .map(|t| {
+                eprintln!("completing {} with text: {}", node.kind(), t);
+                t
+            });
+
         let items: Vec<_> = {
             let mut items = HashSet::new();
             let mut node = node;
@@ -528,19 +546,29 @@ impl LanguageServer for Backend {
                 };
             }
 
-            for loaded in state.db.loaded_decls(uri).iter() {
-                if loaded.is_export || loaded.module == ModuleId::Global {
-                    items.insert(loaded.clone());
-                }
-            }
+            let loaded_decls = state.db.loaded_decls(uri);
+            let implicit_decls = state.db.implicit_decls();
 
-            for implicit in state.db.implicit_decls().iter() {
-                items.insert(implicit.clone());
-            }
+            let other_decls = loaded_decls
+                .iter()
+                .chain(implicit_decls.iter())
+                // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
+                .filter(|i| {
+                    if let Some(text) = text_at_completion {
+                        rust_fuzzy_search::fuzzy_compare(
+                            &text.to_lowercase(),
+                            &i.fqid.to_lowercase(),
+                        ) > 0.0
+                    } else {
+                        true
+                    }
+                });
 
             items
                 .iter()
+                .chain(other_decls)
                 .filter(|d| d.kind != DeclKind::Event)
+                .unique()
                 .map(to_completion_item)
                 .collect()
         };

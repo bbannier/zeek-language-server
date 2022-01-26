@@ -7,7 +7,7 @@ use tree_sitter::Node;
 
 use crate::{
     parse::{tree_sitter_zeek, Parse},
-    to_range, zeek,
+    to_range,
 };
 
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
@@ -253,19 +253,10 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .capture_index_for_name("file")
         .expect("file should be captured");
 
-    let implicit_module = if let Some(m) = zeek::init_script_filename().strip_suffix(".zeek") {
-        m
-    } else {
-        zeek::init_script_filename()
-    };
-
-    std::iter::once(implicit_module)
-        .chain(
-            tree_sitter::QueryCursor::new()
-                .matches(&query, node, source.as_bytes())
-                .filter_map(|c| c.nodes_for_capture_index(c_file).next())
-                .filter_map(|f| f.utf8_text(source.as_bytes()).ok()),
-        )
+    tree_sitter::QueryCursor::new()
+        .matches(&query, node, source.as_bytes())
+        .filter_map(|c| c.nodes_for_capture_index(c_file).next())
+        .filter_map(|f| f.utf8_text(source.as_bytes()).ok())
         .collect()
 }
 
@@ -289,6 +280,7 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<HashSet<Decl>> {
     Arc::new(decls_(tree.root_node(), uri, &source))
 }
 
+#[instrument(skip(db))]
 fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
     let tree = match db.parse(uri.clone()) {
         Some(t) => t,
@@ -344,11 +336,11 @@ mod test {
             loads_raw(parse(&source).expect("cannot parse").root_node(), &source)
         };
 
-        assert_eq!(loads(""), vec!["base/init-default"]);
+        assert_eq!(loads(""), Vec::<&str>::new());
 
         assert_eq!(
             loads("@load ./main\n @load base/misc/version"),
-            vec!["base/init-default", "./main", "base/misc/version"]
+            vec!["./main", "base/misc/version"]
         );
     }
 

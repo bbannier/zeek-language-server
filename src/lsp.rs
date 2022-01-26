@@ -61,6 +61,9 @@ pub trait ServerState: Files + Parse + Query {
 
     #[must_use]
     fn loaded_decls(&self, url: Arc<Url>) -> Arc<Vec<Decl>>;
+
+    #[must_use]
+    fn implicit_decls(&self) -> Arc<Vec<Decl>>;
 }
 
 fn loaded_files(db: &dyn ServerState, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
@@ -155,6 +158,39 @@ fn loaded_decls(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Decl>> {
     }
 
     Arc::new(decls)
+}
+
+#[instrument(skip(db))]
+fn implicit_decls(db: &dyn ServerState) -> Arc<Vec<Decl>> {
+    let implicit_load = zeek::init_script_filename();
+
+    let mut implicit_file = None;
+    // This loop looks horrible, but is okay since this function will be cached most of the time
+    // (unless global state changes).
+    for f in db.files().iter() {
+        let path = match f.to_file_path() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        if !path.ends_with(&implicit_load) {
+            continue;
+        }
+
+        for p in db.prefixes().iter() {
+            if path.strip_prefix(p).is_ok() {
+                implicit_file = Some(f.clone());
+                break;
+            }
+        }
+    }
+
+    let implicit_load = match implicit_file {
+        Some(f) => f,
+        None => return Arc::new(Vec::new()), // TODO(bbannier): this could also be an error.
+    };
+
+    db.loaded_decls(implicit_load)
 }
 
 #[derive(Debug, Default)]
@@ -502,7 +538,15 @@ impl LanguageServer for Backend {
                 }
             }
 
-            items.iter().map(to_completion_item).collect()
+            for implicit in state.db.implicit_decls().iter() {
+                items.insert(implicit.clone());
+            }
+
+            items
+                .iter()
+                .filter(|d| d.kind != DeclKind::Event)
+                .map(to_completion_item)
+                .collect()
         };
 
         Ok(Some(CompletionResponse::from(items)))

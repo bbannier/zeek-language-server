@@ -121,6 +121,7 @@ fn loaded_files(db: &dyn ServerState, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
     Arc::new(loaded_files)
 }
 
+#[instrument(skip(db))]
 fn loaded_files_recursive(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
     let mut files = db.loaded_files(url).as_ref().clone();
 
@@ -341,11 +342,6 @@ impl LanguageServer for Backend {
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
             state.db.set_source(uri.clone(), Arc::new(source));
-
-            let mut files = state.db.files();
-            let files = Arc::make_mut(&mut files);
-            files.insert(uri);
-            state.db.set_files(Arc::new(files.clone()));
         }
     }
 

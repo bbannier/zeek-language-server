@@ -20,7 +20,7 @@ use lspower::{
     Client, LanguageServer, LspService, Server,
 };
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     fmt::Debug,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -52,7 +52,7 @@ pub trait ServerState: Files + Parse + Query {
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
 
     #[salsa::input]
-    fn files(&self) -> Arc<HashSet<Arc<Url>>>;
+    fn files(&self) -> Arc<BTreeSet<Arc<Url>>>;
 
     #[must_use]
     fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
@@ -197,8 +197,19 @@ fn implicit_decls(db: &dyn ServerState) -> Arc<Vec<Decl>> {
 
 #[derive(Debug)]
 struct Backend {
-    client: Client,
+    client: Option<Client>,
     state: Mutex<Database>,
+}
+
+impl Backend {
+    async fn log_message<M>(&self, typ: lspower::lsp::MessageType, message: M)
+    where
+        M: std::fmt::Display,
+    {
+        if let Some(client) = &self.client {
+            client.log_message(typ, message).await;
+        }
+    }
 }
 
 #[lspower::async_trait]
@@ -210,7 +221,7 @@ impl LanguageServer for Backend {
                 // Set up prefixes for normalization of system files.
                 state.set_prefixes(Arc::new(prefixes));
 
-                state.set_files(Arc::new(HashSet::new()));
+                state.set_files(Arc::new(BTreeSet::new()));
             }
         }
 
@@ -228,7 +239,7 @@ impl LanguageServer for Backend {
                 .await;
             }
             Err(e) => {
-                self.client.log_message(MessageType::ERROR, e).await;
+                self.log_message(MessageType::ERROR, e).await;
             }
         }
 
@@ -252,8 +263,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "server initialized!")
+        self.log_message(MessageType::INFO, "server initialized!")
             .await;
     }
 
@@ -618,7 +628,7 @@ pub async fn run() {
     let stdout = tokio::io::stdout();
 
     let (service, messages) = LspService::new(|client| Backend {
-        client,
+        client: Some(client),
         state: Mutex::default(),
     });
     Server::new(stdin, stdout)
@@ -629,21 +639,29 @@ pub async fn run() {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc};
+    use std::{
+        collections::BTreeSet,
+        path::PathBuf,
+        str::FromStr,
+        sync::{Arc, Mutex},
+    };
 
     use insta::assert_debug_snapshot;
-    use lspower::lsp::Url;
+    use lspower::{
+        lsp::{Url, WorkspaceSymbolParams},
+        LanguageServer,
+    };
 
     use crate::{lsp, Files};
 
-    use super::ServerState;
+    use super::{Backend, ServerState};
 
     struct TestDatabase(lsp::Database);
 
     impl TestDatabase {
         fn new() -> Self {
             let mut db = lsp::Database::default();
-            db.set_files(Arc::new(HashSet::new()));
+            db.set_files(Arc::new(BTreeSet::new()));
             db.set_prefixes(Arc::new(Vec::new()));
 
             Self(db)
@@ -658,11 +676,21 @@ mod test {
             self.0.set_files(Arc::new(files.clone()));
         }
 
-        fn add_prefix(&mut self, prefix: PathBuf) {
+        fn add_prefix<P>(&mut self, prefix: P)
+        where
+            P: Into<PathBuf>,
+        {
             let mut prefixes = self.0.prefixes();
             let prefixes = Arc::make_mut(&mut prefixes);
-            prefixes.push(prefix);
+            prefixes.push(prefix.into());
             self.0.set_prefixes(Arc::new(prefixes.clone()));
+        }
+    }
+
+    fn serve(database: TestDatabase) -> Backend {
+        Backend {
+            client: None,
+            state: Mutex::new(database.0),
         }
     }
 
@@ -722,5 +750,39 @@ mod test {
         db.add_file(d.clone(), "");
 
         assert_debug_snapshot!(db.0.loaded_files_recursive(a));
+    }
+
+    #[tokio::test]
+    async fn symbol() {
+        let mut db = TestDatabase::new();
+        db.add_prefix("/p1");
+        db.add_prefix("/p2");
+        db.add_file(
+            Arc::new(Url::from_file_path("/p1/a.zeek").unwrap()),
+            "module mod_a; global A = 1;",
+        );
+        db.add_file(
+            Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
+            "module mod_b; global B = 2;",
+        );
+        db.add_file(
+            Arc::new(Url::from_file_path("/x/x.zeek").unwrap()),
+            "module mod_x; global X = 3;",
+        );
+
+        let server = serve(db);
+
+        let query = |q: &str| {
+            server.symbol(WorkspaceSymbolParams {
+                query: q.to_string(),
+                ..WorkspaceSymbolParams::default()
+            })
+        };
+
+        assert_debug_snapshot!(query("").await);
+        assert_debug_snapshot!(query("mod").await);
+        assert_debug_snapshot!(query("A").await);
+        assert_debug_snapshot!(query("X").await);
+        assert_debug_snapshot!(query("F").await);
     }
 }

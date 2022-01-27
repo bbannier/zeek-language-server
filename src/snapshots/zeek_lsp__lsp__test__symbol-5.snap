@@ -1,0 +1,11 @@
+---
+source: src/lsp.rs
+assertion_line: 789
+expression: "query(\"F\").await"
+
+---
+Ok(
+    Some(
+        [],
+    ),
+)

@@ -5,24 +5,25 @@ use crate::{
 };
 use itertools::Itertools;
 use log::{error, warn};
+use lspower::{
+    jsonrpc::{Error, ErrorCode, Result},
+    lsp::{
+        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
+        CompletionResponse, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+        DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+        Documentation, FileChangeType, FileEvent, Hover, HoverContents, HoverParams,
+        HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+        LanguageString, Location, MarkedString, MessageType, OneOf, Position, Range,
+        ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+    },
+    Client, LanguageServer, LspService, Server,
+};
 use std::{
     collections::HashSet,
     fmt::Debug,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-};
-use tower_lsp::{
-    jsonrpc::{Error, ErrorCode, Result},
-    lsp_types::{
-        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-        CompletionResponse, CreateFilesParams, DidChangeTextDocumentParams,
-        DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-        Documentation, FileCreate, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, LanguageString, Location,
-        MarkedString, MessageType, OneOf, Position, Range, ServerCapabilities, SymbolInformation,
-        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
-    },
-    Client, LanguageServer, LspService, Server,
 };
 use tracing::instrument;
 
@@ -205,7 +206,7 @@ struct Backend {
     state: Mutex<State>,
 }
 
-#[tower_lsp::async_trait]
+#[lspower::async_trait]
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
@@ -220,27 +221,26 @@ impl LanguageServer for Backend {
 
         match zeek::system_files().await {
             Ok(files) => {
-                self.did_create_files(CreateFilesParams {
-                    files: files
+                self.did_change_watched_files(DidChangeWatchedFilesParams {
+                    changes: files
                         .into_iter()
                         .filter_map(|f| {
-                            Some(FileCreate {
-                                uri: f.path.into_os_string().into_string().ok()?,
-                            })
+                            let uri = Url::from_file_path(f.path).ok()?;
+                            Some(FileEvent::new(uri, FileChangeType::CREATED))
                         })
                         .collect(),
                 })
                 .await;
             }
             Err(e) => {
-                self.client.log_message(MessageType::Error, e).await;
+                self.client.log_message(MessageType::ERROR, e).await;
             }
         }
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::Full,
+                    TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
@@ -258,7 +258,7 @@ impl LanguageServer for Backend {
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::Info, "server initialized!")
+            .log_message(MessageType::INFO, "server initialized!")
             .await;
     }
 
@@ -268,25 +268,18 @@ impl LanguageServer for Backend {
     }
 
     #[instrument]
-    async fn did_create_files(&self, params: CreateFilesParams) {
-        let _process = params
-            .files
-            .iter()
-            .filter_map(|f| {
-                let uri = if let Ok(uri) = Url::from_file_path(&f.uri) {
-                    uri
-                } else {
-                    warn!(
-                        "ignoring {} since its path cannot be converted to an URI",
-                        &f.uri
-                    );
-                    return None;
-                };
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        let files = params.changes.into_iter().filter_map(|c| match c.typ {
+            FileChangeType::CREATED => Some(c.uri),
+            _ => None,
+        });
 
-                let source = match std::fs::read_to_string(&f.uri) {
+        let _progress = files
+            .map(|uri| {
+                let source = match std::fs::read_to_string(uri.path()) {
                     Ok(s) => s,
                     Err(e) => {
-                        warn!("failed to read '{}': {}", &f.uri, e);
+                        warn!("failed to read '{}': {}", &uri, e);
                         return None;
                     }
                 };
@@ -440,7 +433,7 @@ impl LanguageServer for Backend {
                 #[allow(deprecated)]
                 DocumentSymbol {
                     name: format!("{}", m),
-                    kind: SymbolKind::Module,
+                    kind: SymbolKind::MODULE,
                     children: Some(decls.map(symbol).collect()),
 
                     // FIXME(bbannier): Weird ranges.
@@ -592,15 +585,15 @@ fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
 
 fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
     match kind {
-        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::Variable,
-        DeclKind::Option => SymbolKind::Property,
-        DeclKind::Const => SymbolKind::Constant,
-        DeclKind::RedefEnum => SymbolKind::Enum,
-        DeclKind::RedefRecord => SymbolKind::Interface,
-        DeclKind::Type => SymbolKind::Class,
-        DeclKind::Func => SymbolKind::Function,
-        DeclKind::Hook => SymbolKind::Operator,
-        DeclKind::Event => SymbolKind::Event,
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::VARIABLE,
+        DeclKind::Option => SymbolKind::PROPERTY,
+        DeclKind::Const => SymbolKind::CONSTANT,
+        DeclKind::RedefEnum => SymbolKind::ENUM,
+        DeclKind::RedefRecord => SymbolKind::INTERFACE,
+        DeclKind::Type => SymbolKind::CLASS,
+        DeclKind::Func => SymbolKind::FUNCTION,
+        DeclKind::Hook => SymbolKind::OPERATOR,
+        DeclKind::Event => SymbolKind::EVENT,
     }
 }
 
@@ -615,15 +608,15 @@ fn to_completion_item(d: &Decl) -> CompletionItem {
 
 fn to_completion_item_kind(kind: DeclKind) -> CompletionItemKind {
     match kind {
-        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => CompletionItemKind::Variable,
-        DeclKind::Option => CompletionItemKind::Property,
-        DeclKind::Const => CompletionItemKind::Constant,
-        DeclKind::RedefEnum => CompletionItemKind::Enum,
-        DeclKind::RedefRecord => CompletionItemKind::Interface,
-        DeclKind::Type => CompletionItemKind::Class,
-        DeclKind::Func => CompletionItemKind::Function,
-        DeclKind::Hook => CompletionItemKind::Operator,
-        DeclKind::Event => CompletionItemKind::Event,
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => CompletionItemKind::VARIABLE,
+        DeclKind::Option => CompletionItemKind::PROPERTY,
+        DeclKind::Const => CompletionItemKind::CONSTANT,
+        DeclKind::RedefEnum => CompletionItemKind::ENUM,
+        DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
+        DeclKind::Type => CompletionItemKind::CLASS,
+        DeclKind::Func => CompletionItemKind::FUNCTION,
+        DeclKind::Hook => CompletionItemKind::OPERATOR,
+        DeclKind::Event => CompletionItemKind::EVENT,
     }
 }
 
@@ -646,7 +639,7 @@ mod test {
     use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
-    use tower_lsp::lsp_types::Url;
+    use lspower::lsp::Url;
 
     use crate::{lsp, Files};
 

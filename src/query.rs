@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fmt, hash::Hash, sync::Arc};
 
 use log::error;
-use tower_lsp::lsp_types::{Range, Url};
+use lspower::lsp::{Range, Url};
 use tracing::instrument;
 use tree_sitter::Node;
 
@@ -310,7 +310,7 @@ mod test {
     use super::{decls_, loads_raw};
     use crate::{lsp::Database, parse::Parse, query::in_export, Files};
     use insta::assert_debug_snapshot;
-    use tower_lsp::lsp_types::Url;
+    use lspower::lsp::Url;
     use tree_sitter::Node;
 
     const SOURCE: &str = "module test;

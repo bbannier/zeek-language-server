@@ -681,6 +681,13 @@ mod test {
     }
 
     #[test]
+    fn debug_database() {
+        let db = TestDatabase::new();
+
+        assert_eq!(format!("{:?}", db.0), "Database");
+    }
+
+    #[test]
     fn loaded_files() {
         let mut db = TestDatabase::new();
 

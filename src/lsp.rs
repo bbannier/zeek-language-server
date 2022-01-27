@@ -195,15 +195,10 @@ fn implicit_decls(db: &dyn ServerState) -> Arc<Vec<Decl>> {
     db.loaded_decls(implicit_load)
 }
 
-#[derive(Debug, Default)]
-struct State {
-    db: Database,
-}
-
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    state: Mutex<State>,
+    state: Mutex<Database>,
 }
 
 #[lspower::async_trait]
@@ -213,9 +208,9 @@ impl LanguageServer for Backend {
         if let Ok(prefixes) = zeek::prefixes().await {
             if let Ok(mut state) = self.state.lock() {
                 // Set up prefixes for normalization of system files.
-                state.db.set_prefixes(Arc::new(prefixes));
+                state.set_prefixes(Arc::new(prefixes));
 
-                state.db.set_files(Arc::new(HashSet::new()));
+                state.set_files(Arc::new(HashSet::new()));
             }
         }
 
@@ -287,12 +282,12 @@ impl LanguageServer for Backend {
                 if let Ok(mut state) = self.state.lock() {
                     let uri = Arc::new(uri);
 
-                    state.db.set_source(uri.clone(), Arc::new(source));
+                    state.set_source(uri.clone(), Arc::new(source));
 
-                    let mut files = state.db.files();
+                    let mut files = state.files();
                     let files = Arc::make_mut(&mut files);
                     files.insert(uri);
-                    state.db.set_files(Arc::new(files.clone()));
+                    state.set_files(Arc::new(files.clone()));
                 };
 
                 Some(())
@@ -308,12 +303,12 @@ impl LanguageServer for Backend {
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
 
-            state.db.set_source(uri.clone(), Arc::new(source));
+            state.set_source(uri.clone(), Arc::new(source));
 
-            let mut files = state.db.files();
+            let mut files = state.files();
             let files = Arc::make_mut(&mut files);
             files.insert(uri);
-            state.db.set_files(Arc::new(files.clone()));
+            state.set_files(Arc::new(files.clone()));
         }
     }
 
@@ -334,7 +329,7 @@ impl LanguageServer for Backend {
 
         if let Ok(mut state) = self.state.lock() {
             let uri = Arc::new(uri);
-            state.db.set_source(uri, Arc::new(source));
+            state.set_source(uri, Arc::new(source));
         }
     }
 
@@ -352,9 +347,9 @@ impl LanguageServer for Backend {
         // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
         // should return some nice rendering of the hovered node.
 
-        let source = state.db.source(uri.clone());
+        let source = state.source(uri.clone());
 
-        let tree = state.db.parse(uri.clone());
+        let tree = state.parse(uri.clone());
         let tree = match tree.as_ref() {
             Some(t) => t,
             None => return Ok(None),
@@ -424,7 +419,6 @@ impl LanguageServer for Backend {
         };
 
         let modules = state
-            .db
             .decls(uri)
             .iter()
             .group_by(|d| &d.module)
@@ -463,10 +457,9 @@ impl LanguageServer for Backend {
 
         let query = params.query.to_lowercase();
 
-        let files = state.db.files();
+        let files = state.files();
         let symbols = files.iter().flat_map(|uri| {
             state
-                .db
                 .decls(uri.clone())
                 .iter()
                 .filter(|d| rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase()) > 0.0)
@@ -500,9 +493,9 @@ impl LanguageServer for Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))?;
 
-        let source = state.db.source(uri.clone());
+        let source = state.source(uri.clone());
 
-        let tree = match state.db.parse(uri.clone()) {
+        let tree = match state.parse(uri.clone()) {
             Some(t) => t,
             None => return Ok(None),
         };
@@ -539,8 +532,8 @@ impl LanguageServer for Backend {
                 };
             }
 
-            let loaded_decls = state.db.loaded_decls(uri);
-            let implicit_decls = state.db.implicit_decls();
+            let loaded_decls = state.loaded_decls(uri);
+            let implicit_decls = state.implicit_decls();
 
             let other_decls = loaded_decls
                 .iter()

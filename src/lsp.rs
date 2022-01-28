@@ -648,7 +648,10 @@ mod test {
 
     use insta::assert_debug_snapshot;
     use lspower::{
-        lsp::{Url, WorkspaceSymbolParams},
+        lsp::{
+            CompletionParams, PartialResultParams, Position, TextDocumentIdentifier,
+            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+        },
         LanguageServer,
     };
 
@@ -784,5 +787,46 @@ mod test {
         assert_debug_snapshot!(query("A").await);
         assert_debug_snapshot!(query("X").await);
         assert_debug_snapshot!(query("F").await);
+    }
+
+    #[tokio::test]
+    async fn completion() {
+        let mut db = TestDatabase::new();
+        db.add_prefix("/p1");
+        db.add_prefix("/p2");
+        db.add_file(
+            Arc::new(Url::from_file_path("/p1/a.zeek").unwrap()),
+            "module mod_a; global A = 1;",
+        );
+        db.add_file(
+            Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
+            "module mod_b; global B = 2;",
+        );
+        db.add_file(
+            Arc::new(Url::from_file_path("/x/x.zeek").unwrap()),
+            "module mod_x; global X = 3;",
+        );
+
+        let server = serve(db);
+
+        let result = server
+            .completion(CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(
+                        Url::from_file_path("/x/x.zeek").unwrap(),
+                    ),
+                    position: Position::new(0, 0),
+                },
+                work_done_progress_params: WorkDoneProgressParams {
+                    work_done_token: None,
+                },
+                partial_result_params: PartialResultParams {
+                    partial_result_token: None,
+                },
+                context: None,
+            })
+            .await;
+
+        assert_debug_snapshot!(result);
     }
 }

@@ -8,16 +8,19 @@ use log::{error, warn};
 use lspower::{
     jsonrpc::{Error, ErrorCode, Result},
     lsp::{
-        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-        CompletionResponse, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-        Documentation, FileChangeType, FileEvent, Hover, HoverContents, HoverParams,
-        HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        LanguageString, Location, MarkedString, MessageType, OneOf, Position, Range,
-        ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-        TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+        notification::Progress, request::WorkDoneProgressCreate, CompletionItem,
+        CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+        FileChangeType, FileEvent, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, LanguageString, Location,
+        MarkedString, MessageType, OneOf, Position, ProgressParams, ProgressParamsValue,
+        ProgressToken, Range, ServerCapabilities, SymbolInformation, SymbolKind,
+        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
+        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        WorkDoneProgressReport, WorkspaceSymbolParams,
     },
-    Client, LanguageServer, LspService, Server,
+    Client, LanguageServer, LspService, Server, TokenCanceller,
 };
 use salsa::{ParallelDatabase, Snapshot};
 use std::{
@@ -229,6 +232,82 @@ impl Backend {
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))
     }
+
+    async fn progress_begin<T>(&self, title: T) -> Result<ProgressToken>
+    where
+        T: Into<String> + std::fmt::Display,
+    {
+        let token = ProgressToken::String(format!("zeek-language-server/{}", &title));
+
+        if let Some(client) = &self.client {
+            let canceller = TokenCanceller::new();
+            client
+                .send_custom_request::<WorkDoneProgressCreate>(
+                    WorkDoneProgressCreateParams {
+                        token: token.clone(),
+                    },
+                    canceller.token(),
+                )
+                .await?;
+
+            let params = ProgressParams {
+                token: token.clone(),
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(
+                    WorkDoneProgressBegin {
+                        title: title.into(),
+                        ..WorkDoneProgressBegin::default()
+                    },
+                )),
+            };
+            client.send_custom_notification::<Progress>(params).await;
+        }
+
+        Ok(token)
+    }
+
+    async fn progress_end(&self, token: Option<ProgressToken>) {
+        let token = match token {
+            Some(t) => t,
+            None => return,
+        };
+
+        if let Some(client) = &self.client {
+            let params = ProgressParams {
+                token: token.clone(),
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(
+                    WorkDoneProgressEnd::default(),
+                )),
+            };
+            client.send_custom_notification::<Progress>(params).await;
+        }
+    }
+
+    async fn progress(
+        &self,
+        token: Option<ProgressToken>,
+        message: Option<String>,
+        percentage: Option<u32>,
+    ) {
+        let token = match token {
+            Some(t) => t,
+            None => return,
+        };
+
+        if let Some(client) = &self.client {
+            let params = ProgressParams {
+                token,
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::Report(
+                    WorkDoneProgressReport {
+                        message,
+                        percentage,
+                        ..WorkDoneProgressReport::default()
+                    },
+                )),
+            };
+
+            client.send_custom_notification::<Progress>(params).await;
+        }
+    }
 }
 
 #[lspower::async_trait]
@@ -298,35 +377,39 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        let files = params.changes.into_iter().filter_map(|c| match c.typ {
-            FileChangeType::CREATED => Some(c.uri),
-            _ => None,
-        });
+        let progress_token = self.progress_begin("Indexing").await.ok();
 
-        let _progress = files
-            .map(|uri| {
-                let source = match std::fs::read_to_string(uri.path()) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        warn!("failed to read '{}': {}", &uri, e);
-                        return None;
-                    }
-                };
+        for change in params.changes {
+            let uri = change.uri;
 
-                if let Ok(mut state) = self.state_mut() {
-                    let uri = Arc::new(uri);
+            #[allow(clippy::cast_possible_truncation)]
+            self.progress(progress_token.clone(), Some(uri.path().to_string()), None)
+                .await;
 
-                    state.set_source(uri.clone(), Arc::new(source));
+            let source = match std::fs::read_to_string(uri.path()) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("failed to read '{}': {}", &uri, e);
+                    continue;
+                }
+            };
 
-                    let mut files = state.files();
-                    let files = Arc::make_mut(&mut files);
-                    files.insert(uri);
-                    state.set_files(Arc::new(files.clone()));
-                };
+            if let Ok(mut state) = self.state_mut() {
+                let uri = Arc::new(uri);
 
-                Some(())
-            })
-            .collect::<Vec<_>>();
+                state.set_source(uri.clone(), Arc::new(source));
+
+                let mut files = state.files();
+                let files = Arc::make_mut(&mut files);
+                files.insert(uri.clone());
+                state.set_files(Arc::new(files.clone()));
+
+                // Precompute decls in the file.
+                let _decls = state.decls(uri);
+            };
+        }
+
+        self.progress_end(progress_token).await;
     }
 
     #[instrument]
@@ -534,11 +617,7 @@ impl LanguageServer for Backend {
             .map_err(|_| Error::new(ErrorCode::InternalError))?
             .lines()
             .next()
-            .map(str::trim)
-            .map(|t| {
-                eprintln!("completing {} with text: {}", node.kind(), t);
-                t
-            });
+            .map(str::trim);
 
         let items: Vec<_> = {
             let mut items = HashSet::new();

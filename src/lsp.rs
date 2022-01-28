@@ -216,13 +216,14 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-        if let Ok(prefixes) = zeek::prefixes().await {
-            if let Ok(mut state) = self.state.lock() {
-                // Set up prefixes for normalization of system files.
-                state.set_prefixes(Arc::new(prefixes));
+        let prefixes = match zeek::prefixes().await {
+            Ok(p) => p,
+            Err(_) => Vec::new(),
+        };
 
-                state.set_files(Arc::new(BTreeSet::new()));
-            }
+        if let Ok(mut state) = self.state.lock() {
+            state.set_files(Arc::new(BTreeSet::new()));
+            state.set_prefixes(Arc::new(prefixes));
         }
 
         match zeek::system_files().await {

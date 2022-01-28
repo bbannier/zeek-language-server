@@ -307,8 +307,7 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
 mod test {
     use std::sync::Arc;
 
-    use super::{decls_, loads_raw};
-    use crate::{lsp::Database, parse::Parse, query::in_export, Files};
+    use crate::{lsp::Database, parse::Parse, Files};
     use insta::assert_debug_snapshot;
     use lspower::lsp::Url;
     use tree_sitter::Node;
@@ -330,7 +329,7 @@ mod test {
               }";
 
     #[test]
-    fn test_loads() {
+    fn loads_raw() {
         let parse = |source: &str| {
             let mut db = Database::default();
             let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
@@ -340,7 +339,7 @@ mod test {
         };
 
         let loads = |source: &'static str| {
-            loads_raw(parse(&source).expect("cannot parse").root_node(), &source)
+            super::loads_raw(parse(&source).expect("cannot parse").root_node(), &source)
         };
 
         assert_eq!(loads(""), Vec::<&str>::new());
@@ -352,7 +351,7 @@ mod test {
     }
 
     #[test]
-    fn test_decls_() {
+    fn decls_() {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
         db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
@@ -360,7 +359,7 @@ mod test {
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| {
-            let mut xs = decls_(n, uri.clone(), SOURCE)
+            let mut xs = super::decls_(n, uri.clone(), SOURCE)
                 .into_iter()
                 .collect::<Vec<_>>();
             xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
@@ -388,13 +387,13 @@ mod test {
     }
 
     #[test]
-    fn test_in_export() {
+    fn in_export() {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
         db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri.clone()).unwrap();
 
-        assert!(!in_export(tree.root_node()));
+        assert!(!super::in_export(tree.root_node()));
 
         let const_node = tree
             .root_node()
@@ -402,13 +401,13 @@ mod test {
             .and_then(|c| c.named_child(0))
             .unwrap();
         assert_eq!(const_node.kind(), "const_decl");
-        assert!(in_export(const_node));
+        assert!(super::in_export(const_node));
 
         let zeek_init_node = tree
             .root_node()
             .named_child(tree.root_node().named_child_count() - 1)
             .unwrap();
         assert_eq!(zeek_init_node.kind(), "event_decl");
-        assert!(!in_export(zeek_init_node));
+        assert!(!super::in_export(zeek_init_node));
     }
 }

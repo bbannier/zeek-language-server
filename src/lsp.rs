@@ -409,6 +409,15 @@ impl LanguageServer for Backend {
             };
         }
 
+        // Reload implicit declarations.
+        self.progress(
+            progress_token.clone(),
+            Some("implicit loads".to_string()),
+            None,
+        )
+        .await;
+        let _implicit = self.state().map(|s| s.implicit_decls());
+
         self.progress_end(progress_token).await;
     }
 

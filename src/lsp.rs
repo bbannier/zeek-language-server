@@ -19,6 +19,7 @@ use lspower::{
     },
     Client, LanguageServer, LspService, Server,
 };
+use salsa::{ParallelDatabase, Snapshot};
 use std::{
     collections::{BTreeSet, HashSet},
     fmt::Debug,
@@ -39,6 +40,14 @@ pub struct Database {
 }
 
 impl salsa::Database for Database {}
+
+impl salsa::ParallelDatabase for Database {
+    fn snapshot(&self) -> salsa::Snapshot<Self> {
+        salsa::Snapshot::new(Database {
+            storage: self.storage.snapshot(),
+        })
+    }
+}
 
 impl Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -211,7 +220,11 @@ impl Backend {
         }
     }
 
-    fn state(&self) -> Result<MutexGuard<Database>> {
+    fn state(&self) -> Result<Snapshot<Database>> {
+        self.state_mut().map(|d| d.snapshot())
+    }
+
+    fn state_mut(&self) -> Result<MutexGuard<Database>> {
         self.state
             .lock()
             .map_err(|_| Error::new(ErrorCode::InternalError))
@@ -222,7 +235,7 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-        if let Ok(mut state) = self.state() {
+        if let Ok(mut state) = self.state_mut() {
             state.set_files(Arc::new(BTreeSet::new()));
             state.set_prefixes(Arc::new(Vec::new()));
         }
@@ -255,7 +268,7 @@ impl LanguageServer for Backend {
             Err(_) => Vec::new(),
         };
 
-        if let Ok(mut state) = self.state() {
+        if let Ok(mut state) = self.state_mut() {
             state.set_prefixes(Arc::new(prefixes));
         }
 
@@ -300,7 +313,7 @@ impl LanguageServer for Backend {
                     }
                 };
 
-                if let Ok(mut state) = self.state() {
+                if let Ok(mut state) = self.state_mut() {
                     let uri = Arc::new(uri);
 
                     state.set_source(uri.clone(), Arc::new(source));
@@ -321,7 +334,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let source = params.text_document.text;
 
-        if let Ok(mut state) = self.state() {
+        if let Ok(mut state) = self.state_mut() {
             let uri = Arc::new(uri);
 
             state.set_source(uri.clone(), Arc::new(source));
@@ -348,7 +361,7 @@ impl LanguageServer for Backend {
 
         let source = changes.text.to_string();
 
-        if let Ok(mut state) = self.state() {
+        if let Ok(mut state) = self.state_mut() {
             let uri = Arc::new(uri);
             state.set_source(uri, Arc::new(source));
         }

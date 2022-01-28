@@ -9,7 +9,7 @@ edition = "2021"
 cc = "1.0.72"
 
 [dev-dependencies]
-insta = "1.11.0"
+insta = "1.12.0"
 
 [features]
 default = ["jaeger"]
@@ -25,7 +25,7 @@ opentelemetry = { version = "0.16.0", features = ["trace", "rt-tokio"], optional
 opentelemetry-jaeger = { version = "0.15.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
 rust-fuzzy-search = "0.1.1"
 salsa = "0.16.1"
-tokio = { version = "1.15.0", features = ["macros", "rt-multi-thread", "io-std", "process"] }
+tokio = { version = "1.16.0", features = ["macros", "rt-multi-thread", "io-std", "process"] }
 tracing = "0.1.29"
 tracing-opentelemetry = { version = "0.16.0", optional = true }
 tracing-subscriber = { version = "0.3.6", features = ["tracing-log"], optional = true }

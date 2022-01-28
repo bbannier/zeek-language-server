@@ -216,32 +216,9 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-        let prefixes = match zeek::prefixes().await {
-            Ok(p) => p,
-            Err(_) => Vec::new(),
-        };
-
         if let Ok(mut state) = self.state.lock() {
             state.set_files(Arc::new(BTreeSet::new()));
-            state.set_prefixes(Arc::new(prefixes));
-        }
-
-        match zeek::system_files().await {
-            Ok(files) => {
-                self.did_change_watched_files(DidChangeWatchedFilesParams {
-                    changes: files
-                        .into_iter()
-                        .filter_map(|f| {
-                            let uri = Url::from_file_path(f.path).ok()?;
-                            Some(FileEvent::new(uri, FileChangeType::CREATED))
-                        })
-                        .collect(),
-                })
-                .await;
-            }
-            Err(e) => {
-                self.log_message(MessageType::ERROR, e).await;
-            }
+            state.set_prefixes(Arc::new(Vec::new()));
         }
 
         Ok(InitializeResult {
@@ -266,6 +243,33 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         self.log_message(MessageType::INFO, "server initialized!")
             .await;
+
+        let prefixes = match zeek::prefixes().await {
+            Ok(p) => p,
+            Err(_) => Vec::new(),
+        };
+
+        if let Ok(mut state) = self.state.lock() {
+            state.set_prefixes(Arc::new(prefixes));
+        }
+
+        match zeek::system_files().await {
+            Ok(files) => {
+                self.did_change_watched_files(DidChangeWatchedFilesParams {
+                    changes: files
+                        .into_iter()
+                        .filter_map(|f| {
+                            let uri = Url::from_file_path(f.path).ok()?;
+                            Some(FileEvent::new(uri, FileChangeType::CREATED))
+                        })
+                        .collect(),
+                })
+                .await;
+            }
+            Err(e) => {
+                self.log_message(MessageType::ERROR, e).await;
+            }
+        }
     }
 
     #[instrument]

@@ -23,7 +23,7 @@ use std::{
     collections::{BTreeSet, HashSet},
     fmt::Debug,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 use tracing::instrument;
 
@@ -210,13 +210,19 @@ impl Backend {
             client.log_message(typ, message).await;
         }
     }
+
+    fn state(&self) -> Result<MutexGuard<Database>> {
+        self.state
+            .lock()
+            .map_err(|_| Error::new(ErrorCode::InternalError))
+    }
 }
 
 #[lspower::async_trait]
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.state() {
             state.set_files(Arc::new(BTreeSet::new()));
             state.set_prefixes(Arc::new(Vec::new()));
         }
@@ -249,7 +255,7 @@ impl LanguageServer for Backend {
             Err(_) => Vec::new(),
         };
 
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.state() {
             state.set_prefixes(Arc::new(prefixes));
         }
 
@@ -294,7 +300,7 @@ impl LanguageServer for Backend {
                     }
                 };
 
-                if let Ok(mut state) = self.state.lock() {
+                if let Ok(mut state) = self.state() {
                     let uri = Arc::new(uri);
 
                     state.set_source(uri.clone(), Arc::new(source));
@@ -315,7 +321,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let source = params.text_document.text;
 
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.state() {
             let uri = Arc::new(uri);
 
             state.set_source(uri.clone(), Arc::new(source));
@@ -342,7 +348,7 @@ impl LanguageServer for Backend {
 
         let source = changes.text.to_string();
 
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.state() {
             let uri = Arc::new(uri);
             state.set_source(uri, Arc::new(source));
         }
@@ -354,10 +360,7 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri.clone());
 
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| Error::new(ErrorCode::InternalError))?;
+        let state = self.state()?;
 
         // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
         // should return some nice rendering of the hovered node.
@@ -412,10 +415,7 @@ impl LanguageServer for Backend {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| Error::new(ErrorCode::InternalError))?;
+        let state = self.state()?;
 
         let uri = Arc::new(params.text_document.uri);
 
@@ -465,10 +465,7 @@ impl LanguageServer for Backend {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<SymbolInformation>>> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| Error::new(ErrorCode::InternalError))?;
+        let state = self.state()?;
 
         let query = params.query.to_lowercase();
 
@@ -503,10 +500,8 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let position = params.text_document_position;
         let uri = Arc::new(position.text_document.uri);
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| Error::new(ErrorCode::InternalError))?;
+
+        let state = self.state()?;
 
         let source = state.source(uri.clone());
 

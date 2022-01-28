@@ -493,7 +493,25 @@ impl LanguageServer for Backend {
 
         if node.kind() == "id" {
             let id = text;
-            if let Some(decl) = query::decl_at(id, node, uri, &source) {
+
+            // Try to find a decl with the given name up the tree.
+            let mut node = node;
+            let mut decl;
+            loop {
+                decl = query::decl_at(id, node, uri.clone(), &source);
+
+                if decl.is_some() {
+                    break;
+                }
+
+                if let Some(p) = node.parent() {
+                    node = p;
+                } else {
+                    break;
+                }
+            }
+
+            if let Some(decl) = decl {
                 contents.push(MarkedString::String(decl.documentation));
             }
         }

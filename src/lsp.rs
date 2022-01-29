@@ -520,6 +520,19 @@ impl LanguageServer for Backend {
                 }
             }
 
+            // If we haven't found a decl yet, look in loaded modules.
+            if decl.is_none() {
+                decl = state
+                    .implicit_decls()
+                    .iter()
+                    .chain(state.loaded_decls(uri).iter())
+                    .find(|d| {
+                        dbg!((&d.fqid, id));
+                        d.fqid == id
+                    })
+                    .cloned();
+            }
+
             if let Some(decl) = decl {
                 contents.push(MarkedString::String(decl.documentation));
             }

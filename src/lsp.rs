@@ -708,17 +708,23 @@ impl LanguageServer for Backend {
             Error::new(ErrorCode::InternalError)
         })?;
 
-        if node.kind() == "id" {
-            let id = text;
-            if let Some(decl) = decl_at(&state, node, uri, id) {
-                return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
-                    decl.uri.as_ref().clone(),
-                    decl.range,
-                ))));
+        let location = match node.kind() {
+            "id" => decl_at(&state, node, uri, text)
+                .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
+            "file" => {
+                let file = PathBuf::from(text);
+                load_to_file(
+                    &file,
+                    uri.as_ref(),
+                    state.files().as_ref(),
+                    state.prefixes().as_ref(),
+                )
+                .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
             }
+            _ => None,
         };
 
-        Ok(None)
+        Ok(location.map(|l| GotoDefinitionResponse::Scalar(l)))
     }
 }
 

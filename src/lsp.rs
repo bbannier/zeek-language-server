@@ -79,54 +79,18 @@ pub trait ServerState: Files + Parse + Query {
     fn implicit_decls(&self) -> Arc<Vec<Decl>>;
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn loaded_files(db: &dyn ServerState, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
-    let file_dir = uri
-        .to_file_path()
-        .ok()
-        .and_then(|f| f.parent().map(Path::to_path_buf));
-
     let files = db.files();
 
     let prefixes = db.prefixes();
 
-    let loads: Vec<_> = db.loads(uri).iter().map(PathBuf::from).collect();
+    let loads: Vec<_> = db.loads(uri.clone()).iter().map(PathBuf::from).collect();
 
     let mut loaded_files = Vec::new();
 
     for load in &loads {
-        let f = file_dir.iter().chain(prefixes.iter()).find_map(|prefix| {
-            // Files in the given prefix.
-            let files: Vec<_> = files
-                .iter()
-                .filter_map(|f| {
-                    if let Ok(p) = f.to_file_path().ok()?.strip_prefix(prefix) {
-                        Some((f, p.to_path_buf()))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // File known w/ extension.
-            let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
-
-            // File known w/o extension.
-            let known_no_ext = files
-                .iter()
-                .find(|(_, p)| p.ends_with(load.with_extension("zeek")));
-
-            // Load is directory with `__load__.zeek`.
-            let known_directory = files
-                .iter()
-                .find(|(_, p)| p.ends_with(load.join("__load__.zeek")));
-
-            known_exactly
-                .or(known_no_ext)
-                .or(known_directory)
-                .map(|(f, _)| (*f).clone())
-        });
-
-        if let Some(f) = f {
+        if let Some(f) = load_to_file(load, uri.as_ref(), &files, &prefixes) {
             loaded_files.push(f);
         }
     }
@@ -159,6 +123,50 @@ fn loaded_files_recursive(db: &dyn ServerState, url: Arc<Url>) -> Arc<Vec<Arc<Ur
     }
 
     Arc::new(files)
+}
+
+fn load_to_file(
+    load: &Path,
+    base: &Url,
+    files: &BTreeSet<Arc<Url>>,
+    prefixes: &[PathBuf],
+) -> Option<Arc<Url>> {
+    let file_dir = base
+        .to_file_path()
+        .ok()
+        .and_then(|f| f.parent().map(Path::to_path_buf));
+
+    file_dir.iter().chain(prefixes.iter()).find_map(|prefix| {
+        // Files in the given prefix.
+        let files: Vec<_> = files
+            .iter()
+            .filter_map(|f| {
+                if let Ok(p) = f.to_file_path().ok()?.strip_prefix(prefix) {
+                    Some((f, p.to_path_buf()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // File known w/ extension.
+        let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
+
+        // File known w/o extension.
+        let known_no_ext = files
+            .iter()
+            .find(|(_, p)| p.ends_with(load.with_extension("zeek")));
+
+        // Load is directory with `__load__.zeek`.
+        let known_directory = files
+            .iter()
+            .find(|(_, p)| p.ends_with(load.join("__load__.zeek")));
+
+        known_exactly
+            .or(known_no_ext)
+            .or(known_directory)
+            .map(|(f, _)| (*f).clone())
+    })
 }
 
 #[instrument(skip(db))]

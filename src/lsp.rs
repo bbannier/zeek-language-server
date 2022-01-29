@@ -519,11 +519,25 @@ impl LanguageServer for Backend {
             }),
         ];
 
-        if node.kind() == "id" {
-            let id = text;
-            if let Some(decl) = decl_at(&state, node, uri, id) {
-                contents.push(MarkedString::String(decl.documentation));
+        match node.kind() {
+            "id" => {
+                if let Some(decl) = decl_at(&state, node, uri, text) {
+                    contents.push(MarkedString::String(decl.documentation));
+                }
             }
+            "file" => {
+                let file = PathBuf::from(text);
+                let uri = load_to_file(
+                    &file,
+                    uri.as_ref(),
+                    state.files().as_ref(),
+                    state.prefixes().as_ref(),
+                );
+                if let Some(uri) = uri {
+                    contents.push(MarkedString::String(uri.path().to_string()));
+                }
+            }
+            _ => {}
         }
 
         let hover = Hover {

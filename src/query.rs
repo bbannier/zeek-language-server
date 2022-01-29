@@ -15,7 +15,7 @@ use crate::{
     to_range,
 };
 
-#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum DeclKind {
     Global,
     Option,
@@ -23,11 +23,17 @@ pub enum DeclKind {
     Redef,
     RedefEnum,
     RedefRecord,
-    Type,
+    Type(Vec<Decl>),
     Func,
     Hook,
     Event,
     Variable,
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub struct TypeField {
+    pub id: String,
+    pub typ: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -173,6 +179,30 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                 module_id.unwrap_or(ModuleId::Global)
             };
 
+            let id = c.nodes_for_capture_index(c_id).next()?;
+
+            let range = to_range(decl.range()).ok()?;
+            let selection_range = to_range(id.range()).ok()?;
+
+            let id = id.utf8_text(source).ok()?.to_string();
+
+            let documentation = if let Some(docs) = zeekygen_comments(decl, source) {
+                format!(
+                    "{docs}\n```zeek\n{source}\n```",
+                    source = decl.utf8_text(source).ok()?
+                )
+            } else {
+                format!(
+                    "```zeek\n{source}\n```",
+                    source = decl.utf8_text(source).ok()?
+                )
+            };
+
+            let fqid = match &module {
+                ModuleId::Global => id.clone(),
+                ModuleId::String(m) => format!("{}::{}", &m, &id),
+            };
+
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
                 "var_decl" => {
@@ -193,76 +223,60 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                 "redef_enum_decl" => DeclKind::RedefEnum,
                 "redef_record_decl" => DeclKind::RedefRecord,
                 "option_decl" => DeclKind::Option,
-                "type_decl" => DeclKind::Type,
+                "type_decl" => {
+                    let typ = decl.named_child(1)?;
+                    assert_eq!(typ.kind(), "type");
+
+                    let fields = typ
+                        .named_children(&mut typ.walk())
+                        .filter_map(|c| {
+                            if c.kind() == "type_spec" {
+                                let id_ = c.named_child(0)?;
+                                assert_eq!(id_.kind(), "id");
+                                let id = id_.utf8_text(source).ok()?;
+
+                                let typ = c.named_child(1)?;
+                                assert_eq!(typ.kind(), "type");
+
+                                let documentation = if let Some(docs) = zeekygen_comments(c, source)
+                                {
+                                    format!(
+                                        "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
+                                        source = c.utf8_text(source).ok()?
+                                    )
+                                } else {
+                                    format!(
+                                        "```zeek\n# In {fqid}\n{source}\n```",
+                                        source = c.utf8_text(source).ok()?
+                                    )
+                                };
+
+                                Some(Decl {
+                                    id: id.to_string(),
+                                    fqid: format!("{fqid}::{id}"),
+                                    kind: DeclKind::Variable,
+                                    range: to_range(c.range()).ok()?,
+                                    selection_range: to_range(id_.range()).ok()?,
+                                    documentation,
+                                    uri: uri.clone(),
+
+                                    // FIXME(bbannier): these fields seem not so useful here:
+                                    module: ModuleId::Global,
+                                    is_export: false,
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    DeclKind::Type(fields)
+                }
                 "event_decl" => DeclKind::Event,
                 "func_decl" => DeclKind::Func,
                 _ => {
                     return None;
                 }
-            };
-
-            let id = c.nodes_for_capture_index(c_id).next()?;
-
-            let range = to_range(decl.range()).ok()?;
-            let selection_range = to_range(id.range()).ok()?;
-
-            let id = id.utf8_text(source).ok()?.to_string();
-
-            let docs = {
-                // Extracting the zeekygen comments with the query seems to hit some polynomial
-                // edge case in tree-sitter. Extract them by hand for the time being.
-                let mut docs = VecDeque::new();
-
-                let mut node = decl.prev_named_sibling();
-                while let Some(n) = node {
-                    if n.kind() != "zeekygen_next_comment" {
-                        break;
-                    }
-
-                    let c = n.utf8_text(source).ok()?;
-                    let c = match c.strip_prefix("##") {
-                        Some(c) => c,
-                        None => c,
-                    };
-                    docs.push_front(c.trim());
-
-                    node = n.prev_named_sibling();
-                }
-
-                let mut node = decl.next_named_sibling();
-                while let Some(n) = node {
-                    if n.kind() != "zeekygen_prev_comment" {
-                        break;
-                    }
-
-                    let c = n.utf8_text(source).ok()?;
-                    let c = match c.strip_prefix("##<") {
-                        Some(c) => c,
-                        None => c,
-                    };
-                    docs.push_back(c.trim());
-
-                    node = n.next_named_sibling();
-                }
-
-                docs.iter().join("\n")
-            };
-
-            let documentation = if docs.is_empty() {
-                format!(
-                    "```zeek\n{source}\n```",
-                    source = decl.utf8_text(source).ok()?
-                )
-            } else {
-                format!(
-                    "{docs}\n```zeek\n{source}\n```",
-                    source = decl.utf8_text(source).ok()?
-                )
-            };
-
-            let fqid = match &module {
-                ModuleId::Global => id.clone(),
-                ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
 
             Some(Decl {
@@ -357,6 +371,51 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
     )
 }
 
+/// Extracts pre and post zeekygen comments for the given node.
+fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
+    // Extracting the zeekygen comments with the query seems to hit some polynomial
+    // edge case in tree-sitter. Extract them by hand for the time being.
+    let mut docs = VecDeque::new();
+
+    let mut node = x.prev_named_sibling();
+    while let Some(n) = node {
+        if n.kind() != "zeekygen_next_comment" {
+            break;
+        }
+
+        let c = n.utf8_text(source).ok()?;
+        let c = match c.strip_prefix("##") {
+            Some(c) => c,
+            None => c,
+        };
+        docs.push_front(c.trim());
+
+        node = n.prev_named_sibling();
+    }
+
+    let mut node = x.next_named_sibling();
+    while let Some(n) = node {
+        if n.kind() != "zeekygen_prev_comment" {
+            break;
+        }
+
+        let c = n.utf8_text(source).ok()?;
+        let c = match c.strip_prefix("##<") {
+            Some(c) => c,
+            None => c,
+        };
+        docs.push_back(c.trim());
+
+        node = n.next_named_sibling();
+    }
+
+    if docs.is_empty() {
+        None
+    } else {
+        Some(docs.iter().join("\n"))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
@@ -376,6 +435,7 @@ mod test {
               ## Y does the y.
               ## It takes no arguments.
               type Y: record {
+                  ## A field.
                   y: vector of count &optional;
               }; ##< But it also has a field y
 

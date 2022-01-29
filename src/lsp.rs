@@ -563,11 +563,28 @@ impl LanguageServer for Backend {
                 name: d.id.clone(),
                 range: d.range,
                 selection_range: d.selection_range,
-                kind: to_symbol_kind(d.kind),
+                kind: to_symbol_kind(&d.kind),
                 deprecated: None,
                 detail: None,
                 tags: None,
-                children: None,
+                children: match &d.kind {
+                    DeclKind::Type(fields) => Some(
+                        fields
+                            .iter()
+                            .map(|f| DocumentSymbol {
+                                name: f.id.clone(),
+                                range: f.range,
+                                selection_range: f.selection_range,
+                                deprecated: None,
+                                children: None,
+                                kind: to_symbol_kind(&f.kind),
+                                tags: None,
+                                detail: None,
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
+                },
             }
         };
 
@@ -619,7 +636,7 @@ impl LanguageServer for Backend {
                     #[allow(deprecated)]
                     SymbolInformation {
                         name: d.fqid.clone(),
-                        kind: to_symbol_kind(d.kind),
+                        kind: to_symbol_kind(&d.kind),
 
                         location: Location::new(url.clone(), d.range),
                         container_name: Some(format!("{}", &d.module)),
@@ -847,14 +864,14 @@ fn resolve(
         .cloned()
 }
 
-fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
+fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
     match kind {
         DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::VARIABLE,
         DeclKind::Option => SymbolKind::PROPERTY,
         DeclKind::Const => SymbolKind::CONSTANT,
         DeclKind::RedefEnum => SymbolKind::ENUM,
         DeclKind::RedefRecord => SymbolKind::INTERFACE,
-        DeclKind::Type => SymbolKind::CLASS,
+        DeclKind::Type(_) => SymbolKind::CLASS,
         DeclKind::Func => SymbolKind::FUNCTION,
         DeclKind::Hook => SymbolKind::OPERATOR,
         DeclKind::Event => SymbolKind::EVENT,
@@ -864,20 +881,20 @@ fn to_symbol_kind(kind: DeclKind) -> SymbolKind {
 fn to_completion_item(d: &Decl) -> CompletionItem {
     CompletionItem {
         label: d.fqid.clone(),
-        kind: Some(to_completion_item_kind(d.kind)),
+        kind: Some(to_completion_item_kind(&d.kind)),
         documentation: Some(Documentation::String(d.documentation.clone())),
         ..CompletionItem::default()
     }
 }
 
-fn to_completion_item_kind(kind: DeclKind) -> CompletionItemKind {
+fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
     match kind {
         DeclKind::Global | DeclKind::Variable | DeclKind::Redef => CompletionItemKind::VARIABLE,
         DeclKind::Option => CompletionItemKind::PROPERTY,
         DeclKind::Const => CompletionItemKind::CONSTANT,
         DeclKind::RedefEnum => CompletionItemKind::ENUM,
         DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
-        DeclKind::Type => CompletionItemKind::CLASS,
+        DeclKind::Type(_) => CompletionItemKind::CLASS,
         DeclKind::Func => CompletionItemKind::FUNCTION,
         DeclKind::Hook => CompletionItemKind::OPERATOR,
         DeclKind::Event => CompletionItemKind::EVENT,

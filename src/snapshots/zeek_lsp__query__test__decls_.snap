@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 437
+assertion_line: 489
 expression: root_decls
 
 ---
@@ -93,7 +93,49 @@ expression: root_decls
         ),
         id: "Y",
         fqid: "test::Y",
-        kind: Type,
+        kind: Type(
+            [
+                Decl {
+                    module: Global,
+                    id: "y",
+                    fqid: "test::Y::y",
+                    kind: Variable,
+                    is_export: false,
+                    range: Range {
+                        start: Position {
+                            line: 11,
+                            character: 18,
+                        },
+                        end: Position {
+                            line: 11,
+                            character: 47,
+                        },
+                    },
+                    selection_range: Range {
+                        start: Position {
+                            line: 11,
+                            character: 18,
+                        },
+                        end: Position {
+                            line: 11,
+                            character: 19,
+                        },
+                    },
+                    documentation: "A field.\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
+                    uri: Url {
+                        scheme: "file",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: None,
+                        port: None,
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                },
+            ],
+        ),
         is_export: false,
         range: Range {
             start: Position {
@@ -101,7 +143,7 @@ expression: root_decls
                 character: 14,
             },
             end: Position {
-                line: 11,
+                line: 12,
                 character: 16,
             },
         },
@@ -115,7 +157,7 @@ expression: root_decls
                 character: 20,
             },
         },
-        documentation: "Y does the y.\nIt takes no arguments.\nBut it also has a field y\n```zeek\ntype Y: record {\n                  y: vector of count &optional;\n              };\n```",
+        documentation: "Y does the y.\nIt takes no arguments.\nBut it also has a field y\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,
@@ -138,21 +180,21 @@ expression: root_decls
         is_export: false,
         range: Range {
             start: Position {
-                line: 14,
+                line: 15,
                 character: 14,
             },
             end: Position {
-                line: 17,
+                line: 18,
                 character: 15,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 14,
+                line: 15,
                 character: 20,
             },
             end: Position {
-                line: 14,
+                line: 15,
                 character: 29,
             },
         },

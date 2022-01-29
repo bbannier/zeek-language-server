@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 663
+assertion_line: 1033
 expression: db.0.loaded_files_recursive(a)
 
 ---

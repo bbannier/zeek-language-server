@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 388
+assertion_line: 502
 expression: func_decls
 
 ---
@@ -15,21 +15,21 @@ expression: func_decls
         is_export: false,
         range: Range {
             start: Position {
-                line: 14,
+                line: 15,
                 character: 34,
             },
             end: Position {
-                line: 14,
+                line: 15,
                 character: 44,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 14,
+                line: 15,
                 character: 40,
             },
             end: Position {
-                line: 14,
+                line: 15,
                 character: 41,
             },
         },

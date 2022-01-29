@@ -12,12 +12,12 @@ use lspower::{
         CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
         DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
         DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
-        FileChangeType, FileEvent, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, LanguageString, Location,
-        MarkedString, MessageType, OneOf, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+        InitializedParams, LanguageString, Location, MarkedString, MessageType, OneOf, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server, TokenCanceller,
@@ -331,6 +331,7 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec!["$".into(), "?".into()]),
                     ..CompletionOptions::default()
                 }),
+                definition_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -461,9 +462,9 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let params = &params.text_document_position_params;
+        let params = params.text_document_position_params;
 
-        let uri = Arc::new(params.text_document.uri.clone());
+        let uri = Arc::new(params.text_document.uri);
 
         let state = self.state()?;
 
@@ -502,7 +503,7 @@ impl LanguageServer for Backend {
 
         if node.kind() == "id" {
             let id = text;
-            if let Some(decl) = decls_at(&state, node, uri, id) {
+            if let Some(decl) = decl_at(&state, node, uri, id) {
                 contents.push(MarkedString::String(decl.documentation));
             }
         }
@@ -672,6 +673,45 @@ impl LanguageServer for Backend {
 
         Ok(Some(CompletionResponse::from(items)))
     }
+
+    #[instrument]
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let params = params.text_document_position_params;
+        let uri = Arc::new(params.text_document.uri);
+        let position = params.position;
+
+        let state = self.state()?;
+        let tree = state.parse(uri.clone());
+        let tree = match tree.as_ref() {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let node = match tree.named_descendant_for_position(&position) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+        let source = state.source(uri.clone());
+
+        let text = node.utf8_text(source.as_bytes()).map_err(|e| {
+            error!("could not get source text: {}", e);
+            Error::new(ErrorCode::InternalError)
+        })?;
+
+        if node.kind() == "id" {
+            let id = text;
+            if let Some(decl) = decl_at(&state, node, uri, id) {
+                return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
+                    decl.uri.as_ref().clone(),
+                    decl.range,
+                ))));
+            }
+        };
+
+        Ok(None)
+    }
 }
 
 /// Extract all error nodes under the given node.
@@ -688,7 +728,7 @@ fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
 }
 
 /// Find decl with the given ID from the node up and in all other loaded files.
-fn decls_at(
+fn decl_at(
     snapshot: &Snapshot<Database>,
     node: tree_sitter::Node,
     uri: Arc<Url>,

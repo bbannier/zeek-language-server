@@ -502,38 +502,7 @@ impl LanguageServer for Backend {
 
         if node.kind() == "id" {
             let id = text;
-
-            // Try to find a decl with the given name up the tree.
-            let mut node = node;
-            let mut decl;
-            loop {
-                decl = query::decl_at(id, node, uri.clone(), &source);
-
-                if decl.is_some() {
-                    break;
-                }
-
-                if let Some(p) = node.parent() {
-                    node = p;
-                } else {
-                    break;
-                }
-            }
-
-            // If we haven't found a decl yet, look in loaded modules.
-            if decl.is_none() {
-                decl = state
-                    .implicit_decls()
-                    .iter()
-                    .chain(state.loaded_decls(uri).iter())
-                    .find(|d| {
-                        dbg!((&d.fqid, id));
-                        d.fqid == id
-                    })
-                    .cloned();
-            }
-
-            if let Some(decl) = decl {
+            if let Some(decl) = decls_at(&state, node, uri, id) {
                 contents.push(MarkedString::String(decl.documentation));
             }
         }
@@ -716,6 +685,42 @@ fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
     } else {
         res.collect()
     }
+}
+
+/// Find decl with the given ID from the node up and in all other loaded files.
+fn decls_at(
+    snapshot: &Snapshot<Database>,
+    node: tree_sitter::Node,
+    uri: Arc<Url>,
+    id: &str,
+) -> Option<Decl> {
+    // Try to find a decl with the given name up the tree.
+    let mut node = node;
+    let mut decl;
+    loop {
+        decl = query::decl_at(id, node, uri.clone(), &snapshot.source(uri.clone()));
+
+        if decl.is_some() {
+            return decl;
+        }
+
+        if let Some(p) = node.parent() {
+            node = p;
+        } else {
+            break;
+        }
+    }
+
+    // We haven't found a decl yet, look in loaded modules.
+    snapshot
+        .implicit_decls()
+        .iter()
+        .chain(snapshot.loaded_decls(uri).iter())
+        .find(|d| {
+            dbg!((&d.fqid, id));
+            d.fqid == id
+        })
+        .cloned()
 }
 
 fn to_symbol_kind(kind: DeclKind) -> SymbolKind {

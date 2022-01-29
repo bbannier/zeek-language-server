@@ -136,6 +136,11 @@ fn load_to_file(
         .ok()
         .and_then(|f| f.parent().map(Path::to_path_buf));
 
+    let load = match load.strip_prefix(".") {
+        Ok(l) => l,
+        Err(_) => load,
+    };
+
     file_dir.iter().chain(prefixes.iter()).find_map(|prefix| {
         // Files in the given prefix.
         let files: Vec<_> = files
@@ -770,10 +775,7 @@ fn decl_at(
         .implicit_decls()
         .iter()
         .chain(snapshot.loaded_decls(uri).iter())
-        .find(|d| {
-            dbg!((&d.fqid, id));
-            d.fqid == id
-        })
+        .find(|d| d.fqid == id)
         .cloned()
 }
 

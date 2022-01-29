@@ -521,7 +521,7 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = decl_at(&state, node, uri, text) {
+                if let Some(decl) = resolve(&state, node, uri, text) {
                     contents.push(MarkedString::String(decl.documentation));
                 }
             }
@@ -733,7 +733,7 @@ impl LanguageServer for Backend {
         })?;
 
         let location = match node.kind() {
-            "id" => decl_at(&state, node, uri, text)
+            "id" => resolve(&state, node, uri, text)
                 .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
             "file" => {
                 let file = PathBuf::from(text);
@@ -766,7 +766,7 @@ fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
 }
 
 /// Find decl with the given ID from the node up and in all other loaded files.
-fn decl_at(
+fn resolve(
     snapshot: &Snapshot<Database>,
     node: tree_sitter::Node,
     uri: Arc<Url>,

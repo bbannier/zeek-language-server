@@ -446,9 +446,11 @@ impl LanguageServer for Backend {
             state.set_source(uri.clone(), Arc::new(source));
 
             let mut files = state.files();
-            let files = Arc::make_mut(&mut files);
-            files.insert(uri.clone());
-            state.set_files(Arc::new(files.clone()));
+            if !files.contains(&uri) {
+                let files = Arc::make_mut(&mut files);
+                files.insert(uri.clone());
+                state.set_files(Arc::new(files.clone()));
+            }
 
             // Precompute decls in this module.
             let _decls = state.decls(uri);

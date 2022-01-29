@@ -1,6 +1,6 @@
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, Query},
+    query::{self, Decl, DeclKind, ModuleId, Query},
     to_range, zeek, Files,
 };
 use itertools::Itertools;
@@ -748,7 +748,7 @@ impl LanguageServer for Backend {
             _ => None,
         };
 
-        Ok(location.map(|l| GotoDefinitionResponse::Scalar(l)))
+        Ok(location.map(GotoDefinitionResponse::Scalar))
     }
 }
 
@@ -776,7 +776,56 @@ fn decl_at(
     let mut node = node;
     let mut decl;
     loop {
-        decl = query::decl_at(id, node, uri.clone(), &snapshot.source(uri.clone()));
+        let source = snapshot.source(uri.clone());
+        decl = query::decl_at(id, node, uri.clone(), &source).or(match node.kind() {
+            "func_decl" => {
+                // Synthesize declarations for function arguments. Ideally the grammar would expose
+                // these directly.
+                let func_params = node.named_child(1).expect("expected func_params");
+                assert_eq!(func_params.kind(), "func_params");
+
+                let formal_args = func_params.named_child(0).expect("expected formal_args");
+                assert_eq!(formal_args.kind(), "formal_args");
+
+                for i in 0..formal_args.named_child_count() {
+                    let arg = formal_args.named_child(i).expect("expected argument node");
+                    assert_eq!(arg.kind(), "formal_arg");
+
+                    let arg_id = arg.named_child(0).expect("excepted arg id");
+                    assert_eq!(arg_id.kind(), "id");
+
+                    let arg_id = arg_id
+                        .utf8_text(source.as_bytes())
+                        .expect("could not get source text");
+                    if arg_id != id {
+                        continue;
+                    }
+
+                    let arg_type = arg.named_child(1).expect("expected arg type");
+                    assert_eq!(arg_type.kind(), "type");
+
+                    let arg_type = arg_type.named_child(0).expect("expected arg type id");
+                    assert_eq!(arg_type.kind(), "id");
+
+                    return Some(Decl {
+                        module: ModuleId::Global, // TODO(bbannier): function args should probably live in some other module.
+                        id: arg_id.to_string(),
+                        fqid: arg_id.to_string(),
+                        kind: DeclKind::Variable,
+                        is_export: false,
+                        range: to_range(arg.range()).ok()?,
+                        selection_range: to_range(arg.range()).ok()?,
+                        uri,
+                        documentation: format!(
+                            "```zeek\n{}\n```",
+                            arg.utf8_text(source.as_bytes()).ok()?
+                        ),
+                    });
+                }
+                None
+            }
+            _ => None,
+        });
 
         if decl.is_some() {
             return decl;
@@ -861,7 +910,7 @@ mod test {
     use insta::assert_debug_snapshot;
     use lspower::{
         lsp::{
-            CompletionParams, PartialResultParams, Position, TextDocumentIdentifier,
+            CompletionParams, HoverParams, PartialResultParams, Position, TextDocumentIdentifier,
             TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
@@ -1040,5 +1089,23 @@ mod test {
             .await;
 
         assert_debug_snapshot!(result);
+    }
+
+    #[tokio::test]
+    async fn hover_decl_in_func_parameters() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(uri.clone(), "function f(x: X, y: Y) {\ny;\n}");
+        let server = serve(db);
+
+        let params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                position: Position::new(1, 0),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        assert_debug_snapshot!(server.hover(params).await);
     }
 }

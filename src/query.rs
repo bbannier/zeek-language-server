@@ -1,7 +1,12 @@
-use std::{collections::HashSet, fmt, hash::Hash, sync::Arc};
-
+use itertools::Itertools;
 use log::error;
 use lspower::lsp::{Range, Url};
+use std::{
+    collections::{HashSet, VecDeque},
+    fmt,
+    hash::Hash,
+    sync::Arc,
+};
 use tracing::instrument;
 use tree_sitter::Node;
 
@@ -120,8 +125,10 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
         .capture_index_for_name("outer_node")
         .expect("outer node should be captured");
 
+    let source = source.as_bytes();
+
     tree_sitter::QueryCursor::new()
-        .matches(&query, node, source.as_bytes())
+        .matches(&query, node, source)
         .filter_map(|c| {
             let decl = c.nodes_for_capture_index(c_decl).next()?;
 
@@ -149,7 +156,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                         while let Some(m) = node.prev_named_sibling() {
                             if m.kind() == "module_decl" {
                                 module_id = Some(ModuleId::String(
-                                    m.named_child(0)?.utf8_text(source.as_bytes()).ok()?.into(),
+                                    m.named_child(0)?.utf8_text(source).ok()?.into(),
                                 ));
                                 break;
                             }
@@ -199,12 +206,59 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
             let range = to_range(decl.range()).ok()?;
             let selection_range = to_range(id.range()).ok()?;
 
-            let id = id.utf8_text(source.as_bytes()).ok()?.to_string();
+            let id = id.utf8_text(source).ok()?.to_string();
 
-            // TODO(bbannier): This just extracts the first line of the decl as documentation. We
-            // should implement something richer, e.g., also extract (zeekygen) comments close by.
-            let documentation =
-                format!("```zeek\n{}\n```", decl.utf8_text(source.as_bytes()).ok()?);
+            let docs = {
+                // Extracting the zeekygen comments with the query seems to hit some polynomial
+                // edge case in tree-sitter. Extract them by hand for the time being.
+                let mut docs = VecDeque::new();
+
+                let mut node = decl.prev_named_sibling();
+                while let Some(n) = node {
+                    if n.kind() != "zeekygen_next_comment" {
+                        break;
+                    }
+
+                    let c = n.utf8_text(source).ok()?;
+                    let c = match c.strip_prefix("##") {
+                        Some(c) => c,
+                        None => c,
+                    };
+                    docs.push_front(c.trim());
+
+                    node = n.prev_named_sibling();
+                }
+
+                let mut node = decl.next_named_sibling();
+                while let Some(n) = node {
+                    if n.kind() != "zeekygen_prev_comment" {
+                        break;
+                    }
+
+                    let c = n.utf8_text(source).ok()?;
+                    let c = match c.strip_prefix("##<") {
+                        Some(c) => c,
+                        None => c,
+                    };
+                    docs.push_back(c.trim());
+
+                    node = n.next_named_sibling();
+                }
+
+                docs.iter().join("\n")
+            };
+
+            let documentation = if docs.is_empty() {
+                format!(
+                    "```zeek\n{source}\n```",
+                    source = decl.utf8_text(source).ok()?
+                )
+            } else {
+                format!(
+                    "{docs}\n```zeek\n{source}\n```",
+                    source = decl.utf8_text(source).ok()?
+                )
+            };
 
             let fqid = match &module {
                 ModuleId::Global => id.clone(),
@@ -319,9 +373,11 @@ mod test {
                   global y = 1;
               }
 
+              ## Y does the y.
+              ## It takes no arguments.
               type Y: record {
                   y: vector of count &optional;
-              };
+              }; ##< But it also has a field y
 
               module bar;
               event zeek_init() { local x=1; \n

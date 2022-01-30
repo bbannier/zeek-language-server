@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 1065
+assertion_line: 1154
 expression: "query(\"A\").await"
 
 ---

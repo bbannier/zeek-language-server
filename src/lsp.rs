@@ -1,7 +1,7 @@
 use crate::{
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, Query},
-    to_range, zeek, Files,
+    to_point, to_range, zeek, Files,
 };
 use itertools::Itertools;
 use log::{error, warn};
@@ -521,7 +521,7 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = resolve(&state, node, uri, text) {
+                if let Some(decl) = resolve(&state, node, None, uri) {
                     contents.push(MarkedString::String(decl.documentation));
                 }
             }
@@ -750,7 +750,7 @@ impl LanguageServer for Backend {
         })?;
 
         let location = match node.kind() {
-            "id" => resolve(&state, node, uri, text)
+            "id" => resolve(&state, node, None, uri)
                 .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
             "file" => {
                 let file = PathBuf::from(text);
@@ -782,55 +782,105 @@ fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
     }
 }
 
-/// Find decl with the given ID from the node up and in all other loaded files.
+/// Find decl with ID from the node up the tree and in all other loaded files.
 fn resolve(
     snapshot: &Snapshot<Database>,
     node: tree_sitter::Node,
+    scope: Option<tree_sitter::Node>,
     uri: Arc<Url>,
-    id: &str,
 ) -> Option<Decl> {
-    // Try to find a decl with the given name up the tree.
+    let source = snapshot.source(uri.clone());
+
+    // By default we interpret `node` as the scope.
+    let scope = match scope {
+        Some(s) => s,
+        None => node,
+    };
+
+    match node.kind() {
+        // If we are on an `expr` node unwrap it and work on whatever is inside.
+        "expr" => {
+            return node
+                .child(0)
+                .and_then(|c| resolve(snapshot, c, Some(scope), uri.clone()));
+        }
+        // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
+        "field_access" | "field_check" => {
+            let rhs = node.named_child(0)?;
+            let lhs = node.named_child(1)?;
+
+            return resolve(snapshot, lhs, Some(rhs), uri);
+        }
+        _ => {}
+    }
+
+    // If the ID is part of a field access or check resolve it in the referenced record.
+    if let Some(p) = node.parent() {
+        let id = node.utf8_text(source.as_bytes()).ok()?;
+
+        if p.kind() == "field_access" || p.kind() == "field_check" {
+            let lhs = node
+                .prev_named_sibling()
+                .and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
+
+            let typ = {
+                let tree = snapshot.parse(uri.clone())?;
+                let node = tree.root_node().named_descendant_for_point_range(
+                    to_point(lhs.range.start).ok()?,
+                    to_point(lhs.range.end).ok()?,
+                )?;
+                typ(snapshot, node, scope, uri.clone())?
+            };
+
+            let fields = match typ.kind {
+                DeclKind::Type(fields) => fields,
+                _ => return None,
+            };
+
+            // Find the given id in the fields.
+            let field = fields.into_iter().find(|f| f.id == id);
+
+            if field.is_some() {
+                return field;
+            }
+        }
+    }
+
+    // Try to find a decl with name of the given node up the tree.
+    let id = node.utf8_text(source.as_bytes()).ok()?;
+
     let mut node = node;
     let mut decl;
     loop {
-        let source = snapshot.source(uri.clone());
         decl = query::decl_at(id, node, uri.clone(), &source).or(match node.kind() {
             "func_decl" => {
                 // Synthesize declarations for function arguments. Ideally the grammar would expose
                 // these directly.
-                let func_params = node.named_child(1).expect("expected func_params");
+                let func_params = node.named_child(1)?;
                 assert_eq!(func_params.kind(), "func_params");
 
-                let formal_args = func_params.named_child(0).expect("expected formal_args");
+                let formal_args = func_params.named_child(0)?;
                 assert_eq!(formal_args.kind(), "formal_args");
 
                 for i in 0..formal_args.named_child_count() {
-                    let arg = formal_args.named_child(i).expect("expected argument node");
+                    let arg = formal_args.named_child(i)?;
                     assert_eq!(arg.kind(), "formal_arg");
 
-                    let arg_id = arg.named_child(0).expect("excepted arg id");
-                    assert_eq!(arg_id.kind(), "id");
+                    let arg_id_ = arg.named_child(0)?;
+                    assert_eq!(arg_id_.kind(), "id");
 
-                    let arg_id = arg_id
-                        .utf8_text(source.as_bytes())
-                        .expect("could not get source text");
+                    let arg_id = arg_id_.utf8_text(source.as_bytes()).ok()?;
                     if arg_id != id {
                         continue;
                     }
 
-                    let arg_type = arg.named_child(1).expect("expected arg type");
-                    assert_eq!(arg_type.kind(), "type");
-
-                    let arg_type = arg_type.named_child(0).expect("expected arg type id");
-                    assert_eq!(arg_type.kind(), "id");
-
                     return Some(Decl {
-                        module: ModuleId::Global, // TODO(bbannier): function args should probably live in some other module.
+                        module: ModuleId::Global, // FIXME(bbannier): function args should probably live in some other module.
                         id: arg_id.to_string(),
                         fqid: arg_id.to_string(),
                         kind: DeclKind::Variable,
                         is_export: false,
-                        range: to_range(arg.range()).ok()?,
+                        range: to_range(arg_id_.range()).ok()?,
                         selection_range: to_range(arg.range()).ok()?,
                         uri,
                         documentation: format!(
@@ -862,6 +912,41 @@ fn resolve(
         .chain(snapshot.loaded_decls(uri).iter())
         .find(|d| d.fqid == id)
         .cloned()
+}
+
+/// Determine the type of the given node.
+fn typ(
+    snapshot: &Snapshot<Database>,
+    node: tree_sitter::Node,
+    scope: tree_sitter::Node,
+    uri: Arc<Url>,
+) -> Option<Decl> {
+    match node.kind() {
+        "var_decl" | "formal_arg" => {
+            let typ = node.named_child(1)?;
+            // FIXME(bbannier): also handle `initializer`, e.g.,
+            //  ```.zeek
+            // local req = ActiveHTTP::Request($url = "http://example.org");
+            // req$url;  # Hover on `url`.
+            // ```
+            // assert_eq!(typ.kind(), "type");
+            if typ.kind() != "type" {
+                return None;
+            }
+
+            resolve(snapshot, typ, Some(scope), uri)
+        }
+        "id" => {
+            let parent = node.parent()?;
+            parent
+                .named_children(&mut parent.walk())
+                .find_map(|n| match n.kind() {
+                    "type" => resolve(snapshot, n, Some(scope), uri.clone()),
+                    _ => None,
+                })
+        }
+        _ => None,
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -932,8 +1017,9 @@ mod test {
         },
         LanguageServer,
     };
+    use salsa::{ParallelDatabase, Snapshot};
 
-    use crate::{lsp, Files};
+    use crate::{lsp, parse::Parse, Files};
 
     use super::{Backend, ServerState};
 
@@ -965,6 +1051,10 @@ mod test {
             let prefixes = Arc::make_mut(&mut prefixes);
             prefixes.push(prefix.into());
             self.0.set_prefixes(Arc::new(prefixes.clone()));
+        }
+
+        fn snapshot(self) -> Snapshot<lsp::Database> {
+            self.0.snapshot()
         }
     }
 
@@ -1124,5 +1214,93 @@ mod test {
         };
 
         assert_debug_snapshot!(server.hover(params).await);
+    }
+
+    #[test]
+    fn resolve() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        db.add_file(
+            uri.clone(),
+            "module x;
+
+type X: record {
+    f1: count &optional;
+};
+
+type Y: record {
+    yx: X &optional;
+};
+
+global c: count;
+global x: X;
+
+c;
+x$f1;
+x?$f1;
+
+function fn(x2: X, y: count) {
+    y;
+    x2$f1;
+    x2?$f1;
+}
+
+global y: Y;
+y$yx$f1;
+",
+        );
+
+        let db = db.snapshot();
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+
+        // `c` resolves to `local c: ...`.
+        let node = tree
+            .named_descendant_for_position(&Position::new(13, 0))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+
+        // `s?$f1` resolves to `f1: count`.
+        let node = tree
+            .named_descendant_for_position(&Position::new(15, 3))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+
+        // `y` resolves to `y: count` via function argument.
+        let node = tree
+            .named_descendant_for_position(&Position::new(18, 4))
+            .unwrap();
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+
+        // `x2$f1` resolves to `f1:count ...` via function argument.
+        let node = tree
+            .named_descendant_for_position(&Position::new(19, 7))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+
+        // `x$f1` resolves to `f1: count ...`.
+        let node = tree
+            .named_descendant_for_position(&Position::new(14, 2))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+
+        // `x2$f1` resolves to `f1: count ...`.
+        let node = tree
+            .named_descendant_for_position(&Position::new(20, 8))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+
+        // Check resolution when multiple field accesses are involved.
+        let node = tree
+            .named_descendant_for_position(&Position::new(24, 5))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
     }
 }

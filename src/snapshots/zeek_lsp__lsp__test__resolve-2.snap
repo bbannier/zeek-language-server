@@ -1,39 +1,37 @@
 ---
-source: src/query.rs
-assertion_line: 505
-expression: func_decls
+source: src/lsp.rs
+assertion_line: 1269
+expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---
-[
+Some(
     Decl {
-        module: String(
-            "bar",
-        ),
-        id: "x",
-        fqid: "bar::x",
+        module: Global,
+        id: "f1",
+        fqid: "x::X::f1",
         kind: Variable,
         is_export: false,
         range: Range {
             start: Position {
-                line: 15,
-                character: 34,
+                line: 3,
+                character: 4,
             },
             end: Position {
-                line: 15,
-                character: 44,
+                line: 3,
+                character: 6,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 15,
-                character: 40,
+                line: 3,
+                character: 4,
             },
             end: Position {
-                line: 15,
-                character: 41,
+                line: 3,
+                character: 6,
             },
         },
-        documentation: "```zeek\nlocal x=1;\n```",
+        documentation: "```zeek\n# In x::X\nf1: count &optional;\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,
@@ -41,9 +39,9 @@ expression: func_decls
             password: None,
             host: None,
             port: None,
-            path: "/foo/bar.zeek",
+            path: "/x.zeek",
             query: None,
             fragment: None,
         },
     },
-]
+)

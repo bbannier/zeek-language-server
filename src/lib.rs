@@ -11,8 +11,19 @@ fn to_offset(x: usize) -> Result<u32> {
     u32::try_from(x).map_err(Into::into)
 }
 
+fn from_offset(x: u32) -> Result<usize> {
+    usize::try_from(x).map_err(Into::into)
+}
+
 fn to_position(p: tree_sitter::Point) -> Result<Position> {
     Ok(Position::new(to_offset(p.row)?, to_offset(p.column)?))
+}
+
+fn to_point(p: Position) -> Result<tree_sitter::Point> {
+    Ok(tree_sitter::Point {
+        row: from_offset(p.line)?,
+        column: from_offset(p.character)?,
+    })
 }
 
 pub(crate) fn to_range(r: tree_sitter::Range) -> Result<Range> {

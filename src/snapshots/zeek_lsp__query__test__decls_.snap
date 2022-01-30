@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 489
+assertion_line: 492
 expression: root_decls
 
 ---
@@ -108,7 +108,7 @@ expression: root_decls
                         },
                         end: Position {
                             line: 11,
-                            character: 47,
+                            character: 19,
                         },
                     },
                     selection_range: Range {

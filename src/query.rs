@@ -31,6 +31,9 @@ pub enum DeclKind {
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub struct Type(pub String);
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct TypeField {
     pub id: String,
     pub typ: String,
@@ -255,7 +258,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                                     id: id.to_string(),
                                     fqid: format!("{fqid}::{id}"),
                                     kind: DeclKind::Variable,
-                                    range: to_range(c.range()).ok()?,
+                                    range: to_range(id_.range()).ok()?,
                                     selection_range: to_range(id_.range()).ok()?,
                                     documentation,
                                     uri: uri.clone(),

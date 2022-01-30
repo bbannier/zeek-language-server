@@ -76,6 +76,7 @@ impl Hash for Decl {
 pub enum ModuleId {
     String(String),
     Global,
+    None,
 }
 
 impl fmt::Display for ModuleId {
@@ -86,6 +87,7 @@ impl fmt::Display for ModuleId {
             match self {
                 ModuleId::Global => "GLOBAL",
                 ModuleId::String(s) => s.as_str(),
+                ModuleId::None => "NONE",
             }
         )
     }
@@ -202,7 +204,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
             };
 
             let fqid = match &module {
-                ModuleId::Global => id.clone(),
+                ModuleId::Global | ModuleId::None => id.clone(),
                 ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
 
@@ -264,7 +266,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                                     uri: uri.clone(),
 
                                     // FIXME(bbannier): these fields seem not so useful here:
-                                    module: ModuleId::Global,
+                                    module: ModuleId::None,
                                     is_export: false,
                                 })
                             } else {

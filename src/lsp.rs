@@ -875,7 +875,7 @@ fn resolve(
                     }
 
                     return Some(Decl {
-                        module: ModuleId::Global, // FIXME(bbannier): function args should probably live in some other module.
+                        module: ModuleId::None,
                         id: arg_id.to_string(),
                         fqid: arg_id.to_string(),
                         kind: DeclKind::Variable,

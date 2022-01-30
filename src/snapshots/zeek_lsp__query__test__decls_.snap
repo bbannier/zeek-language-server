@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 492
+assertion_line: 494
 expression: root_decls
 
 ---
@@ -96,7 +96,7 @@ expression: root_decls
         kind: Type(
             [
                 Decl {
-                    module: Global,
+                    module: None,
                     id: "y",
                     fqid: "test::Y::y",
                     kind: Variable,

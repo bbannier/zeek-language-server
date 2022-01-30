@@ -1,12 +1,12 @@
 ---
 source: src/lsp.rs
-assertion_line: 1269
+assertion_line: 1262
 expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---
 Some(
     Decl {
-        module: Global,
+        module: None,
         id: "f1",
         fqid: "x::X::f1",
         kind: Variable,

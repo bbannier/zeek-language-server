@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 494
+assertion_line: 493
 expression: root_decls
 
 ---
@@ -12,7 +12,9 @@ expression: root_decls
         id: "x",
         fqid: "test::x",
         kind: Const,
-        is_export: true,
+        is_export: Some(
+            true,
+        ),
         range: Range {
             start: Position {
                 line: 3,
@@ -53,7 +55,9 @@ expression: root_decls
         id: "y",
         fqid: "test::y",
         kind: Global,
-        is_export: true,
+        is_export: Some(
+            true,
+        ),
         range: Range {
             start: Position {
                 line: 4,
@@ -100,7 +104,7 @@ expression: root_decls
                     id: "y",
                     fqid: "test::Y::y",
                     kind: Variable,
-                    is_export: false,
+                    is_export: None,
                     range: Range {
                         start: Position {
                             line: 11,
@@ -136,7 +140,9 @@ expression: root_decls
                 },
             ],
         ),
-        is_export: false,
+        is_export: Some(
+            false,
+        ),
         range: Range {
             start: Position {
                 line: 9,
@@ -177,7 +183,9 @@ expression: root_decls
         id: "zeek_init",
         fqid: "bar::zeek_init",
         kind: Event,
-        is_export: false,
+        is_export: Some(
+            false,
+        ),
         range: Range {
             start: Position {
                 line: 15,

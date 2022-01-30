@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 1275
+assertion_line: 1268
 expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---
@@ -12,7 +12,9 @@ Some(
         id: "y",
         fqid: "x::y",
         kind: Global,
-        is_export: false,
+        is_export: Some(
+            false,
+        ),
         range: Range {
             start: Position {
                 line: 23,

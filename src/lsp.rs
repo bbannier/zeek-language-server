@@ -879,7 +879,7 @@ fn resolve(
                         id: arg_id.to_string(),
                         fqid: arg_id.to_string(),
                         kind: DeclKind::Variable,
-                        is_export: false,
+                        is_export: None,
                         range: to_range(arg_id_.range()).ok()?,
                         selection_range: to_range(arg.range()).ok()?,
                         uri,

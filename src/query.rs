@@ -45,7 +45,7 @@ pub struct Decl {
     pub id: String,
     pub fqid: String,
     pub kind: DeclKind,
-    pub is_export: bool,
+    pub is_export: Option<bool>,
     pub range: Range,
     pub selection_range: Range,
     pub documentation: String,
@@ -265,9 +265,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                                     documentation,
                                     uri: uri.clone(),
 
-                                    // FIXME(bbannier): these fields seem not so useful here:
                                     module: ModuleId::None,
-                                    is_export: false,
+                                    is_export: None,
                                 })
                             } else {
                                 None
@@ -289,7 +288,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                 id,
                 fqid,
                 kind,
-                is_export: in_export(decl),
+                is_export: Some(in_export(decl)),
                 range,
                 selection_range,
                 documentation,

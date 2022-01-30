@@ -10,7 +10,7 @@ Some(
         id: "f1",
         fqid: "x::X::f1",
         kind: Variable,
-        is_export: false,
+        is_export: None,
         range: Range {
             start: Position {
                 line: 3,

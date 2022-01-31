@@ -9,11 +9,11 @@ use cc::Build;
 fn main() {
     let grammar = current_dir()
         .unwrap()
-        .join("src")
+        .join("vendor")
         .join("tree-sitter-zeek")
         .join("grammar.js");
 
-    println!("cargo:rerun-if-changed=src/tree-sitter-zeek/grammar.js");
+    println!("cargo:rerun-if-changed=vendor/tree-sitter-zeek/grammar.js");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 

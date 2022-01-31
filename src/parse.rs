@@ -1,6 +1,6 @@
 use crate::Files;
 use lspower::lsp::{Position, Url};
-use std::{hash::Hash, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 use tracing::instrument;
 use tree_sitter::{Language, Parser, Point};
 
@@ -36,12 +36,6 @@ impl PartialEq for Tree {
 }
 
 impl Eq for Tree {}
-
-impl Hash for Tree {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.root_node().id().hash(state);
-    }
-}
 
 impl Deref for Tree {
     type Target = tree_sitter::Tree;

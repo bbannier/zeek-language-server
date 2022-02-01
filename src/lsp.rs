@@ -508,6 +508,7 @@ impl LanguageServer for Backend {
         })?;
 
         let mut contents = vec![
+            #[cfg(debug_assertions)]
             MarkedString::LanguageString(LanguageString {
                 value: text.into(),
                 language: "zeek".into(),

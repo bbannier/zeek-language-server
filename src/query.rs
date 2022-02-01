@@ -24,7 +24,7 @@ pub enum DeclKind {
     RedefEnum,
     RedefRecord,
     Type(Vec<Decl>),
-    Func,
+    Func(Option<String>),
     Hook,
     Event,
     Variable,
@@ -108,7 +108,7 @@ fn in_export(mut node: Node) -> bool {
 
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
+pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
     let query = match tree_sitter::Query::new(
         unsafe { tree_sitter_zeek() },
         "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id)@decl)@outer_node",
@@ -135,8 +135,6 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
     let c_outer_node = query
         .capture_index_for_name("outer_node")
         .expect("outer node should be captured");
-
-    let source = source.as_bytes();
 
     tree_sitter::QueryCursor::new()
         .matches(&query, node, source)
@@ -277,7 +275,21 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
                     DeclKind::Type(fields)
                 }
                 "event_decl" => DeclKind::Event,
-                "func_decl" => DeclKind::Func,
+                "func_decl" => {
+                    // The return type is stored in the func_params.
+                    let func_params = decl
+                        .named_children(&mut decl.walk())
+                        .find(|c| c.kind() == "func_params")?;
+
+                    // A `type` directly stored in the `func_params` is the return type.
+                    let return_ = func_params
+                        .named_children(&mut func_params.walk())
+                        .find(|c| c.kind() == "type")
+                        .and_then(|t| t.utf8_text(source).ok())
+                        .map(String::from);
+
+                    DeclKind::Func(return_)
+                }
                 _ => {
                     return None;
                 }
@@ -299,7 +311,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &str) -> HashSet<Decl> {
 }
 
 #[instrument]
-pub fn decl_at(id: &str, mut node: Node, uri: Arc<Url>, source: &str) -> Option<Decl> {
+pub fn decl_at(id: &str, mut node: Node, uri: Arc<Url>, source: &[u8]) -> Option<Decl> {
     loop {
         if let Some(decl) = decls_(node, uri.clone(), source)
             .into_iter()
@@ -356,7 +368,7 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<HashSet<Decl>> {
         None => return Arc::new(HashSet::new()),
     };
 
-    Arc::new(decls_(tree.root_node(), uri, &source))
+    Arc::new(decls_(tree.root_node(), uri, source.as_bytes()))
 }
 
 #[instrument(skip(db))]
@@ -479,7 +491,7 @@ mod test {
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| {
-            let mut xs = super::decls_(n, uri.clone(), SOURCE)
+            let mut xs = super::decls_(n, uri.clone(), SOURCE.as_bytes())
                 .into_iter()
                 .collect::<Vec<_>>();
             xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));

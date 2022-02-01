@@ -683,7 +683,7 @@ impl LanguageServer for Backend {
             let mut node = node;
 
             loop {
-                for d in query::decls_(node, uri.clone(), &source) {
+                for d in query::decls_(node, uri.clone(), source.as_bytes()) {
                     items.insert(d);
                 }
 
@@ -798,10 +798,10 @@ fn resolve(
     };
 
     match node.kind() {
-        // If we are on an `expr` node unwrap it and work on whatever is inside.
-        "expr" => {
+        // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
+        "expr" | "init" => {
             return node
-                .child(0)
+                .named_child(0)
                 .and_then(|c| resolve(snapshot, c, Some(scope), uri.clone()));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
@@ -829,7 +829,8 @@ fn resolve(
                     to_point(lhs.range.start).ok()?,
                     to_point(lhs.range.end).ok()?,
                 )?;
-                typ(snapshot, node, scope, uri.clone())?
+
+                typ(snapshot, node, scope, &uri)?
             };
 
             let fields = match typ.kind {
@@ -852,7 +853,7 @@ fn resolve(
     let mut node = node;
     let mut decl;
     loop {
-        decl = query::decl_at(id, node, uri.clone(), &source).or(match node.kind() {
+        decl = query::decl_at(id, node, uri.clone(), source.as_bytes()).or(match node.kind() {
             "func_decl" => {
                 // Synthesize declarations for function arguments. Ideally the grammar would expose
                 // these directly.
@@ -919,22 +920,23 @@ fn typ(
     snapshot: &Snapshot<Database>,
     node: tree_sitter::Node,
     scope: tree_sitter::Node,
-    uri: Arc<Url>,
+    uri: &Arc<Url>,
 ) -> Option<Decl> {
-    match node.kind() {
+    let source = snapshot.source(uri.clone());
+    let source = source.as_bytes();
+
+    let d = match node.kind() {
         "var_decl" | "formal_arg" => {
             let typ = node.named_child(1)?;
-            // FIXME(bbannier): also handle `initializer`, e.g.,
-            //  ```.zeek
-            // local req = ActiveHTTP::Request($url = "http://example.org");
-            // req$url;  # Hover on `url`.
-            // ```
-            // assert_eq!(typ.kind(), "type");
-            if typ.kind() != "type" {
-                return None;
-            }
 
-            resolve(snapshot, typ, Some(scope), uri)
+            match typ.kind() {
+                "type" => resolve(snapshot, typ, Some(scope), uri.clone()),
+                "initializer" => typ
+                    .named_children(&mut typ.walk())
+                    .find(|n| n.kind() == "init")
+                    .and_then(|n| resolve(snapshot, n, Some(scope), uri.clone())),
+                _ => None,
+            }
         }
         "id" => {
             let parent = node.parent()?;
@@ -946,7 +948,23 @@ fn typ(
                 })
         }
         _ => None,
-    }
+    };
+
+    // Perform additional unwrapping if needed.
+    let d = match d.as_ref().map(|d| &d.kind) {
+        // For function declarations produce the function's return type.
+        Some(DeclKind::Func(Some(return_))) => {
+            // FIXME(bbannier): if the return type cannot be resolved in this file, also look into
+            // other files. In that case the string should probably contain a module scope.
+            query::decl_at(return_, node, uri.clone(), source)
+        }
+        Some(DeclKind::Func(None)) => None,
+
+        // Other kinds we return directly.
+        _ => d,
+    };
+
+    d
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -957,7 +975,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::RedefEnum => SymbolKind::ENUM,
         DeclKind::RedefRecord => SymbolKind::INTERFACE,
         DeclKind::Type(_) => SymbolKind::CLASS,
-        DeclKind::Func => SymbolKind::FUNCTION,
+        DeclKind::Func(_) => SymbolKind::FUNCTION,
         DeclKind::Hook => SymbolKind::OPERATOR,
         DeclKind::Event => SymbolKind::EVENT,
     }
@@ -980,7 +998,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::RedefEnum => CompletionItemKind::ENUM,
         DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
         DeclKind::Type(_) => CompletionItemKind::CLASS,
-        DeclKind::Func => CompletionItemKind::FUNCTION,
+        DeclKind::Func(_) => CompletionItemKind::FUNCTION,
         DeclKind::Hook => CompletionItemKind::OPERATOR,
         DeclKind::Event => CompletionItemKind::EVENT,
     }
@@ -1302,5 +1320,30 @@ y$yx$f1;
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+    }
+
+    #[test]
+    fn resolve_initializer() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        db.add_file(
+            uri.clone(),
+            "module x;
+type X: record { f: count &optional; };
+function fun(): X { return X(); }
+global x = fun();
+x$f;",
+        );
+
+        let db = db.snapshot();
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+
+        let node = tree
+            .named_descendant_for_position(&Position::new(4, 2))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri));
     }
 }

@@ -486,9 +486,6 @@ impl LanguageServer for Backend {
 
         let state = self.state()?;
 
-        // TODO(bbannier): This is more of a demo and debugging tool for now. Eventually this
-        // should return some nice rendering of the hovered node.
-
         let source = state.source(uri.clone());
 
         let tree = state.parse(uri.clone());
@@ -666,10 +663,33 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let node = match tree.descendant_for_position(&position.position) {
+        // Get the node directly under the cursor as a starting point.
+        let mut node = match tree.descendant_for_position(&position.position) {
             Some(n) => n,
             None => return Ok(None),
         };
+
+        // If the node has no text try to find a previous node with text.
+        while node
+            .utf8_text(source.as_bytes())
+            .ok()
+            // The grammar might expose newlines as AST nodes. Such nodes should be ignored for
+            // completion.
+            .map(str::trim)
+            .map_or(0, str::len)
+            == 0
+        {
+            node = match node.prev_named_sibling() {
+                Some(s) => s,
+                None => match node.parent() {
+                    Some(p) => p,
+                    // We might arrive here if we are completing for a source file without any
+                    // text. In that case we return the original node since there is nothing
+                    // interesting to find.
+                    None => node,
+                },
+            };
+        }
 
         let text_at_completion = node
             .utf8_text(source.as_bytes())
@@ -679,6 +699,58 @@ impl LanguageServer for Backend {
             .next()
             .map(str::trim);
 
+        // If we are completing after `$` try to return all fields for client-side filtering.
+        // TODO(bbannier): if `$` wasn't a trigger char, also check the input text.
+        // TODO(bbannier): we should also handle `$` in record initializations.
+        if params
+            .context
+            .and_then(|ctx| ctx.trigger_character)
+            .map_or(false, |c| c == "$")
+        {
+            if let Some(r) = resolve(&state, node, None, uri.clone()) {
+                // The decl might live in another tree.
+                let tree = match state.parse(r.uri) {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
+
+                let start = match to_point(r.range.start) {
+                    Ok(p) => p,
+                    _ => return Ok(None),
+                };
+                let end = match to_point(r.range.end) {
+                    Ok(p) => p,
+                    _ => return Ok(None),
+                };
+
+                let decl = tree
+                    .root_node()
+                    .named_descendant_for_point_range(start, end)
+                    .and_then(|n| typ(&state, n, n, &uri));
+
+                // Compute completion.
+                if let Some(decl) = decl {
+                    // FIXME(bbannier): also complete for redefs of record or enums.
+                    if let DeclKind::Type(fields) = decl.kind {
+                        return Ok(Some(CompletionResponse::from(
+                            fields
+                                .iter()
+                                .map(to_completion_item)
+                                .filter_map(|item| {
+                                    // By default we use FQIDs for completion labels. Since for
+                                    // record fields this would be e.g., `mod::rec::field` where we
+                                    // want just `field` rework them slightly.
+                                    let label = item.label.split("::").last()?.to_string();
+                                    Some(CompletionItem { label, ..item })
+                                })
+                                .collect::<Vec<_>>(),
+                        )));
+                    }
+                }
+            }
+        }
+
+        // We are just completing some arbitrary identifier at this point.
         let items: Vec<_> = {
             let mut items = HashSet::new();
             let mut node = node;

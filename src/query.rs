@@ -395,6 +395,11 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
 
     let mut node = x.prev_named_sibling();
     while let Some(n) = node {
+        if n.kind() == "nl" {
+            node = n.prev_named_sibling();
+            continue;
+        }
+
         if n.kind() != "zeekygen_next_comment" {
             break;
         }
@@ -411,6 +416,11 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
 
     let mut node = x.next_named_sibling();
     while let Some(n) = node {
+        if n.kind() == "nl" {
+            node = n.next_named_sibling();
+            continue;
+        }
+
         if n.kind() != "zeekygen_prev_comment" {
             break;
         }
@@ -438,7 +448,7 @@ mod test {
 
     use crate::{lsp::Database, parse::Parse, Files};
     use insta::assert_debug_snapshot;
-    use lspower::lsp::Url;
+    use lspower::lsp::{Position, Url};
     use tree_sitter::Node;
 
     const SOURCE: &str = "module test;
@@ -528,9 +538,7 @@ mod test {
         assert!(!super::in_export(tree.root_node()));
 
         let const_node = tree
-            .root_node()
-            .named_child(1)
-            .and_then(|c| c.named_child(0))
+            .named_descendant_for_position(&Position::new(3, 20))
             .unwrap();
         assert_eq!(const_node.kind(), "const_decl");
         assert!(super::in_export(const_node));

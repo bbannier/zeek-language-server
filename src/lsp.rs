@@ -42,6 +42,13 @@ pub struct Database {
     storage: salsa::Storage<Self>,
 }
 
+impl Database {
+    fn file_changed(&self, uri: Arc<Url>) {
+        // Precompute decls in this file.
+        let _d = self.decls(uri);
+    }
+}
+
 impl salsa::Database for Database {}
 
 impl salsa::ParallelDatabase for Database {
@@ -418,8 +425,7 @@ impl LanguageServer for Backend {
                 files.insert(uri.clone());
                 state.set_files(Arc::new(files.clone()));
 
-                // Precompute decls in the file.
-                let _decls = state.decls(uri);
+                state.file_changed(uri.clone());
             };
         }
 
@@ -452,8 +458,7 @@ impl LanguageServer for Backend {
                 state.set_files(Arc::new(files.clone()));
             }
 
-            // Precompute decls in this module.
-            let _decls = state.decls(uri);
+            state.file_changed(uri);
         }
     }
 
@@ -468,13 +473,13 @@ impl LanguageServer for Backend {
         let changes = changes.get(0).unwrap();
         assert!(changes.range.is_none(), "unexpected diff mode");
 
-        let uri = params.text_document.uri;
+        let uri = Arc::new(params.text_document.uri);
 
         let source = changes.text.to_string();
 
         if let Ok(mut state) = self.state_mut() {
-            let uri = Arc::new(uri);
-            state.set_source(uri, Arc::new(source));
+            state.set_source(uri.clone(), Arc::new(source));
+            state.file_changed(uri);
         }
     }
 

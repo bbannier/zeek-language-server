@@ -24,7 +24,8 @@ pub enum DeclKind {
     RedefEnum,
     RedefRecord,
     Type(Vec<Decl>),
-    Func(Option<String>),
+    FuncDef(Option<String>),
+    FuncDecl(Option<String>),
     Hook,
     Event,
     Variable,
@@ -236,19 +237,19 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     //
                     // (var_decl
                     //   (id)
-                    //   (type (func_params (type))))
+                    //   (type "function" (func_params (type))))
                     //
                     // Correct for that here.
                     if decl
                         .named_children(&mut decl.walk())
                         .find(|c| c.kind() == "type")
-                        .map(|typ| {
-                            typ.named_children(&mut typ.walk())
-                                .find(|c| c.kind() == "func_params")
+                        .and_then(|typ| {
+                            typ.children(&mut typ.walk())
+                                .find(|c| c.kind() == "function")
                         })
                         .is_some()
                     {
-                        DeclKind::Func(fn_result(decl))
+                        DeclKind::FuncDef(fn_result(decl))
                     } else {
                         // Just a plain & clean variable declaration.
                         match scope.kind() {
@@ -313,7 +314,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     DeclKind::Type(fields)
                 }
                 "event_decl" => DeclKind::Event,
-                "func_decl" => DeclKind::Func(fn_result(decl)),
+                "func_decl" => DeclKind::FuncDecl(fn_result(decl)),
                 _ => {
                     return None;
                 }

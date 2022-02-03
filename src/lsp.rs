@@ -1027,12 +1027,12 @@ fn typ(
     // Perform additional unwrapping if needed.
     let d = match d.as_ref().map(|d| &d.kind) {
         // For function declarations produce the function's return type.
-        Some(DeclKind::Func(Some(return_))) => {
+        Some(DeclKind::FuncDecl(Some(return_)) | DeclKind::FuncDef(Some(return_))) => {
             // FIXME(bbannier): if the return type cannot be resolved in this file, also look into
             // other files. In that case the string should probably contain a module scope.
             query::decl_at(return_, node, uri.clone(), source)
         }
-        Some(DeclKind::Func(None)) => None,
+        Some(DeclKind::FuncDecl(None) | DeclKind::FuncDef(None)) => None,
 
         // Other kinds we return directly.
         _ => d,
@@ -1049,7 +1049,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::RedefEnum => SymbolKind::ENUM,
         DeclKind::RedefRecord => SymbolKind::INTERFACE,
         DeclKind::Type(_) => SymbolKind::CLASS,
-        DeclKind::Func(_) => SymbolKind::FUNCTION,
+        DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
         DeclKind::Hook => SymbolKind::OPERATOR,
         DeclKind::Event => SymbolKind::EVENT,
     }
@@ -1072,7 +1072,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::RedefEnum => CompletionItemKind::ENUM,
         DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
         DeclKind::Type(_) => CompletionItemKind::CLASS,
-        DeclKind::Func(_) => CompletionItemKind::FUNCTION,
+        DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
         DeclKind::Hook => CompletionItemKind::OPERATOR,
         DeclKind::Event => CompletionItemKind::EVENT,
     }

@@ -206,6 +206,23 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
 
+            // Helper to extract function return values.
+            let fn_result = |decl: Node| -> Option<String> {
+                // The return type is stored in the func_params.
+                let func_params = decl
+                    .named_children(&mut decl.walk())
+                    .find(|c| c.kind() == "func_params")?;
+
+                // A `type` directly stored in the `func_params` is the return type.
+                let return_ = func_params
+                    .named_children(&mut func_params.walk())
+                    .find(|c| c.kind() == "type")
+                    .and_then(|t| t.utf8_text(source).ok())
+                    .map(String::from);
+
+                return_
+            };
+
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
                 "var_decl" => {
@@ -214,12 +231,33 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         .next()
                         .expect("scope should be present");
 
-                    match scope.kind() {
-                        "global" => DeclKind::Global,
-                        "local" => DeclKind::Variable,
-                        _ => {
-                            error!("unhandled variable scope: {}", scope.kind());
-                            return None;
+                    // Forward declarations of functions like `global foo: function(): count` are
+                    // parsed as `var_decl` like this:
+                    //
+                    // (var_decl
+                    //   (id)
+                    //   (type (func_params (type))))
+                    //
+                    // Correct for that here.
+                    if decl
+                        .named_children(&mut decl.walk())
+                        .find(|c| c.kind() == "type")
+                        .map(|typ| {
+                            typ.named_children(&mut typ.walk())
+                                .find(|c| c.kind() == "func_params")
+                        })
+                        .is_some()
+                    {
+                        DeclKind::Func(fn_result(decl))
+                    } else {
+                        // Just a plain & clean variable declaration.
+                        match scope.kind() {
+                            "global" => DeclKind::Global,
+                            "local" => DeclKind::Variable,
+                            _ => {
+                                error!("unhandled variable scope: {}", scope.kind());
+                                return None;
+                            }
                         }
                     }
                 }
@@ -275,21 +313,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     DeclKind::Type(fields)
                 }
                 "event_decl" => DeclKind::Event,
-                "func_decl" => {
-                    // The return type is stored in the func_params.
-                    let func_params = decl
-                        .named_children(&mut decl.walk())
-                        .find(|c| c.kind() == "func_params")?;
-
-                    // A `type` directly stored in the `func_params` is the return type.
-                    let return_ = func_params
-                        .named_children(&mut func_params.walk())
-                        .find(|c| c.kind() == "type")
-                        .and_then(|t| t.utf8_text(source).ok())
-                        .map(String::from);
-
-                    DeclKind::Func(return_)
-                }
+                "func_decl" => DeclKind::Func(fn_result(decl)),
                 _ => {
                     return None;
                 }

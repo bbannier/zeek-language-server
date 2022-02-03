@@ -991,6 +991,7 @@ fn resolve(
 /// Determine the type of the given node.
 fn typ(
     snapshot: &Snapshot<Database>,
+    // TODO(bbannier): Maybe this function should accept a `Decl` instead of `node`?
     node: tree_sitter::Node,
     scope: tree_sitter::Node,
     uri: &Arc<Url>,

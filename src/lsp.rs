@@ -713,25 +713,7 @@ impl LanguageServer for Backend {
             .map_or(false, |c| c == "$")
         {
             if let Some(r) = resolve(&state, node, None, uri.clone()) {
-                // The decl might live in another tree.
-                let tree = match state.parse(r.uri) {
-                    Some(t) => t,
-                    None => return Ok(None),
-                };
-
-                let start = match to_point(r.range.start) {
-                    Ok(p) => p,
-                    _ => return Ok(None),
-                };
-                let end = match to_point(r.range.end) {
-                    Ok(p) => p,
-                    _ => return Ok(None),
-                };
-
-                let decl = tree
-                    .root_node()
-                    .named_descendant_for_point_range(start, end)
-                    .and_then(|n| typ(&state, n, n, &uri));
+                let decl = typ(&state, &r);
 
                 // Compute completion.
                 if let Some(decl) = decl {
@@ -901,15 +883,7 @@ fn resolve(
                 .prev_named_sibling()
                 .and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
 
-            let typ = {
-                let tree = snapshot.parse(uri.clone())?;
-                let node = tree.root_node().named_descendant_for_point_range(
-                    to_point(lhs.range.start).ok()?,
-                    to_point(lhs.range.end).ok()?,
-                )?;
-
-                typ(snapshot, node, scope, &uri)?
-            };
+            let typ = typ(snapshot, &lhs)?;
 
             let fields = match typ.kind {
                 DeclKind::Type(fields) => fields,
@@ -993,14 +967,17 @@ fn resolve(
         .cloned()
 }
 
-/// Determine the type of the given node.
-fn typ(
-    snapshot: &Snapshot<Database>,
-    // TODO(bbannier): Maybe this function should accept a `Decl` instead of `node`?
-    node: tree_sitter::Node,
-    scope: tree_sitter::Node,
-    uri: &Arc<Url>,
-) -> Option<Decl> {
+/// Determine the type of the given decl.
+fn typ(snapshot: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
+    let uri = &decl.uri;
+
+    let tree = snapshot.parse(uri.clone())?;
+
+    let node = tree.root_node().named_descendant_for_point_range(
+        to_point(decl.range.start).ok()?,
+        to_point(decl.range.end).ok()?,
+    )?;
+
     let source = snapshot.source(uri.clone());
     let source = source.as_bytes();
 
@@ -1009,11 +986,11 @@ fn typ(
             let typ = node.named_child(1)?;
 
             match typ.kind() {
-                "type" => resolve(snapshot, typ, Some(scope), uri.clone()),
+                "type" => resolve(snapshot, typ, None, uri.clone()),
                 "initializer" => typ
                     .named_children(&mut typ.walk())
                     .find(|n| n.kind() == "init")
-                    .and_then(|n| resolve(snapshot, n, Some(scope), uri.clone())),
+                    .and_then(|n| resolve(snapshot, n, None, uri.clone())),
                 _ => None,
             }
         }
@@ -1022,7 +999,7 @@ fn typ(
             parent
                 .named_children(&mut parent.walk())
                 .find_map(|n| match n.kind() {
-                    "type" => resolve(snapshot, n, Some(scope), uri.clone()),
+                    "type" => resolve(snapshot, n, None, uri.clone()),
                     _ => None,
                 })
         }

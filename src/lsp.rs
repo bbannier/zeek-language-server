@@ -738,49 +738,45 @@ impl LanguageServer for Backend {
         }
 
         // We are just completing some arbitrary identifier at this point.
-        let items: Vec<_> = {
-            let mut items = HashSet::new();
-            let mut node = node;
+        let mut items = HashSet::new();
+        let mut node = node;
 
-            loop {
-                for d in query::decls_(node, uri.clone(), source.as_bytes()) {
-                    items.insert(d);
-                }
-
-                node = match node.parent() {
-                    Some(n) => n,
-                    None => break,
-                };
+        loop {
+            for d in query::decls_(node, uri.clone(), source.as_bytes()) {
+                items.insert(d);
             }
 
-            let loaded_decls = state.loaded_decls(uri);
-            let implicit_decls = state.implicit_decls();
+            node = match node.parent() {
+                Some(n) => n,
+                None => break,
+            };
+        }
 
-            let other_decls = loaded_decls
-                .iter()
-                .chain(implicit_decls.iter())
-                // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
-                .filter(|i| {
-                    if let Some(text) = text_at_completion {
-                        rust_fuzzy_search::fuzzy_compare(
-                            &text.to_lowercase(),
-                            &i.fqid.to_lowercase(),
-                        ) > 0.0
-                    } else {
-                        true
-                    }
-                });
+        let loaded_decls = state.loaded_decls(uri);
+        let implicit_decls = state.implicit_decls();
 
+        let other_decls = loaded_decls
+            .iter()
+            .chain(implicit_decls.iter())
+            // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
+            .filter(|i| {
+                if let Some(text) = text_at_completion {
+                    rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &i.fqid.to_lowercase())
+                        > 0.0
+                } else {
+                    true
+                }
+            });
+
+        Ok(Some(CompletionResponse::from(
             items
                 .iter()
                 .chain(other_decls)
                 .filter(|d| d.kind != DeclKind::Event)
                 .unique()
                 .map(to_completion_item)
-                .collect()
-        };
-
-        Ok(Some(CompletionResponse::from(items)))
+                .collect::<Vec<_>>(),
+        )))
     }
 
     #[instrument]

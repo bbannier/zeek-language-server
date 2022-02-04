@@ -968,29 +968,43 @@ fn resolve(
 }
 
 /// Determine the type of the given decl.
-fn typ(snapshot: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
+fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
+    /// Helper to extract function return values.
+    fn fn_result(decl: tree_sitter::Node) -> Option<tree_sitter::Node> {
+        // The return type is stored in the func_params.
+        let func_params = decl
+            .named_children(&mut decl.walk())
+            .find(|c| c.kind() == "func_params")?;
+
+        // A `type` directly stored in the `func_params` is the return type.
+        func_params
+            .named_children(&mut func_params.walk())
+            .find(|c| c.kind() == "type")
+    }
+
     let uri = &decl.uri;
 
-    let tree = snapshot.parse(uri.clone())?;
+    let tree = db.parse(uri.clone())?;
 
-    let node = tree.root_node().named_descendant_for_point_range(
-        to_point(decl.range.start).ok()?,
-        to_point(decl.range.end).ok()?,
-    )?;
+    let node_for_decl = |d: &Decl| -> Option<tree_sitter::Node> {
+        tree.root_node().named_descendant_for_point_range(
+            to_point(d.range.start).ok()?,
+            to_point(d.range.end).ok()?,
+        )
+    };
 
-    let source = snapshot.source(uri.clone());
-    let source = source.as_bytes();
+    let node = node_for_decl(decl)?;
 
     let d = match node.kind() {
         "var_decl" | "formal_arg" => {
             let typ = node.named_child(1)?;
 
             match typ.kind() {
-                "type" => resolve(snapshot, typ, None, uri.clone()),
+                "type" => resolve(db, typ, None, uri.clone()),
                 "initializer" => typ
                     .named_children(&mut typ.walk())
                     .find(|n| n.kind() == "init")
-                    .and_then(|n| resolve(snapshot, n, None, uri.clone())),
+                    .and_then(|n| resolve(db, n, None, uri.clone())),
                 _ => None,
             }
         }
@@ -999,7 +1013,7 @@ fn typ(snapshot: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
             parent
                 .named_children(&mut parent.walk())
                 .find_map(|n| match n.kind() {
-                    "type" => resolve(snapshot, n, None, uri.clone()),
+                    "type" => resolve(db, n, None, uri.clone()),
                     _ => None,
                 })
         }
@@ -1007,20 +1021,15 @@ fn typ(snapshot: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
     };
 
     // Perform additional unwrapping if needed.
-    let d = match d.as_ref().map(|d| &d.kind) {
+    d.and_then(|d| match d.kind {
         // For function declarations produce the function's return type.
-        Some(DeclKind::FuncDecl(Some(return_)) | DeclKind::FuncDef(Some(return_))) => {
-            // FIXME(bbannier): if the return type cannot be resolved in this file, also look into
-            // other files. In that case the string should probably contain a module scope.
-            query::decl_at(return_, node, uri.clone(), source)
+        DeclKind::FuncDecl | DeclKind::FuncDef => {
+            resolve(db, fn_result(node_for_decl(&d)?)?, None, d.uri.clone())
         }
-        Some(DeclKind::FuncDecl(None) | DeclKind::FuncDef(None)) => None,
 
         // Other kinds we return directly.
-        _ => d,
-    };
-
-    d
+        _ => Some(d),
+    })
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1031,7 +1040,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::RedefEnum => SymbolKind::ENUM,
         DeclKind::RedefRecord => SymbolKind::INTERFACE,
         DeclKind::Type(_) => SymbolKind::CLASS,
-        DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
+        DeclKind::FuncDecl | DeclKind::FuncDef => SymbolKind::FUNCTION,
         DeclKind::Hook => SymbolKind::OPERATOR,
         DeclKind::Event => SymbolKind::EVENT,
     }
@@ -1054,7 +1063,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::RedefEnum => CompletionItemKind::ENUM,
         DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
         DeclKind::Type(_) => CompletionItemKind::CLASS,
-        DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
+        DeclKind::FuncDecl | DeclKind::FuncDef => CompletionItemKind::FUNCTION,
         DeclKind::Hook => CompletionItemKind::OPERATOR,
         DeclKind::Event => CompletionItemKind::EVENT,
     }

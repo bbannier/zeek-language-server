@@ -24,8 +24,8 @@ pub enum DeclKind {
     RedefEnum,
     RedefRecord,
     Type(Vec<Decl>),
-    FuncDef(Option<String>),
-    FuncDecl(Option<String>),
+    FuncDef,
+    FuncDecl,
     Hook,
     Event,
     Variable,
@@ -207,23 +207,6 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
 
-            // Helper to extract function return values.
-            let fn_result = |decl: Node| -> Option<String> {
-                // The return type is stored in the func_params.
-                let func_params = decl
-                    .named_children(&mut decl.walk())
-                    .find(|c| c.kind() == "func_params")?;
-
-                // A `type` directly stored in the `func_params` is the return type.
-                let return_ = func_params
-                    .named_children(&mut func_params.walk())
-                    .find(|c| c.kind() == "type")
-                    .and_then(|t| t.utf8_text(source).ok())
-                    .map(String::from);
-
-                return_
-            };
-
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
                 "var_decl" => {
@@ -249,7 +232,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         })
                         .is_some()
                     {
-                        DeclKind::FuncDef(fn_result(decl))
+                        DeclKind::FuncDef
                     } else {
                         // Just a plain & clean variable declaration.
                         match scope.kind() {
@@ -314,7 +297,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     DeclKind::Type(fields)
                 }
                 "event_decl" => DeclKind::Event,
-                "func_decl" => DeclKind::FuncDecl(fn_result(decl)),
+                "func_decl" => DeclKind::FuncDecl,
                 _ => {
                     return None;
                 }

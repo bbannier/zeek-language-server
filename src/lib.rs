@@ -2,6 +2,7 @@ use eyre::Result;
 use lspower::lsp::{Position, Range, Url};
 use std::sync::Arc;
 
+pub mod ast;
 pub mod lsp;
 pub mod parse;
 pub mod query;

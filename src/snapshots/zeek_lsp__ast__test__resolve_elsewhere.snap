@@ -1,37 +1,41 @@
 ---
-source: src/lsp.rs
-assertion_line: 1275
-expression: "super::resolve(&db, node, None, uri.clone())"
+source: src/ast.rs
+assertion_line: 519
+expression: "super::resolve(&db, node, None, uri)"
 
 ---
 Some(
     Decl {
-        module: None,
-        id: "f1",
-        fqid: "x::X::f1",
-        kind: Variable,
-        is_export: None,
+        module: String(
+            "x",
+        ),
+        id: "x",
+        fqid: "x::x",
+        kind: Global,
+        is_export: Some(
+            true,
+        ),
         range: Range {
             start: Position {
                 line: 3,
-                character: 4,
+                character: 16,
             },
             end: Position {
                 line: 3,
-                character: 6,
+                character: 28,
             },
         },
         selection_range: Range {
             start: Position {
                 line: 3,
-                character: 4,
+                character: 23,
             },
             end: Position {
                 line: 3,
-                character: 6,
+                character: 24,
             },
         },
-        documentation: "```zeek\n# In x::X\nf1: count &optional;\n```",
+        documentation: "```zeek\nglobal x: X;\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

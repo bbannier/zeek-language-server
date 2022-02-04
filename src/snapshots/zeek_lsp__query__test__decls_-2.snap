@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 506
+assertion_line: 535
 expression: func_decls
 
 ---

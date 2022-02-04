@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 1153
+assertion_line: 878
 expression: "query(\"mod\").await"
 
 ---

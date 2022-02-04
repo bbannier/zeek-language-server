@@ -1,6 +1,6 @@
 ---
 source: src/parse.rs
-assertion_line: 94
+assertion_line: 88
 expression: sexp
 
 ---

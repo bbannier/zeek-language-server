@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 1215
+assertion_line: 940
 expression: server.hover(params).await
 
 ---

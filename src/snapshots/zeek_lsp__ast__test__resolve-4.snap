@@ -1,37 +1,37 @@
 ---
-source: src/lsp.rs
-assertion_line: 1351
-expression: "super::resolve(&db, node, None, uri)"
+source: src/ast.rs
+assertion_line: 441
+expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---
 Some(
     Decl {
         module: None,
-        id: "f",
-        fqid: "x::X::f",
+        id: "f1",
+        fqid: "x::X::f1",
         kind: Variable,
         is_export: None,
         range: Range {
             start: Position {
-                line: 1,
-                character: 17,
+                line: 3,
+                character: 4,
             },
             end: Position {
-                line: 1,
-                character: 18,
+                line: 3,
+                character: 6,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 1,
-                character: 17,
+                line: 3,
+                character: 4,
             },
             end: Position {
-                line: 1,
-                character: 18,
+                line: 3,
+                character: 6,
             },
         },
-        documentation: "```zeek\n# In x::X\nf: count &optional;\n```",
+        documentation: "```zeek\n# In x::X\nf1: count &optional;\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

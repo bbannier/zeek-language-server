@@ -4,7 +4,6 @@ use crate::{
     to_point, to_range, zeek, Files,
 };
 use itertools::Itertools;
-use log::{error, warn};
 use lspower::{
     jsonrpc::{Error, ErrorCode, Result},
     lsp::{
@@ -29,7 +28,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
-use tracing::instrument;
+use tracing::{error, instrument, warn};
 
 #[salsa::database(
     crate::parse::ParseStorage,

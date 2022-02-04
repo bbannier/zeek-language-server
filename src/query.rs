@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use log::error;
 use lspower::lsp::{Range, Url};
 use std::{
     collections::{HashSet, VecDeque},
@@ -7,7 +6,7 @@ use std::{
     hash::Hash,
     sync::Arc,
 };
-use tracing::instrument;
+use tracing::{error, instrument};
 use tree_sitter::Node;
 
 use crate::{

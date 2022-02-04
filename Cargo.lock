@@ -1727,7 +1727,6 @@ dependencies = [
  "eyre",
  "insta",
  "itertools",
- "log",
  "lspower",
  "opentelemetry",
  "opentelemetry-jaeger",

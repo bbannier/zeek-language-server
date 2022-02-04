@@ -6,7 +6,7 @@ use std::{
 
 use lspower::lsp::Url;
 use salsa::Snapshot;
-use tracing::instrument;
+use tracing::{error, instrument};
 
 use crate::{
     lsp::Database,
@@ -245,17 +245,29 @@ pub(crate) fn resolve(
                 // Synthesize declarations for function arguments. Ideally the grammar would expose
                 // these directly.
                 let func_params = node.named_child(1)?;
-                assert_eq!(func_params.kind(), "func_params");
+                if func_params.kind() != "func_params" {
+                    error!("expected 'func_params', got '{}'", func_params.kind());
+                    return None;
+                }
 
                 let formal_args = func_params.named_child(0)?;
-                assert_eq!(formal_args.kind(), "formal_args");
+                if formal_args.kind() != "formal_args" {
+                    error!("expected 'formal_args', got '{}'", formal_args.kind());
+                    return None;
+                }
 
                 for i in 0..formal_args.named_child_count() {
                     let arg = formal_args.named_child(i)?;
-                    assert_eq!(arg.kind(), "formal_arg");
+                    if arg.kind() != "formal_arg" {
+                        error!("expected 'formal_arg', got '{}'", arg.kind());
+                        return None;
+                    }
 
                     let arg_id_ = arg.named_child(0)?;
-                    assert_eq!(arg_id_.kind(), "id");
+                    if arg_id_.kind() != "id" {
+                        error!("expected 'id', got '{}'", arg_id_.kind());
+                        return None;
+                    }
 
                     let arg_id = arg_id_.utf8_text(source.as_bytes()).ok()?;
                     if arg_id != id {

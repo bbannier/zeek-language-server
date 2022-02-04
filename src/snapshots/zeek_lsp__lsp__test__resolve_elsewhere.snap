@@ -1,0 +1,51 @@
+---
+source: src/lsp.rs
+assertion_line: 1461
+expression: "super::resolve(&db, node, None, uri)"
+
+---
+Some(
+    Decl {
+        module: String(
+            "x",
+        ),
+        id: "x",
+        fqid: "x::x",
+        kind: Global,
+        is_export: Some(
+            true,
+        ),
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 16,
+            },
+            end: Position {
+                line: 3,
+                character: 28,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 23,
+            },
+            end: Position {
+                line: 3,
+                character: 24,
+            },
+        },
+        documentation: "```zeek\nglobal x: X;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

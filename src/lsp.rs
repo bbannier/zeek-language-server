@@ -1425,4 +1425,36 @@ x$f;",
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri));
     }
+
+    #[test]
+    fn resolve_elsewhere() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+
+        db.add_file(
+            Arc::new(Url::from_file_path("/x.zeek").unwrap()),
+            "module x;
+            export {
+                type X: record { f: count &optional; };
+                global x: X;
+            }",
+        );
+
+        db.add_file(
+            uri.clone(),
+            "module y;
+@load ./x
+x::x;",
+        );
+
+        let db = db.snapshot();
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+
+        let node = tree
+            .named_descendant_for_position(&Position::new(2, 3))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
+        assert_debug_snapshot!(super::resolve(&db, node, None, uri));
+    }
 }

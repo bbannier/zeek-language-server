@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 922
+assertion_line: 876
 expression: result
 
 ---

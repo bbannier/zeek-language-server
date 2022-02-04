@@ -1,7 +1,7 @@
 #[cfg(feature = "jaeger")]
 use tracing_subscriber::{layer::SubscriberExt, prelude::*};
 
-use {clap::Parser, eyre::Result, tracing::info, zeek_lsp::lsp::run};
+use {clap::Parser, eyre::Result, tracing::info, zeek_language_server::lsp::run};
 
 #[derive(Parser, Debug)]
 #[clap(about, version)]

@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-assertion_line: 462
+assertion_line: 501
 expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---

@@ -1,7 +1,7 @@
 ---
 source: src/ast.rs
-assertion_line: 519
-expression: "super::resolve(&db, node, None, uri)"
+assertion_line: 474
+expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---
 Some(
@@ -9,33 +9,33 @@ Some(
         module: String(
             "x",
         ),
-        id: "x",
-        fqid: "x::x",
+        id: "c",
+        fqid: "x::c",
         kind: Global,
         is_export: Some(
-            true,
+            false,
         ),
         range: Range {
             start: Position {
-                line: 3,
-                character: 16,
+                line: 10,
+                character: 0,
             },
             end: Position {
-                line: 3,
-                character: 28,
+                line: 10,
+                character: 16,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 3,
-                character: 23,
+                line: 10,
+                character: 7,
             },
             end: Position {
-                line: 3,
-                character: 24,
+                line: 10,
+                character: 8,
             },
         },
-        documentation: "```zeek\nglobal x: X;\n```",
+        documentation: "```zeek\nglobal c: count;\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

@@ -1,7 +1,7 @@
 ---
 source: src/ast.rs
-assertion_line: 346
-expression: db.0.loaded_files_recursive(a)
+assertion_line: 427
+expression: db.0.loaded_files(foo)
 
 ---
 [
@@ -12,7 +12,7 @@ expression: db.0.loaded_files_recursive(a)
         password: None,
         host: None,
         port: None,
-        path: "/tmp/b.zeek",
+        path: "/tmp/foo.zeek",
         query: None,
         fragment: None,
     },
@@ -23,7 +23,7 @@ expression: db.0.loaded_files_recursive(a)
         password: None,
         host: None,
         port: None,
-        path: "/tmp/c.zeek",
+        path: "/tmp/foo.zeek",
         query: None,
         fragment: None,
     },
@@ -34,7 +34,18 @@ expression: db.0.loaded_files_recursive(a)
         password: None,
         host: None,
         port: None,
-        path: "/tmp/d.zeek",
+        path: "/tmp/p/p1/p1.zeek",
+        query: None,
+        fragment: None,
+    },
+    Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/p/p2/p2.zeek",
         query: None,
         fragment: None,
     },

@@ -1,5 +1,5 @@
 [package]
-name = "zeek-lsp"
+name = "zeek-language-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,10 +14,6 @@ insta = "1.12.0"
 [features]
 default = ["jaeger"]
 jaeger = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry"]
-
-[[bin]]
-name = "zeek-language-server"
-path = "src/main.rs"
 
 [dependencies]
 clap = { version = "3.0.14", features = ["derive"] }

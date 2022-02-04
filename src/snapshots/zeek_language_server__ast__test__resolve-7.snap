@@ -1,41 +1,37 @@
 ---
 source: src/ast.rs
-assertion_line: 434
+assertion_line: 515
 expression: "super::resolve(&db, node, None, uri.clone())"
 
 ---
 Some(
     Decl {
-        module: String(
-            "x",
-        ),
-        id: "y",
-        fqid: "x::y",
-        kind: Global,
-        is_export: Some(
-            false,
-        ),
+        module: None,
+        id: "f1",
+        fqid: "x::X::f1",
+        kind: Variable,
+        is_export: None,
         range: Range {
             start: Position {
-                line: 23,
-                character: 0,
+                line: 3,
+                character: 4,
             },
             end: Position {
-                line: 23,
-                character: 12,
+                line: 3,
+                character: 6,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 23,
-                character: 7,
+                line: 3,
+                character: 4,
             },
             end: Position {
-                line: 23,
-                character: 8,
+                line: 3,
+                character: 6,
             },
         },
-        documentation: "```zeek\nglobal y: Y;\n```",
+        documentation: "```zeek\n# In x::X\nf1: count &optional;\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

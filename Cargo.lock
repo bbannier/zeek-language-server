@@ -1719,7 +1719,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zeek-lsp"
+name = "zeek-language-server"
 version = "0.1.0"
 dependencies = [
  "cc",

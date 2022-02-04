@@ -1,5 +1,5 @@
 #[cfg(feature = "jaeger")]
-use tracing_subscriber::{layer::SubscriberExt, Registry};
+use tracing_subscriber::{layer::SubscriberExt, prelude::*};
 
 use {clap::Parser, eyre::Result, tracing::info, zeek_lsp::lsp::run};
 
@@ -18,10 +18,11 @@ fn init_logging(args: &Args) -> Result<()> {
         .with_service_name(env!("CARGO_BIN_NAME"))
         .install_batch(opentelemetry::runtime::Tokio)?;
 
-    tracing::subscriber::set_global_default(
-        Registry::default().with(tracing_opentelemetry::layer().with_tracer(tracer)),
-    )
-    .map_err(Into::into)
+    tracing_subscriber::registry()
+        .with(tracing_opentelemetry::layer().with_tracer(tracer))
+        .init();
+
+    Ok(())
 }
 
 #[tokio::main]

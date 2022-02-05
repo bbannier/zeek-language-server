@@ -340,7 +340,7 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let node = match tree.named_descendant_for_position(&params.position) {
+        let node = match tree.named_descendant_for_position(params.position) {
             Some(n) => n,
             None => return Ok(None),
         };
@@ -525,7 +525,7 @@ impl LanguageServer for Backend {
             .map_or(0, str::len)
             == 0
         {
-            node = match node.prev_named_sibling() {
+            node = match ast::prev_sibling(node) {
                 Some(s) => s,
                 None => match node.parent() {
                     Some(p) => p,
@@ -635,7 +635,7 @@ impl LanguageServer for Backend {
             Some(t) => t,
             None => return Ok(None),
         };
-        let node = match tree.named_descendant_for_position(&position) {
+        let node = match tree.named_descendant_for_position(position) {
             Some(n) => n,
             None => return Ok(None),
         };

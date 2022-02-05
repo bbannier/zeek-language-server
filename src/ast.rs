@@ -6,13 +6,13 @@ use std::{
 
 use lspower::lsp::Url;
 use salsa::Snapshot;
-use tracing::{error, instrument};
+use tracing::instrument;
 
 use crate::{
     lsp::Database,
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, Query},
-    to_point, to_range, zeek, Files,
+    to_range, zeek, Files,
 };
 
 #[salsa::query_group(AstStorage)]
@@ -195,14 +195,14 @@ pub(crate) fn resolve(
     match node.kind() {
         // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
         "expr" | "init" => {
-            return node
-                .named_child(0)
+            return named_child_not(node, "nl")
                 .and_then(|c| resolve(snapshot, c, Some(scope), uri.clone()));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
-            let rhs = node.named_child(0)?;
-            let lhs = node.named_child(1)?;
+            let xs = named_children_not(node, "nl");
+            let rhs = xs.get(0).copied()?;
+            let lhs = xs.get(1).copied()?;
 
             return resolve(snapshot, lhs, Some(rhs), uri);
         }
@@ -214,9 +214,8 @@ pub(crate) fn resolve(
         let id = node.utf8_text(source.as_bytes()).ok()?;
 
         if p.kind() == "field_access" || p.kind() == "field_check" {
-            let lhs = node
-                .prev_named_sibling()
-                .and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
+            let lhs =
+                prev_sibling(node).and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
 
             let typ = typ(snapshot, &lhs)?;
 
@@ -244,31 +243,11 @@ pub(crate) fn resolve(
             "func_decl" => {
                 // Synthesize declarations for function arguments. Ideally the grammar would expose
                 // these directly.
-                let func_params = node.named_child(1)?;
-                if func_params.kind() != "func_params" {
-                    error!("expected 'func_params', got '{}'", func_params.kind());
-                    return None;
-                }
+                let func_params = named_child(node, "func_params")?;
+                let formal_args = named_child(func_params, "formal_args")?;
 
-                let formal_args = func_params.named_child(0)?;
-                if formal_args.kind() != "formal_args" {
-                    error!("expected 'formal_args', got '{}'", formal_args.kind());
-                    return None;
-                }
-
-                for i in 0..formal_args.named_child_count() {
-                    let arg = formal_args.named_child(i)?;
-                    if arg.kind() != "formal_arg" {
-                        error!("expected 'formal_arg', got '{}'", arg.kind());
-                        return None;
-                    }
-
-                    let arg_id_ = arg.named_child(0)?;
-                    if arg_id_.kind() != "id" {
-                        error!("expected 'id', got '{}'", arg_id_.kind());
-                        return None;
-                    }
-
+                for arg in named_children(formal_args, "formal_arg") {
+                    let arg_id_ = named_child(arg, "id")?;
                     let arg_id = arg_id_.utf8_text(source.as_bytes()).ok()?;
                     if arg_id != id {
                         continue;
@@ -289,6 +268,7 @@ pub(crate) fn resolve(
                         ),
                     });
                 }
+
                 None
             }
             _ => None,
@@ -314,65 +294,94 @@ pub(crate) fn resolve(
         .cloned()
 }
 
+fn named_child<'a>(n: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
+    named_children(n, kind).into_iter().next()
+}
+
+fn named_children<'a>(n: tree_sitter::Node<'a>, kind: &str) -> Vec<tree_sitter::Node<'a>> {
+    let mut cur = n.walk();
+    n.named_children(&mut cur)
+        .filter(|n| n.kind() == kind)
+        .collect()
+}
+
+fn named_child_not<'a>(n: tree_sitter::Node<'a>, not_kind: &str) -> Option<tree_sitter::Node<'a>> {
+    named_children_not(n, not_kind).into_iter().next()
+}
+
+fn named_children_not<'a>(n: tree_sitter::Node<'a>, not_kind: &str) -> Vec<tree_sitter::Node<'a>> {
+    let mut cur = n.walk();
+    n.named_children(&mut cur)
+        .filter(|n| n.kind() != not_kind)
+        .collect()
+}
+
+#[must_use]
+pub fn next_sibling(mut n: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    while let Some(p) = n.next_named_sibling() {
+        if p.kind() != "nl" {
+            return Some(p);
+        }
+
+        n = p;
+    }
+    None
+}
+
+#[must_use]
+pub fn prev_sibling(mut n: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    while let Some(p) = n.prev_named_sibling() {
+        if p.kind() != "nl" {
+            return Some(p);
+        }
+
+        n = p;
+    }
+    None
+}
+
 /// Determine the type of the given decl.
 pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
     /// Helper to extract function return values.
     fn fn_result(decl: tree_sitter::Node) -> Option<tree_sitter::Node> {
         // The return type is stored in the func_params.
-        let func_params = decl
-            .named_children(&mut decl.walk())
-            .find(|c| c.kind() == "func_params")?;
+        let func_params = named_child(decl, "func_params")?;
 
         // A `type` directly stored in the `func_params` is the return type.
-        func_params
-            .named_children(&mut func_params.walk())
-            .find(|c| c.kind() == "type")
+        named_child(func_params, "type")
     }
 
     let uri = &decl.uri;
 
     let tree = db.parse(uri.clone())?;
 
-    let node_for_decl = |d: &Decl| -> Option<tree_sitter::Node> {
-        tree.root_node().named_descendant_for_point_range(
-            to_point(d.range.start).ok()?,
-            to_point(d.range.end).ok()?,
-        )
-    };
-
-    let node = node_for_decl(decl)?;
+    let node = tree.named_descendant_for_point_range(decl.range)?;
 
     let d = match node.kind() {
         "var_decl" | "formal_arg" => {
-            let typ = node.named_child(1)?;
+            let typ = named_children_not(node, "nl").into_iter().nth(1)?;
 
             match typ.kind() {
                 "type" => resolve(db, typ, None, uri.clone()),
-                "initializer" => typ
-                    .named_children(&mut typ.walk())
-                    .find(|n| n.kind() == "init")
-                    .and_then(|n| resolve(db, n, None, uri.clone())),
+                "initializer" => {
+                    named_child(typ, "init").and_then(|n| resolve(db, n, None, uri.clone()))
+                }
                 _ => None,
             }
         }
-        "id" => {
-            let parent = node.parent()?;
-            parent
-                .named_children(&mut parent.walk())
-                .find_map(|n| match n.kind() {
-                    "type" => resolve(db, n, None, uri.clone()),
-                    _ => None,
-                })
-        }
+        "id" => named_child(node.parent()?, "type").and_then(|n| resolve(db, n, None, uri.clone())),
         _ => None,
     };
 
     // Perform additional unwrapping if needed.
     d.and_then(|d| match d.kind {
         // For function declarations produce the function's return type.
-        DeclKind::FuncDecl | DeclKind::FuncDef => {
-            resolve(db, fn_result(node_for_decl(&d)?)?, None, d.uri.clone())
-        }
+        DeclKind::FuncDecl | DeclKind::FuncDef => resolve(
+            db,
+            fn_result(tree.named_descendant_for_point_range(d.range)?)?,
+            None,
+            d.uri,
+        ),
 
         // Other kinds we return directly.
         _ => Some(d),
@@ -480,48 +489,48 @@ y$yx$f1;
 
         // `c` resolves to `local c: ...`.
         let node = tree
-            .named_descendant_for_position(&Position::new(13, 0))
+            .named_descendant_for_position(Position::new(13, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `s?$f1` resolves to `f1: count`.
         let node = tree
-            .named_descendant_for_position(&Position::new(15, 3))
+            .named_descendant_for_position(Position::new(15, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `y` resolves to `y: count` via function argument.
         let node = tree
-            .named_descendant_for_position(&Position::new(18, 4))
+            .named_descendant_for_position(Position::new(18, 4))
             .unwrap();
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `x2$f1` resolves to `f1:count ...` via function argument.
         let node = tree
-            .named_descendant_for_position(&Position::new(19, 7))
+            .named_descendant_for_position(Position::new(19, 7))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `x$f1` resolves to `f1: count ...`.
         let node = tree
-            .named_descendant_for_position(&Position::new(14, 2))
+            .named_descendant_for_position(Position::new(14, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `x2$f1` resolves to `f1: count ...`.
         let node = tree
-            .named_descendant_for_position(&Position::new(20, 8))
+            .named_descendant_for_position(Position::new(20, 8))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // Check resolution when multiple field accesses are involved.
         let node = tree
-            .named_descendant_for_position(&Position::new(24, 5))
+            .named_descendant_for_position(Position::new(24, 5))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
@@ -546,7 +555,7 @@ x$f;",
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree
-            .named_descendant_for_position(&Position::new(4, 2))
+            .named_descendant_for_position(Position::new(4, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri));
@@ -578,7 +587,7 @@ x::x;",
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree
-            .named_descendant_for_position(&Position::new(2, 3))
+            .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri));

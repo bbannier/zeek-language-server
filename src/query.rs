@@ -1,3 +1,4 @@
+use crate::ast;
 use itertools::Itertools;
 use lspower::lsp::{Range, Url};
 use std::{
@@ -162,7 +163,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     if n.kind() == "source_file" {
                         // Found a source file. Now find the most recent
                         // module decl when looking backwards from `node`.
-                        while let Some(m) = node.prev_named_sibling() {
+                        while let Some(m) = ast::prev_sibling(node) {
                             if m.kind() == "module_decl" {
                                 module_id = Some(ModuleId::String(
                                     m.named_child(0)?.utf8_text(source).ok()?.into(),
@@ -400,13 +401,8 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
     // edge case in tree-sitter. Extract them by hand for the time being.
     let mut docs = VecDeque::new();
 
-    let mut node = x.prev_named_sibling();
+    let mut node = ast::prev_sibling(x);
     while let Some(n) = node {
-        if n.kind() == "nl" {
-            node = n.prev_named_sibling();
-            continue;
-        }
-
         if n.kind() != "zeekygen_next_comment" {
             break;
         }
@@ -418,16 +414,11 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
         };
         docs.push_front(c.trim());
 
-        node = n.prev_named_sibling();
+        node = ast::prev_sibling(n);
     }
 
-    let mut node = x.next_named_sibling();
+    let mut node = ast::next_sibling(x);
     while let Some(n) = node {
-        if n.kind() == "nl" {
-            node = n.next_named_sibling();
-            continue;
-        }
-
         if n.kind() != "zeekygen_prev_comment" {
             break;
         }
@@ -439,7 +430,7 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
         };
         docs.push_back(c.trim());
 
-        node = n.next_named_sibling();
+        node = ast::next_sibling(n);
     }
 
     if docs.is_empty() {
@@ -545,7 +536,7 @@ mod test {
         assert!(!super::in_export(tree.root_node()));
 
         let const_node = tree
-            .named_descendant_for_position(&Position::new(3, 20))
+            .named_descendant_for_position(Position::new(3, 20))
             .unwrap();
         assert_eq!(const_node.kind(), "const_decl");
         assert!(super::in_export(const_node));

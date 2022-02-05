@@ -439,7 +439,7 @@ pub fn decl_at(id: &str, mut node: Node, uri: Arc<Url>, source: &[u8]) -> Option
     loop {
         if let Some(decl) = decls_(node, uri.clone(), source)
             .into_iter()
-            .find(|d| d.id == id)
+            .find(|d| &d.id == id || &d.fqid == id)
         {
             return Some(decl);
         }

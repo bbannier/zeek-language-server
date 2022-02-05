@@ -311,7 +311,9 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
 
     let tree = db.parse(uri.clone())?;
 
-    let node = tree.named_descendant_for_point_range(decl.range)?;
+    let node = tree
+        .root_node()
+        .named_descendant_for_point_range(decl.range)?;
 
     let d = match node.kind() {
         "var_decl" | "formal_arg" => {
@@ -337,7 +339,7 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
         // For function declarations produce the function's return type.
         DeclKind::FuncDecl | DeclKind::FuncDef => resolve(
             db,
-            fn_result(tree.named_descendant_for_point_range(d.range)?)?,
+            fn_result(tree.root_node().named_descendant_for_point_range(d.range)?)?,
             None,
             d.uri,
         ),
@@ -445,50 +447,51 @@ y$yx$f1;
         let db = db.snapshot();
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
 
         // `c` resolves to `local c: ...`.
-        let node = tree
+        let node = root
             .named_descendant_for_position(Position::new(13, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
-        // `s?$f1` resolves to `f1: count`.
-        let node = tree
+        // `c?$f1` resolves to `f1: count`.
+        let node = root
             .named_descendant_for_position(Position::new(15, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `y` resolves to `y: count` via function argument.
-        let node = tree
+        let node = root
             .named_descendant_for_position(Position::new(18, 4))
             .unwrap();
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `x2$f1` resolves to `f1:count ...` via function argument.
-        let node = tree
+        let node = root
             .named_descendant_for_position(Position::new(19, 7))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `x$f1` resolves to `f1: count ...`.
-        let node = tree
+        let node = root
             .named_descendant_for_position(Position::new(14, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // `x2$f1` resolves to `f1: count ...`.
-        let node = tree
+        let node = root
             .named_descendant_for_position(Position::new(20, 8))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
 
         // Check resolution when multiple field accesses are involved.
-        let node = tree
+        let node = root
             .named_descendant_for_position(Position::new(24, 5))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
@@ -513,7 +516,8 @@ x$f;",
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
 
-        let node = tree
+        let node = tree.root_node();
+        let node = node
             .named_descendant_for_position(Position::new(4, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
@@ -545,7 +549,8 @@ x::x;",
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
 
-        let node = tree
+        let node = tree.root_node();
+        let node = node
             .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));

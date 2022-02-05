@@ -1,8 +1,8 @@
 use crate::{query::Node, Files};
-use lspower::lsp::{Position, Range, Url};
+use lspower::lsp::Url;
 use std::{ops::Deref, sync::Arc};
 use tracing::instrument;
-use tree_sitter::{Language, Parser, Point};
+use tree_sitter::{Language, Parser};
 
 extern "C" {
     pub(crate) fn tree_sitter_zeek() -> Language;
@@ -15,38 +15,6 @@ impl Tree {
     #[must_use]
     pub fn root_node(&self) -> Node {
         self.0.root_node().into()
-    }
-
-    #[must_use]
-    pub fn named_descendant_for_position(&self, position: Position) -> Option<Node> {
-        let range = Range::new(position, position);
-        self.named_descendant_for_point_range(range).map(Into::into)
-    }
-
-    #[must_use]
-    pub fn descendant_for_position(&self, position: &Position) -> Option<Node> {
-        let start = Point::new(position.line as usize, position.character as usize);
-
-        self.0
-            .root_node()
-            .descendant_for_point_range(start, start)
-            .map(Into::into)
-    }
-
-    #[must_use]
-    pub fn named_descendant_for_point_range(&self, range: Range) -> Option<Node> {
-        let start = Point::new(range.start.line as usize, range.start.character as usize);
-        let end = Point::new(range.end.line as usize, range.end.character as usize);
-        let mut n = self
-            .0
-            .root_node()
-            .named_descendant_for_point_range(start, end)?;
-
-        while n.kind() == "nl" {
-            n = n.prev_named_sibling()?;
-        }
-
-        Some(n.into())
     }
 }
 

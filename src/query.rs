@@ -179,6 +179,35 @@ impl<'a> Node<'a> {
         }
         None
     }
+
+    #[must_use]
+    pub fn named_descendant_for_point_range(&self, range: Range) -> Option<Self> {
+        let start =
+            tree_sitter::Point::new(range.start.line as usize, range.start.character as usize);
+        let end = tree_sitter::Point::new(range.end.line as usize, range.end.character as usize);
+
+        // TODO(bbannier): this can still return a `nl` node :/
+        self.0
+            .named_descendant_for_point_range(start, end)
+            .map(Into::into)
+    }
+
+    #[must_use]
+    pub fn descendant_for_position(&self, position: Position) -> Option<Self> {
+        let start = tree_sitter::Point::new(position.line as usize, position.character as usize);
+
+        // TODO(bbannier): this can still return a `nl` node :/
+
+        self.0
+            .descendant_for_point_range(start, start)
+            .map(Into::into)
+    }
+
+    #[must_use]
+    pub fn named_descendant_for_position(&self, position: Position) -> Option<Self> {
+        let range = Range::new(position, position);
+        self.named_descendant_for_point_range(range)
+    }
 }
 
 impl<'a> From<tree_sitter::Node<'a>> for Node<'a> {
@@ -628,7 +657,8 @@ mod test {
 
         assert!(!super::in_export(tree.root_node()));
 
-        let const_node = tree
+        let node = tree.root_node();
+        let const_node = node
             .named_descendant_for_position(Position::new(3, 20))
             .unwrap();
         assert_eq!(const_node.kind(), "const_decl");

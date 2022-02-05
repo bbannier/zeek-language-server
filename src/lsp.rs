@@ -340,7 +340,8 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let node = match tree.named_descendant_for_position(params.position) {
+        let node = tree.root_node();
+        let node = match node.named_descendant_for_position(params.position) {
             Some(n) => n,
             None => return Ok(None),
         };
@@ -510,7 +511,8 @@ impl LanguageServer for Backend {
         };
 
         // Get the node directly under the cursor as a starting point.
-        let mut node = match tree.descendant_for_position(&position.position) {
+        let node = tree.root_node();
+        let mut node = match node.descendant_for_position(position.position) {
             Some(n) => n,
             None => return Ok(None),
         };
@@ -635,7 +637,8 @@ impl LanguageServer for Backend {
             Some(t) => t,
             None => return Ok(None),
         };
-        let node = match tree.named_descendant_for_position(position) {
+        let node = tree.root_node();
+        let node = match node.named_descendant_for_position(position) {
             Some(n) => n,
             None => return Ok(None),
         };

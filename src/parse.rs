@@ -1,4 +1,4 @@
-use crate::Files;
+use crate::{query::Node, Files};
 use lspower::lsp::{Position, Range, Url};
 use std::{ops::Deref, sync::Arc};
 use tracing::instrument;
@@ -13,23 +13,32 @@ pub struct Tree(tree_sitter::Tree);
 
 impl Tree {
     #[must_use]
-    pub fn named_descendant_for_position(&self, position: Position) -> Option<tree_sitter::Node> {
-        let range = Range::new(position, position);
-        self.named_descendant_for_point_range(range)
+    pub fn root_node(&self) -> Node {
+        self.0.root_node().into()
     }
 
     #[must_use]
-    pub fn descendant_for_position(&self, position: &Position) -> Option<tree_sitter::Node> {
+    pub fn named_descendant_for_position(&self, position: Position) -> Option<Node> {
+        let range = Range::new(position, position);
+        self.named_descendant_for_point_range(range).map(Into::into)
+    }
+
+    #[must_use]
+    pub fn descendant_for_position(&self, position: &Position) -> Option<Node> {
         let start = Point::new(position.line as usize, position.character as usize);
 
-        self.0.root_node().descendant_for_point_range(start, start)
+        self.0
+            .root_node()
+            .descendant_for_point_range(start, start)
+            .map(Into::into)
     }
 
     #[must_use]
-    pub fn named_descendant_for_point_range(&self, range: Range) -> Option<tree_sitter::Node> {
+    pub fn named_descendant_for_point_range(&self, range: Range) -> Option<Node> {
         let start = Point::new(range.start.line as usize, range.start.character as usize);
         let end = Point::new(range.end.line as usize, range.end.character as usize);
         let mut n = self
+            .0
             .root_node()
             .named_descendant_for_point_range(start, end)?;
 
@@ -37,7 +46,7 @@ impl Tree {
             n = n.prev_named_sibling()?;
         }
 
-        Some(n)
+        Some(n.into())
     }
 }
 

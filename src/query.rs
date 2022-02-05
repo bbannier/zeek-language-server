@@ -1,19 +1,15 @@
-use crate::ast;
 use itertools::Itertools;
-use lspower::lsp::{Range, Url};
+use lspower::lsp::{Position, Range, Url};
 use std::{
     collections::{HashSet, VecDeque},
     fmt,
     hash::Hash,
+    str::Utf8Error,
     sync::Arc,
 };
 use tracing::{error, instrument};
-use tree_sitter::Node;
 
-use crate::{
-    parse::{tree_sitter_zeek, Parse},
-    to_range,
-};
+use crate::parse::{tree_sitter_zeek, Parse};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum DeclKind {
@@ -94,6 +90,103 @@ impl fmt::Display for ModuleId {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Node<'a>(tree_sitter::Node<'a>);
+
+impl<'a> Node<'a> {
+    #[must_use]
+    pub fn kind(&self) -> &'a str {
+        self.0.kind()
+    }
+
+    #[must_use]
+    pub fn range(&self) -> Range {
+        let r = self.0.range();
+
+        #[allow(clippy::cast_possible_truncation)]
+        let position =
+            |p: tree_sitter::Point| -> Position { Position::new(p.row as u32, p.column as u32) };
+
+        Range::new(position(r.start_point), position(r.end_point))
+    }
+
+    #[must_use]
+    pub fn to_sexp(&self) -> String {
+        self.0.to_sexp()
+    }
+
+    #[allow(clippy::missing_errors_doc)]
+    pub fn utf8_text<'b>(&self, source: &'b [u8]) -> Result<&'b str, Utf8Error> {
+        self.0.utf8_text(source)
+    }
+
+    pub fn parent(&self) -> Option<Self> {
+        self.0.parent().map(Into::into)
+    }
+
+    #[must_use]
+    pub fn named_child(&self, kind: &str) -> Option<Self> {
+        self.named_children(kind).into_iter().next()
+    }
+
+    #[must_use]
+    pub fn named_child_not(&self, not_kind: &str) -> Option<Self> {
+        self.named_children_not(not_kind).into_iter().next()
+    }
+
+    #[must_use]
+    pub fn named_children(&self, kind: &str) -> Vec<Self> {
+        let mut cur = self.0.walk();
+        self.0
+            .named_children(&mut cur)
+            .filter(|n| n.kind() == kind)
+            .map(Into::into)
+            .collect()
+    }
+
+    #[must_use]
+    pub fn named_children_not(&self, not_kind: &str) -> Vec<Self> {
+        let mut cur = self.0.walk();
+        self.0
+            .named_children(&mut cur)
+            .filter(|n| n.kind() != not_kind)
+            .map(Into::into)
+            .collect()
+    }
+
+    #[must_use]
+    pub fn next_sibling(&self) -> Option<Self> {
+        let mut n = self.0;
+        while let Some(p) = n.next_named_sibling() {
+            if p.kind() != "nl" {
+                return Some(p.into());
+            }
+
+            n = p;
+        }
+        None
+    }
+
+    #[must_use]
+    pub fn prev_sibling(&self) -> Option<Self> {
+        let mut n = self.0;
+        while let Some(p) = n.prev_named_sibling() {
+            if p.kind() != "nl" {
+                return Some(p.into());
+            }
+
+            n = p;
+        }
+        None
+    }
+}
+
+impl<'a> From<tree_sitter::Node<'a>> for Node<'a> {
+    fn from(n: tree_sitter::Node<'a>) -> Self {
+        Self(n)
+    }
+}
+
 fn in_export(mut node: Node) -> bool {
     loop {
         node = match node.parent() {
@@ -138,9 +231,10 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
         .expect("outer node should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, node, source)
+        .matches(&query, node.0, source)
         .filter_map(|c| {
             let decl = c.nodes_for_capture_index(c_decl).next()?;
+            let decl: Node = decl.into();
 
             // Skip children not directly below the node or in an `export` below the node.
             // TODO(bbannier): this would probably be better handled directly in the query.
@@ -148,8 +242,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 .nodes_for_capture_index(c_outer_node)
                 .next()
                 .expect("outer node should be present");
-            if outer_node != node
-                && (outer_node.kind() != "export_decl" && outer_node.parent() != Some(node))
+            if outer_node != node.0
+                && (outer_node.kind() != "export_decl" && outer_node.parent() != Some(node.0))
             {
                 return None;
             }
@@ -163,10 +257,15 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     if n.kind() == "source_file" {
                         // Found a source file. Now find the most recent
                         // module decl when looking backwards from `node`.
-                        while let Some(m) = ast::prev_sibling(node) {
+                        while let Some(m) = node.prev_sibling() {
                             if m.kind() == "module_decl" {
                                 module_id = Some(ModuleId::String(
-                                    m.named_child(0)?.utf8_text(source).ok()?.into(),
+                                    m.named_children_not("nl")
+                                        .into_iter()
+                                        .next()?
+                                        .utf8_text(source)
+                                        .ok()?
+                                        .into(),
                                 ));
                                 break;
                             }
@@ -183,10 +282,10 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 module_id.unwrap_or(ModuleId::Global)
             };
 
-            let id = c.nodes_for_capture_index(c_id).next()?;
+            let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
 
-            let range = to_range(decl.range()).ok()?;
-            let selection_range = to_range(id.range()).ok()?;
+            let range = decl.range();
+            let selection_range = id.range();
 
             let id = id.utf8_text(source).ok()?.to_string();
 
@@ -224,12 +323,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     //
                     // Correct for that here.
                     if decl
-                        .named_children(&mut decl.walk())
-                        .find(|c| c.kind() == "type")
-                        .and_then(|typ| {
-                            typ.children(&mut typ.walk())
-                                .find(|c| c.kind() == "function")
-                        })
+                        .named_child("type")
+                        .and_then(|typ| typ.named_child("function"))
                         .is_some()
                     {
                         DeclKind::FuncDef
@@ -249,19 +344,15 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 "redef_record_decl" => DeclKind::RedefRecord,
                 "option_decl" => DeclKind::Option,
                 "type_decl" => {
-                    let typ = decl.named_child(1)?;
-                    assert_eq!(typ.kind(), "type");
+                    let typ = decl.named_child("type")?;
 
                     let fields = typ
-                        .named_children(&mut typ.walk())
+                        .named_children_not("nl")
+                        .into_iter()
                         .filter_map(|c| {
                             if c.kind() == "type_spec" {
-                                let id_ = c.named_child(0)?;
-                                assert_eq!(id_.kind(), "id");
+                                let id_ = c.named_child("id")?;
                                 let id = id_.utf8_text(source).ok()?;
-
-                                let typ = c.named_child(1)?;
-                                assert_eq!(typ.kind(), "type");
 
                                 let documentation = if let Some(docs) = zeekygen_comments(c, source)
                                 {
@@ -280,8 +371,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                                     id: id.to_string(),
                                     fqid: format!("{fqid}::{id}"),
                                     kind: DeclKind::Variable,
-                                    range: to_range(id_.range()).ok()?,
-                                    selection_range: to_range(id_.range()).ok()?,
+                                    range: id_.range(),
+                                    selection_range: id_.range(),
                                     documentation,
                                     uri: uri.clone(),
 
@@ -353,7 +444,7 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .expect("file should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, node, source.as_bytes())
+        .matches(&query, node.0, source.as_bytes())
         .filter_map(|c| c.nodes_for_capture_index(c_file).next())
         .filter_map(|f| f.utf8_text(source.as_bytes()).ok())
         .collect()
@@ -401,7 +492,7 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
     // edge case in tree-sitter. Extract them by hand for the time being.
     let mut docs = VecDeque::new();
 
-    let mut node = ast::prev_sibling(x);
+    let mut node = x.prev_sibling();
     while let Some(n) = node {
         if n.kind() != "zeekygen_next_comment" {
             break;
@@ -414,10 +505,10 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
         };
         docs.push_front(c.trim());
 
-        node = ast::prev_sibling(n);
+        node = n.prev_sibling();
     }
 
-    let mut node = ast::next_sibling(x);
+    let mut node = x.next_sibling();
     while let Some(n) = node {
         if n.kind() != "zeekygen_prev_comment" {
             break;
@@ -430,7 +521,7 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
         };
         docs.push_back(c.trim());
 
-        node = ast::next_sibling(n);
+        node = n.next_sibling();
     }
 
     if docs.is_empty() {
@@ -444,10 +535,9 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
 mod test {
     use std::sync::Arc;
 
-    use crate::{lsp::Database, parse::Parse, Files};
+    use crate::{lsp::Database, parse::Parse, query::Node, Files};
     use insta::assert_debug_snapshot;
     use lspower::lsp::{Position, Url};
-    use tree_sitter::Node;
 
     const SOURCE: &str = "module test;
 
@@ -479,7 +569,10 @@ mod test {
         };
 
         let loads = |source: &'static str| {
-            super::loads_raw(parse(&source).expect("cannot parse").root_node(), &source)
+            super::loads_raw(
+                parse(&source).expect("cannot parse").root_node().into(),
+                &source,
+            )
         };
 
         assert_eq!(loads(""), Vec::<&str>::new());
@@ -499,7 +592,7 @@ mod test {
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| {
-            let mut xs = super::decls_(n, uri.clone(), SOURCE.as_bytes())
+            let mut xs = super::decls_(n.into(), uri.clone(), SOURCE.as_bytes())
                 .into_iter()
                 .collect::<Vec<_>>();
             xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
@@ -516,9 +609,9 @@ mod test {
         // above), they should be visible inside the scope.
         let func_body = tree
             .root_node()
-            .child(tree.root_node().child_count() - 1)
+            .named_child("event_decl")
             .expect("cannot get event_decl")
-            .child(3)
+            .named_child("func_body")
             .expect("cannot get func_body");
         assert_eq!(func_body.kind(), "func_body");
         let func_decls = decls_(func_body);
@@ -541,10 +634,7 @@ mod test {
         assert_eq!(const_node.kind(), "const_decl");
         assert!(super::in_export(const_node));
 
-        let zeek_init_node = tree
-            .root_node()
-            .named_child(tree.root_node().named_child_count() - 1)
-            .unwrap();
+        let zeek_init_node = tree.root_node().named_child("event_decl").unwrap();
         assert_eq!(zeek_init_node.kind(), "event_decl");
         assert!(!super::in_export(zeek_init_node));
     }

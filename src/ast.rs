@@ -11,8 +11,8 @@ use tracing::instrument;
 use crate::{
     lsp::Database,
     parse::Parse,
-    query::{self, Decl, DeclKind, ModuleId, Query},
-    to_range, zeek, Files,
+    query::{self, Decl, DeclKind, ModuleId, Node, Query},
+    zeek, Files,
 };
 
 #[salsa::query_group(AstStorage)]
@@ -180,8 +180,8 @@ pub(crate) fn load_to_file(
 /// Find decl with ID from the node up the tree and in all other loaded files.
 pub(crate) fn resolve(
     snapshot: &Snapshot<Database>,
-    node: tree_sitter::Node,
-    scope: Option<tree_sitter::Node>,
+    node: Node,
+    scope: Option<Node>,
     uri: Arc<Url>,
 ) -> Option<Decl> {
     let source = snapshot.source(uri.clone());
@@ -195,12 +195,13 @@ pub(crate) fn resolve(
     match node.kind() {
         // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
         "expr" | "init" => {
-            return named_child_not(node, "nl")
+            return node
+                .named_child_not("nl")
                 .and_then(|c| resolve(snapshot, c, Some(scope), uri.clone()));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
-            let xs = named_children_not(node, "nl");
+            let xs = node.named_children_not("nl");
             let rhs = xs.get(0).copied()?;
             let lhs = xs.get(1).copied()?;
 
@@ -214,8 +215,9 @@ pub(crate) fn resolve(
         let id = node.utf8_text(source.as_bytes()).ok()?;
 
         if p.kind() == "field_access" || p.kind() == "field_check" {
-            let lhs =
-                prev_sibling(node).and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
+            let lhs = node
+                .prev_sibling()
+                .and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
 
             let typ = typ(snapshot, &lhs)?;
 
@@ -243,11 +245,11 @@ pub(crate) fn resolve(
             "func_decl" => {
                 // Synthesize declarations for function arguments. Ideally the grammar would expose
                 // these directly.
-                let func_params = named_child(node, "func_params")?;
-                let formal_args = named_child(func_params, "formal_args")?;
+                let func_params = node.named_child("func_params")?;
+                let formal_args = func_params.named_child("formal_args")?;
 
-                for arg in named_children(formal_args, "formal_arg") {
-                    let arg_id_ = named_child(arg, "id")?;
+                for arg in formal_args.named_children("formal_arg") {
+                    let arg_id_ = arg.named_child("id")?;
                     let arg_id = arg_id_.utf8_text(source.as_bytes()).ok()?;
                     if arg_id != id {
                         continue;
@@ -259,8 +261,8 @@ pub(crate) fn resolve(
                         fqid: arg_id.to_string(),
                         kind: DeclKind::Variable,
                         is_export: None,
-                        range: to_range(arg_id_.range()).ok()?,
-                        selection_range: to_range(arg.range()).ok()?,
+                        range: arg_id_.range(),
+                        selection_range: arg.range(),
                         uri,
                         documentation: format!(
                             "```zeek\n{}\n```",
@@ -294,61 +296,15 @@ pub(crate) fn resolve(
         .cloned()
 }
 
-fn named_child<'a>(n: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
-    named_children(n, kind).into_iter().next()
-}
-
-fn named_children<'a>(n: tree_sitter::Node<'a>, kind: &str) -> Vec<tree_sitter::Node<'a>> {
-    let mut cur = n.walk();
-    n.named_children(&mut cur)
-        .filter(|n| n.kind() == kind)
-        .collect()
-}
-
-fn named_child_not<'a>(n: tree_sitter::Node<'a>, not_kind: &str) -> Option<tree_sitter::Node<'a>> {
-    named_children_not(n, not_kind).into_iter().next()
-}
-
-fn named_children_not<'a>(n: tree_sitter::Node<'a>, not_kind: &str) -> Vec<tree_sitter::Node<'a>> {
-    let mut cur = n.walk();
-    n.named_children(&mut cur)
-        .filter(|n| n.kind() != not_kind)
-        .collect()
-}
-
-#[must_use]
-pub fn next_sibling(mut n: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    while let Some(p) = n.next_named_sibling() {
-        if p.kind() != "nl" {
-            return Some(p);
-        }
-
-        n = p;
-    }
-    None
-}
-
-#[must_use]
-pub fn prev_sibling(mut n: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    while let Some(p) = n.prev_named_sibling() {
-        if p.kind() != "nl" {
-            return Some(p);
-        }
-
-        n = p;
-    }
-    None
-}
-
 /// Determine the type of the given decl.
 pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
     /// Helper to extract function return values.
-    fn fn_result(decl: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    fn fn_result(decl: Node) -> Option<Node> {
         // The return type is stored in the func_params.
-        let func_params = named_child(decl, "func_params")?;
+        let func_params = decl.named_child("func_params")?;
 
         // A `type` directly stored in the `func_params` is the return type.
-        named_child(func_params, "type")
+        func_params.named_child("type")
     }
 
     let uri = &decl.uri;
@@ -359,17 +315,20 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
 
     let d = match node.kind() {
         "var_decl" | "formal_arg" => {
-            let typ = named_children_not(node, "nl").into_iter().nth(1)?;
+            let typ = node.named_children_not("nl").into_iter().nth(1)?;
 
             match typ.kind() {
                 "type" => resolve(db, typ, None, uri.clone()),
-                "initializer" => {
-                    named_child(typ, "init").and_then(|n| resolve(db, n, None, uri.clone()))
-                }
+                "initializer" => typ
+                    .named_child("init")
+                    .and_then(|n| resolve(db, n, None, uri.clone())),
                 _ => None,
             }
         }
-        "id" => named_child(node.parent()?, "type").and_then(|n| resolve(db, n, None, uri.clone())),
+        "id" => node
+            .parent()?
+            .named_child("type")
+            .and_then(|n| resolve(db, n, None, uri.clone())),
         _ => None,
     };
 

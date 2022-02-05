@@ -2,7 +2,7 @@ use crate::{
     ast::{self, load_to_file, Ast},
     parse::Parse,
     query::{self, Decl, DeclKind, Query},
-    to_range, zeek, Files,
+    zeek, Files,
 };
 use itertools::Itertools;
 use lspower::{
@@ -386,7 +386,7 @@ impl LanguageServer for Backend {
 
         let hover = Hover {
             contents: HoverContents::Array(contents),
-            range: to_range(node.range()).ok(),
+            range: Some(node.range()),
         };
 
         Ok(Some(hover))
@@ -525,7 +525,7 @@ impl LanguageServer for Backend {
             .map_or(0, str::len)
             == 0
         {
-            node = match ast::prev_sibling(node) {
+            node = match node.prev_sibling() {
                 Some(s) => s,
                 None => match node.parent() {
                     Some(p) => p,

@@ -234,7 +234,7 @@ fn in_export(mut node: Node) -> bool {
 pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
     let query = match tree_sitter::Query::new(
         unsafe { tree_sitter_zeek() },
-        "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id)@decl)@outer_node",
+        "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id (type (func_params))?@fn)@decl)@outer_node",
     ) {
         Ok(q) => q,
         Err(e) => {
@@ -250,6 +250,10 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
     let c_id = query
         .capture_index_for_name("id")
         .expect("id should be captured");
+
+    let c_fn = query
+        .capture_index_for_name("fn")
+        .expect("fn should be captured");
 
     let c_decl = query
         .capture_index_for_name("decl")
@@ -343,19 +347,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         .next()
                         .expect("scope should be present");
 
-                    // Forward declarations of functions like `global foo: function(): count` are
-                    // parsed as `var_decl` like this:
-                    //
-                    // (var_decl
-                    //   (id)
-                    //   (type "function" (func_params (type))))
-                    //
-                    // Correct for that here.
-                    if decl
-                        .named_child("type")
-                        .and_then(|typ| typ.named_child("function"))
-                        .is_some()
-                    {
+                    if c.nodes_for_capture_index(c_fn).next().is_some() {
                         DeclKind::FuncDef
                     } else {
                         // Just a plain & clean variable declaration.
@@ -589,7 +581,10 @@ mod test {
               module bar;
               event zeek_init() { local x=1; \n
                   # Comment.
-              }";
+              }
+
+              global fun: function(x: count): string;
+              ";
 
     #[test]
     fn loads_raw() {
@@ -635,7 +630,7 @@ mod test {
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
         let root_decls = decls_(tree.root_node());
-        assert_eq!(4, root_decls.len());
+        assert_eq!(5, root_decls.len());
         assert_debug_snapshot!(root_decls);
 
         // Test decls with scope. While they should not be visible from outside the scope (tested

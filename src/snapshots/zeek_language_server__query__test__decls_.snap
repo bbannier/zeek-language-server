@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 522
+assertion_line: 634
 expression: root_decls
 
 ---
@@ -207,6 +207,49 @@ expression: root_decls
             },
         },
         documentation: "```zeek\nevent zeek_init() { local x=1; \n\n                  # Comment.\n              }\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+    Decl {
+        module: String(
+            "bar",
+        ),
+        id: "fun",
+        fqid: "bar::fun",
+        kind: FuncDef,
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 20,
+                character: 14,
+            },
+            end: Position {
+                line: 20,
+                character: 53,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 20,
+                character: 21,
+            },
+            end: Position {
+                line: 20,
+                character: 24,
+            },
+        },
+        documentation: "```zeek\nglobal fun: function(x: count): string;\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

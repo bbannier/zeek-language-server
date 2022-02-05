@@ -1,16 +1,14 @@
 ---
 source: src/query.rs
-assertion_line: 535
+assertion_line: 652
 expression: func_decls
 
 ---
 [
     Decl {
-        module: String(
-            "bar",
-        ),
+        module: None,
         id: "x",
-        fqid: "bar::x",
+        fqid: "x",
         kind: Variable,
         is_export: Some(
             false,

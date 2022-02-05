@@ -278,7 +278,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
             }
 
             // Figure out the module this decl is for.
-            let module = {
+            let mut module = {
                 let mut module_id = None;
 
                 let mut node = decl;
@@ -308,7 +308,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     node = n;
                 }
 
-                module_id.unwrap_or(ModuleId::Global)
+                module_id.unwrap_or(ModuleId::None)
             };
 
             let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
@@ -330,7 +330,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 )
             };
 
-            let fqid = match &module {
+            let mut fqid = match &module {
                 ModuleId::Global | ModuleId::None => id.clone(),
                 ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
@@ -361,7 +361,11 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         // Just a plain & clean variable declaration.
                         match scope.kind() {
                             "global" => DeclKind::Global,
-                            "local" => DeclKind::Variable,
+                            "local" => {
+                                fqid = id.clone();
+                                module = ModuleId::None;
+                                DeclKind::Variable
+                            }
                             _ => {
                                 error!("unhandled variable scope: {}", scope.kind());
                                 return None;

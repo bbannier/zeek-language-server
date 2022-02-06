@@ -431,6 +431,47 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 uri: uri.clone(),
             })
         })
+        .chain(fn_param_decls(node, uri.clone(), source).into_iter())
+        .collect()
+}
+/// Extract declarations for function parameters on the given node.
+#[instrument]
+pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
+    if node.kind() != "func_decl" {
+        return HashSet::new();
+    }
+
+    // Synthesize declarations for function arguments. Ideally the grammar would expose
+    // these directly.
+    let func_params = match node.named_child("func_params") {
+        Some(p) => p,
+        None => return HashSet::new(),
+    };
+
+    let formal_args = match func_params.named_child("formal_args") {
+        Some(a) => a,
+        None => return HashSet::new(),
+    };
+
+    formal_args
+        .named_children("formal_arg")
+        .into_iter()
+        .filter_map(|arg| {
+            let arg_id_ = arg.named_child("id")?;
+            let arg_id = arg_id_.utf8_text(source).ok()?;
+
+            Some(Decl {
+                module: ModuleId::None,
+                id: arg_id.to_string(),
+                fqid: arg_id.to_string(),
+                kind: DeclKind::Variable,
+                is_export: None,
+                range: arg_id_.range(),
+                selection_range: arg.range(),
+                uri: uri.clone(),
+                documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
+            })
+        })
         .collect()
 }
 
@@ -560,7 +601,12 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
 mod test {
     use std::sync::Arc;
 
-    use crate::{lsp::Database, parse::Parse, query::Node, Files};
+    use crate::{
+        lsp::{Database, TestDatabase},
+        parse::Parse,
+        query::Node,
+        Files,
+    };
     use insta::assert_debug_snapshot;
     use lspower::lsp::{Position, Url};
 
@@ -666,5 +712,39 @@ mod test {
         let zeek_init_node = tree.root_node().named_child("event_decl").unwrap();
         assert_eq!(zeek_init_node.kind(), "event_decl");
         assert!(!super::in_export(zeek_init_node));
+    }
+
+    #[test]
+    fn fn_param_decls() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "module x;
+function f1(x: count, y: string) {
+    # Inside.
+}",
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+        let source = db.source(uri.clone());
+
+        let in_f1 = root
+            .named_descendant_for_position(Position::new(1, 0))
+            .unwrap();
+        assert_eq!(in_f1.kind(), "func_decl");
+        let mut decls = super::fn_param_decls(in_f1, uri.clone(), source.as_bytes())
+            .into_iter()
+            .collect::<Vec<_>>();
+        decls.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+        assert_debug_snapshot!(decls);
+
+        let outside_f1 = root
+            .named_descendant_for_position(Position::new(0, 0))
+            .unwrap();
+        assert_eq!(outside_f1.kind(), "module_decl");
+        assert!(super::fn_param_decls(outside_f1, uri.clone(), source.as_bytes()).is_empty());
     }
 }

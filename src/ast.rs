@@ -11,7 +11,7 @@ use tracing::instrument;
 use crate::{
     lsp::Database,
     parse::Parse,
-    query::{self, Decl, DeclKind, ModuleId, Node, Query},
+    query::{self, Decl, DeclKind, Node, Query},
     zeek, Files,
 };
 
@@ -239,45 +239,9 @@ pub(crate) fn resolve(
     let id = node.utf8_text(source.as_bytes()).ok()?;
 
     let mut node = node;
-    let mut decl;
     loop {
-        decl = query::decl_at(id, node, uri.clone(), source.as_bytes()).or(match node.kind() {
-            "func_decl" => {
-                // Synthesize declarations for function arguments. Ideally the grammar would expose
-                // these directly.
-                let func_params = node.named_child("func_params")?;
-                let formal_args = func_params.named_child("formal_args")?;
-
-                for arg in formal_args.named_children("formal_arg") {
-                    let arg_id_ = arg.named_child("id")?;
-                    let arg_id = arg_id_.utf8_text(source.as_bytes()).ok()?;
-                    if arg_id != id {
-                        continue;
-                    }
-
-                    return Some(Decl {
-                        module: ModuleId::None,
-                        id: arg_id.to_string(),
-                        fqid: arg_id.to_string(),
-                        kind: DeclKind::Variable,
-                        is_export: None,
-                        range: arg_id_.range(),
-                        selection_range: arg.range(),
-                        uri,
-                        documentation: format!(
-                            "```zeek\n{}\n```",
-                            arg.utf8_text(source.as_bytes()).ok()?
-                        ),
-                    });
-                }
-
-                None
-            }
-            _ => None,
-        });
-
-        if decl.is_some() {
-            return decl;
+        if let Some(decl) = query::decl_at(id, node, uri.clone(), source.as_bytes()) {
+            return Some(decl);
         }
 
         if let Some(p) = node.parent() {

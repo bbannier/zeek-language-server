@@ -271,8 +271,6 @@ impl LanguageServer for Backend {
                 let files = Arc::make_mut(&mut files);
                 files.insert(uri.clone());
                 state.set_files(Arc::new(files.clone()));
-
-                state.file_changed(uri.clone());
             };
         }
 

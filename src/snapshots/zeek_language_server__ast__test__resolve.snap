@@ -1,14 +1,12 @@
 ---
 source: src/ast.rs
-assertion_line: 474
-expression: "super::resolve(&db, node, None, uri.clone())"
+assertion_line: 396
+expression: "super::resolve(&db, node, uri.clone())"
 
 ---
 Some(
     Decl {
-        module: String(
-            "x",
-        ),
+        module: None,
         id: "c",
         fqid: "x::c",
         kind: Global,

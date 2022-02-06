@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 724
+assertion_line: 728
 expression: root_decls
 
 ---
@@ -92,9 +92,7 @@ expression: root_decls
         },
     },
     Decl {
-        module: String(
-            "test",
-        ),
+        module: None,
         id: "Y",
         fqid: "test::Y",
         kind: Type(
@@ -177,9 +175,7 @@ expression: root_decls
         },
     },
     Decl {
-        module: String(
-            "bar",
-        ),
+        module: None,
         id: "zeek_init",
         fqid: "bar::zeek_init",
         kind: Event,
@@ -220,9 +216,7 @@ expression: root_decls
         },
     },
     Decl {
-        module: String(
-            "bar",
-        ),
+        module: None,
         id: "fun",
         fqid: "bar::fun",
         kind: FuncDef(
@@ -310,9 +304,7 @@ expression: root_decls
         },
     },
     Decl {
-        module: String(
-            "bar",
-        ),
+        module: None,
         id: "fun",
         fqid: "bar::fun",
         kind: FuncDecl(

@@ -1,7 +1,7 @@
 ---
 source: src/ast.rs
-assertion_line: 540
-expression: "super::resolve(&db, node, None, uri)"
+assertion_line: 463
+expression: "super::resolve(&db, node, uri)"
 
 ---
 Some(

@@ -461,7 +461,11 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
             };
 
             Some(Decl {
-                module,
+                module: if in_export(decl) {
+                    module
+                } else {
+                    ModuleId::None
+                },
                 id,
                 fqid,
                 kind,

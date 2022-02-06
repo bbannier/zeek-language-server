@@ -288,8 +288,9 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
     // Perform additional unwrapping if needed.
     d.and_then(|d| match d.kind {
         // For function declarations produce the function's return type.
-        DeclKind::FuncDecl | DeclKind::FuncDef => resolve(
+        DeclKind::FuncDecl(_sig) | DeclKind::FuncDef(_sig) => resolve(
             db,
+            // FIXME(bbannier): use `_sig` here instead of `fn_result`.
             fn_result(tree.root_node().named_descendant_for_point_range(d.range)?)?,
             d.uri,
         ),

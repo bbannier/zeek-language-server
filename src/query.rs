@@ -20,11 +20,17 @@ pub enum DeclKind {
     RedefEnum,
     RedefRecord,
     Type(Vec<Decl>),
-    FuncDef,
-    FuncDecl,
+    FuncDef(Signature),
+    FuncDecl(Signature),
     Hook,
     Event,
     Variable,
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub struct Signature {
+    result: Option<String>,
+    args: Vec<Decl>,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
@@ -339,6 +345,41 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
 
+            let signature = |n: Node| -> Option<Signature> {
+                let func_params = n.named_child("func_params")?;
+                let result = func_params
+                    .named_child("type")
+                    .and_then(|n| n.utf8_text(source).ok())
+                    .map(String::from);
+                let args = func_params
+                    .named_child("formal_args")
+                    .map_or(Vec::new(), |args| {
+                        args.named_children("formal_arg")
+                            .into_iter()
+                            .filter_map(|arg| {
+                                let arg_id_ = arg.named_child("id")?;
+                                let arg_id = arg_id_.utf8_text(source).ok()?;
+
+                                Some(Decl {
+                                    module: ModuleId::None,
+                                    id: arg_id.to_string(),
+                                    fqid: arg_id.to_string(),
+                                    kind: DeclKind::Variable,
+                                    is_export: None,
+                                    range: arg_id_.range(),
+                                    selection_range: arg.range(),
+                                    uri: uri.clone(),
+                                    documentation: format!(
+                                        "```zeek\n{}\n```",
+                                        arg.utf8_text(source).ok()?
+                                    ),
+                                })
+                            })
+                            .collect()
+                    });
+                Some(Signature { result, args })
+            };
+
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
                 "var_decl" => {
@@ -347,8 +388,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         .next()
                         .expect("scope should be present");
 
-                    if c.nodes_for_capture_index(c_fn).next().is_some() {
-                        DeclKind::FuncDef
+                    if let Some(f) = c.nodes_for_capture_index(c_fn).next() {
+                        DeclKind::FuncDef(signature(Node(f))?)
                     } else {
                         // Just a plain & clean variable declaration.
                         match scope.kind() {
@@ -413,7 +454,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     DeclKind::Type(fields)
                 }
                 "event_decl" => DeclKind::Event,
-                "func_decl" => DeclKind::FuncDecl,
+                "func_decl" => DeclKind::FuncDecl(signature(decl)?),
                 _ => {
                     return None;
                 }
@@ -434,7 +475,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
         .chain(fn_param_decls(node, uri.clone(), source).into_iter())
         .collect()
 }
+
 /// Extract declarations for function parameters on the given node.
+// TODO(bbannier): it seems we should be able to also accomplish this by looking at the function signature.
 #[instrument]
 pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
     if node.kind() != "func_decl" {
@@ -610,7 +653,7 @@ mod test {
     use insta::assert_debug_snapshot;
     use lspower::lsp::{Position, Url};
 
-    const SOURCE: &str = "module test;
+    const SOURCE: &str = r#"module test;
 
               export {
                   const x = 1 &redef;
@@ -630,7 +673,8 @@ mod test {
               }
 
               global fun: function(x: count): string;
-              ";
+              function fun(x: count): string { return ""; }
+              "#;
 
     #[test]
     fn loads_raw() {
@@ -676,7 +720,7 @@ mod test {
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
         let root_decls = decls_(tree.root_node());
-        assert_eq!(5, root_decls.len());
+        assert_eq!(6, root_decls.len());
         assert_debug_snapshot!(root_decls);
 
         // Test decls with scope. While they should not be visible from outside the scope (tested

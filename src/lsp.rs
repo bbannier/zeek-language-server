@@ -690,7 +690,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::RedefEnum => SymbolKind::ENUM,
         DeclKind::RedefRecord => SymbolKind::INTERFACE,
         DeclKind::Type(_) => SymbolKind::CLASS,
-        DeclKind::FuncDecl | DeclKind::FuncDef => SymbolKind::FUNCTION,
+        DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
         DeclKind::Hook => SymbolKind::OPERATOR,
         DeclKind::Event => SymbolKind::EVENT,
     }
@@ -713,7 +713,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::RedefEnum => CompletionItemKind::ENUM,
         DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
         DeclKind::Type(_) => CompletionItemKind::CLASS,
-        DeclKind::FuncDecl | DeclKind::FuncDef => CompletionItemKind::FUNCTION,
+        DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
         DeclKind::Hook => CompletionItemKind::OPERATOR,
         DeclKind::Event => CompletionItemKind::EVENT,
     }

@@ -14,10 +14,12 @@ use lspower::{
         DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
         FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse, Hover,
         HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-        InitializedParams, LanguageString, Location, MarkedString, MessageType, OneOf, Position,
-        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        InitializedParams, LanguageString, Location, MarkedString, MessageType, OneOf,
+        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        ProgressToken, Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
+        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
+        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server, TokenCanceller,
@@ -189,10 +191,14 @@ impl LanguageServer for Backend {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec!["$".into(), "?".into()]),
+                    trigger_characters: Some(vec!["$".into()]),
                     ..CompletionOptions::default()
                 }),
                 definition_provider: Some(OneOf::Left(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".into(), ",".into()]),
+                    ..SignatureHelpOptions::default()
+                }),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -667,6 +673,113 @@ impl LanguageServer for Backend {
 
         Ok(location.map(GotoDefinitionResponse::Scalar))
     }
+
+    #[instrument]
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let uri = Arc::new(params.text_document_position_params.text_document.uri);
+        let position = params.text_document_position_params.position;
+
+        let state = self.state()?;
+        let source = state.source(uri.clone());
+        let tree = match state.parse(uri.clone()) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
+        let line = match source.lines().nth(position.line as usize) {
+            Some(l) => l,
+            None => return Ok(None),
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let line = if (line.len() + 1) as u32 > position.character {
+            &line[..position.character as usize]
+        } else {
+            return Ok(None);
+        };
+
+        // Search backward in the line for '('. The identifier before that could be a function name.
+        let node = match line
+            .chars()
+            .rev()
+            .enumerate()
+            .filter(|(_, c)| !char::is_whitespace(*c))
+            .skip_while(|(_, c)| c != &'(')
+            .nth(1)
+            .and_then(|(i, _)| {
+                #[allow(clippy::cast_possible_truncation)]
+                let character = (line.len() - i - 1) as u32;
+                tree.root_node().named_descendant_for_position(Position {
+                    character,
+                    ..position
+                })
+            }) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        #[allow(clippy::cast_possible_truncation)]
+        let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
+
+        let id = match node.utf8_text(source.as_bytes()) {
+            Ok(id) => id,
+            Err(_) => return Ok(None),
+        };
+
+        let f = match ast::resolve_id(&state, id, node, uri) {
+            Some(f) => f,
+            _ => return Ok(None),
+        };
+
+        let signature = match f.kind {
+            DeclKind::FuncDecl(s) | DeclKind::FuncDef(s) => s,
+            _ => return Ok(None),
+        };
+
+        // Recompute `tree` and `source` in the context of the function declaration.
+        let tree = match state.parse(f.uri.clone()) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let source = state.source(f.uri);
+
+        let label = format!(
+            "{}({})",
+            f.id,
+            signature
+                .args
+                .iter()
+                .filter_map(|a| {
+                    tree.root_node()
+                        .named_descendant_for_point_range(a.selection_range)?
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                })
+                .join(", ")
+        );
+
+        let parameters = Some(
+            signature
+                .args
+                .into_iter()
+                .map(|a| ParameterInformation {
+                    label: ParameterLabel::Simple(a.id),
+                    documentation: None,
+                })
+                .collect(),
+        );
+
+        Ok(Some(SignatureHelp {
+            signatures: vec![SignatureInformation {
+                label,
+                documentation: None,
+                parameters,
+                active_parameter,
+            }],
+            active_signature: None,
+            active_parameter,
+        }))
+    }
 }
 
 /// Extract all error nodes under the given node.
@@ -895,5 +1008,70 @@ pub(crate) mod test {
         };
 
         assert_debug_snapshot!(server.hover(params).await);
+    }
+
+    #[tokio::test]
+    async fn signature_help() {
+        let mut db = TestDatabase::new();
+        let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri_x.clone(),
+            "module x;
+global f: function(x: count, y: string): string;
+local x = f(",
+        );
+        let uri_y = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        db.add_file(
+            uri_y.clone(),
+            "module y;
+global f: function(x: count, y: string): string;
+local x = f(1,2,3",
+        );
+        let uri_z = Arc::new(Url::from_file_path("/z.zeek").unwrap());
+        db.add_file(
+            uri_z.clone(),
+            "module z;
+@load ./ext
+local x = ext::f(",
+        );
+        db.add_file(
+            Arc::new(Url::from_file_path("/ext.zeek").unwrap()),
+            "module ext;
+export {
+global f: function(x: count, y: string): string;
+}",
+        );
+
+        let server = serve(db);
+
+        let params = super::SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri_x.as_ref().clone()),
+                Position::new(2, 12),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        assert_debug_snapshot!(server.signature_help(params).await);
+
+        let params = super::SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri_y.as_ref().clone()),
+                Position::new(2, 16),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        assert_debug_snapshot!(server.signature_help(params).await);
+
+        let params = super::SignatureHelpParams {
+            context: None,
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri_z.as_ref().clone()),
+                Position::new(2, 17),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        assert_debug_snapshot!(server.signature_help(params).await);
     }
 }

@@ -1,0 +1,41 @@
+---
+source: src/lsp.rs
+assertion_line: 1042
+expression: server.signature_help(params).await
+
+---
+Ok(
+    Some(
+        SignatureHelp {
+            signatures: [
+                SignatureInformation {
+                    label: "f(x: count, y: string)",
+                    documentation: None,
+                    parameters: Some(
+                        [
+                            ParameterInformation {
+                                label: Simple(
+                                    "x",
+                                ),
+                                documentation: None,
+                            },
+                            ParameterInformation {
+                                label: Simple(
+                                    "y",
+                                ),
+                                documentation: None,
+                            },
+                        ],
+                    ),
+                    active_parameter: Some(
+                        2,
+                    ),
+                },
+            ],
+            active_signature: None,
+            active_parameter: Some(
+                2,
+            ),
+        },
+    ),
+)

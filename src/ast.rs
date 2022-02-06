@@ -196,7 +196,7 @@ pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) 
 
             let id = rhs.utf8_text(source.as_bytes()).ok()?;
 
-            let var_decl = resolve(snapshot, lhs, uri.clone())?;
+            let var_decl = resolve(snapshot, lhs, uri)?;
             let type_decl = typ(snapshot, &var_decl)?;
 
             match type_decl.kind {
@@ -213,7 +213,7 @@ pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) 
     // If the node is part of a field access or check resolve it in the referenced record.
     if let Some(p) = node.parent() {
         if p.kind() == "field_access" || p.kind() == "field_check" {
-            return resolve(snapshot, p, uri.clone());
+            return resolve(snapshot, p, uri);
         }
     }
 

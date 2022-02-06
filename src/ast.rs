@@ -249,15 +249,6 @@ pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>)
 
 /// Determine the type of the given decl.
 pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
-    /// Helper to extract function return values.
-    fn fn_result(decl: Node) -> Option<Node> {
-        // The return type is stored in the func_params.
-        let func_params = decl.named_child("func_params")?;
-
-        // A `type` directly stored in the `func_params` is the return type.
-        func_params.named_child("type")
-    }
-
     let uri = &decl.uri;
 
     let tree = db.parse(uri.clone())?;
@@ -288,12 +279,9 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
     // Perform additional unwrapping if needed.
     d.and_then(|d| match d.kind {
         // For function declarations produce the function's return type.
-        DeclKind::FuncDecl(_sig) | DeclKind::FuncDef(_sig) => resolve(
-            db,
-            // FIXME(bbannier): use `_sig` here instead of `fn_result`.
-            fn_result(tree.root_node().named_descendant_for_point_range(d.range)?)?,
-            d.uri,
-        ),
+        DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => {
+            resolve_id(db, &sig.result?, node, d.uri)
+        }
 
         // Other kinds we return directly.
         _ => Some(d),
@@ -506,5 +494,49 @@ x::x;",
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
         assert_debug_snapshot!(super::resolve(&db, node, uri));
+    }
+
+    #[test]
+    fn typ_fn_call() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "module x;
+type X1: record { f: count &optional; };
+type X2: record { f: count &optional; };
+global f1: function(): X1;
+function f2(): X2 { return X2()};
+global x1 = f1();
+global x2 = f2();
+",
+        );
+
+        let db = db.snapshot();
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let x1 = root
+            .named_descendant_for_position(Position::new(5, 8))
+            .unwrap();
+        assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
+        assert_eq!(
+            &super::typ(&db, &super::resolve(&db, x1, uri.clone()).unwrap())
+                .unwrap()
+                .id,
+            "X1"
+        );
+
+        let x2 = root
+            .named_descendant_for_position(Position::new(6, 8))
+            .unwrap();
+        assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
+        assert_eq!(
+            &super::typ(&db, &super::resolve(&db, x2, uri).unwrap())
+                .unwrap()
+                .id,
+            "X2"
+        );
     }
 }

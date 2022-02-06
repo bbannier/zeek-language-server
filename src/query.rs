@@ -29,8 +29,8 @@ pub enum DeclKind {
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct Signature {
-    result: Option<String>,
-    args: Vec<Decl>,
+    pub result: Option<String>,
+    pub args: Vec<Decl>,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]

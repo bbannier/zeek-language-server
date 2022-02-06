@@ -366,7 +366,7 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = ast::resolve(&state, node, None, uri) {
+                if let Some(decl) = ast::resolve(&state, node, uri) {
                     contents.push(MarkedString::String(decl.documentation));
                 }
             }
@@ -555,7 +555,7 @@ impl LanguageServer for Backend {
             .and_then(|ctx| ctx.trigger_character)
             .map_or(false, |c| c == "$")
         {
-            if let Some(r) = ast::resolve(&state, node, None, uri.clone()) {
+            if let Some(r) = ast::resolve(&state, node, uri.clone()) {
                 let decl = ast::typ(&state, &r);
 
                 // Compute completion.
@@ -650,7 +650,7 @@ impl LanguageServer for Backend {
         })?;
 
         let location = match node.kind() {
-            "id" => ast::resolve(&state, node, None, uri)
+            "id" => ast::resolve(&state, node, uri)
                 .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
             "file" => {
                 let file = PathBuf::from(text);

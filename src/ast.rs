@@ -178,26 +178,15 @@ pub(crate) fn load_to_file(
 }
 
 /// Find decl with ID from the node up the tree and in all other loaded files.
-pub(crate) fn resolve(
-    snapshot: &Snapshot<Database>,
-    node: Node,
-    scope: Option<Node>,
-    uri: Arc<Url>,
-) -> Option<Decl> {
+pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) -> Option<Decl> {
     let source = snapshot.source(uri.clone());
-
-    // By default we interpret `node` as the scope.
-    let scope = match scope {
-        Some(s) => s,
-        None => node,
-    };
 
     match node.kind() {
         // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
         "expr" | "init" => {
             return node
                 .named_child_not("nl")
-                .and_then(|c| resolve(snapshot, c, Some(scope), uri.clone()));
+                .and_then(|c| resolve(snapshot, c, uri.clone()));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
@@ -207,7 +196,7 @@ pub(crate) fn resolve(
 
             let id = rhs.utf8_text(source.as_bytes()).ok()?;
 
-            let var_decl = resolve(snapshot, lhs, None, uri.clone())?;
+            let var_decl = resolve(snapshot, lhs, uri.clone())?;
             let type_decl = typ(snapshot, &var_decl)?;
 
             match type_decl.kind {
@@ -224,14 +213,14 @@ pub(crate) fn resolve(
     // If the node is part of a field access or check resolve it in the referenced record.
     if let Some(p) = node.parent() {
         if p.kind() == "field_access" || p.kind() == "field_check" {
-            return resolve(snapshot, p, None, uri.clone());
+            return resolve(snapshot, p, uri.clone());
         }
     }
 
     // Try to find a decl with name of the given node up the tree.
     let id = node.utf8_text(source.as_bytes()).ok()?;
 
-    resolve_id(snapshot, id, scope, uri)
+    resolve_id(snapshot, id, node, uri)
 }
 
 pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>) -> Option<Decl> {
@@ -282,17 +271,17 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
             let typ = node.named_children_not("nl").into_iter().nth(1)?;
 
             match typ.kind() {
-                "type" => resolve(db, typ, None, uri.clone()),
+                "type" => resolve(db, typ, uri.clone()),
                 "initializer" => typ
                     .named_child("init")
-                    .and_then(|n| resolve(db, n, None, uri.clone())),
+                    .and_then(|n| resolve(db, n, uri.clone())),
                 _ => None,
             }
         }
         "id" => node
             .parent()?
             .named_child("type")
-            .and_then(|n| resolve(db, n, None, uri.clone())),
+            .and_then(|n| resolve(db, n, uri.clone())),
         _ => None,
     };
 
@@ -302,7 +291,6 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
         DeclKind::FuncDecl | DeclKind::FuncDef => resolve(
             db,
             fn_result(tree.root_node().named_descendant_for_point_range(d.range)?)?,
-            None,
             d.uri,
         ),
 
@@ -416,48 +404,48 @@ y$yx$f1;
             .named_descendant_for_position(Position::new(13, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
 
         // `c?$f1` resolves to `f1: count`.
         let node = root
             .named_descendant_for_position(Position::new(15, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
 
         // `y` resolves to `y: count` via function argument.
         let node = root
             .named_descendant_for_position(Position::new(18, 4))
             .unwrap();
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
 
         // `x2$f1` resolves to `f1:count ...` via function argument.
         let node = root
             .named_descendant_for_position(Position::new(19, 7))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
 
         // `x$f1` resolves to `f1: count ...`.
         let node = root
             .named_descendant_for_position(Position::new(14, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
 
         // `x2$f1` resolves to `f1: count ...`.
         let node = root
             .named_descendant_for_position(Position::new(20, 8))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
 
         // Check resolution when multiple field accesses are involved.
         let node = root
             .named_descendant_for_position(Position::new(24, 5))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
     }
 
     #[test]
@@ -483,7 +471,7 @@ x$f;",
             .named_descendant_for_position(Position::new(4, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri));
+        assert_debug_snapshot!(super::resolve(&db, node, uri));
     }
 
     #[test]
@@ -516,6 +504,6 @@ x::x;",
             .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
-        assert_debug_snapshot!(super::resolve(&db, node, None, uri));
+        assert_debug_snapshot!(super::resolve(&db, node, uri));
     }
 }

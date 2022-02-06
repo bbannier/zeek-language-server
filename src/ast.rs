@@ -238,24 +238,29 @@ pub(crate) fn resolve(
     // Try to find a decl with name of the given node up the tree.
     let id = node.utf8_text(source.as_bytes()).ok()?;
 
-    let mut node = node;
+    resolve_id(snapshot, id, scope, uri)
+}
+
+pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>) -> Option<Decl> {
+    let source = db.source(uri.clone());
+
+    let mut scope = scope;
     loop {
-        if let Some(decl) = query::decl_at(id, node, uri.clone(), source.as_bytes()) {
+        if let Some(decl) = query::decl_at(id, scope, uri.clone(), source.as_bytes()) {
             return Some(decl);
         }
 
-        if let Some(p) = node.parent() {
-            node = p;
+        if let Some(p) = scope.parent() {
+            scope = p;
         } else {
             break;
         }
     }
 
     // We haven't found a decl yet, look in loaded modules.
-    snapshot
-        .implicit_decls()
+    db.implicit_decls()
         .iter()
-        .chain(snapshot.loaded_decls(uri).iter())
+        .chain(db.loaded_decls(uri).iter())
         .find(|d| d.fqid == id)
         .cloned()
 }

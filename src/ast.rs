@@ -202,36 +202,29 @@ pub(crate) fn resolve(
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
             let xs = node.named_children_not("nl");
-            let rhs = xs.get(0).copied()?;
-            let lhs = xs.get(1).copied()?;
+            let lhs = xs.get(0).copied()?;
+            let rhs = xs.get(1).copied()?;
 
-            return resolve(snapshot, lhs, Some(rhs), uri);
+            let id = rhs.utf8_text(source.as_bytes()).ok()?;
+
+            let var_decl = resolve(snapshot, lhs, None, uri.clone())?;
+            let type_decl = typ(snapshot, &var_decl)?;
+
+            match type_decl.kind {
+                DeclKind::Type(fields) => {
+                    // Find the given id in the fields.
+                    return fields.into_iter().find(|f| dbg!(&f.id) == dbg!(id));
+                }
+                _ => return None,
+            }
         }
         _ => {}
     }
 
-    // If the ID is part of a field access or check resolve it in the referenced record.
+    // If the node is part of a field access or check resolve it in the referenced record.
     if let Some(p) = node.parent() {
-        let id = node.utf8_text(source.as_bytes()).ok()?;
-
         if p.kind() == "field_access" || p.kind() == "field_check" {
-            let lhs = node
-                .prev_sibling()
-                .and_then(|s| resolve(snapshot, s, Some(scope), uri.clone()))?;
-
-            let typ = typ(snapshot, &lhs)?;
-
-            let fields = match typ.kind {
-                DeclKind::Type(fields) => fields,
-                _ => return None,
-            };
-
-            // Find the given id in the fields.
-            let field = fields.into_iter().find(|f| f.id == id);
-
-            if field.is_some() {
-                return field;
-            }
+            return resolve(snapshot, p, None, uri.clone());
         }
     }
 

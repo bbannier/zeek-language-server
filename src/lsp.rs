@@ -1,7 +1,7 @@
 use crate::{
     ast::{self, load_to_file, Ast},
     parse::Parse,
-    query::{self, Decl, DeclKind, Query},
+    query::{self, Decl, DeclKind, ModuleId, Query},
     zeek, Files,
 };
 use itertools::Itertools;
@@ -437,16 +437,25 @@ impl LanguageServer for Backend {
             }
         };
 
-        let modules = state
-            .decls(uri)
-            .iter()
+        // Even though a valid source file can only contain a single module, one can still make
+        // declarations in other modules. Sort declarations by module so users get a clean view.
+        // Then show declarations under their module, or at the top-level if they aren't exported
+        // into a module.
+        let decls = state.decls(uri.clone());
+        let mut decls = decls.iter().collect::<Vec<_>>();
+        decls.sort_by_key(|d| format!("{}", d.module));
+        let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
+            decls.into_iter().partition(|d| d.module != ModuleId::None);
+
+        let modules = decls_w_mod
+            .into_iter()
             .group_by(|d| &d.module)
             .into_iter()
             .map(|(m, decls)| {
                 #[allow(deprecated)]
                 DocumentSymbol {
                     name: format!("{}", m),
-                    kind: SymbolKind::MODULE,
+                    kind: SymbolKind::NAMESPACE,
                     children: Some(decls.map(symbol).collect()),
 
                     // FIXME(bbannier): Weird ranges.
@@ -459,6 +468,7 @@ impl LanguageServer for Backend {
                     tags: None,
                 }
             })
+            .chain(decls_wo_mod.into_iter().map(symbol))
             .collect();
 
         Ok(Some(DocumentSymbolResponse::Nested(modules)))

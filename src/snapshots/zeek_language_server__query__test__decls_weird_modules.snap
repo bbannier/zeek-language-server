@@ -1,0 +1,150 @@
+---
+source: src/query.rs
+assertion_line: 793
+expression: decls
+
+---
+[
+    Decl {
+        module: String(
+            "x",
+        ),
+        id: "f1",
+        fqid: "x::f1",
+        kind: FuncDef(
+            Signature {
+                result: None,
+                args: [],
+            },
+        ),
+        is_export: Some(
+            true,
+        ),
+        range: Range {
+            start: Position {
+                line: 2,
+                character: 0,
+            },
+            end: Position {
+                line: 2,
+                character: 22,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 2,
+                character: 7,
+            },
+            end: Position {
+                line: 2,
+                character: 9,
+            },
+        },
+        documentation: "```zeek\nglobal f1: function();\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+    Decl {
+        module: String(
+            "foo",
+        ),
+        id: "f2",
+        fqid: "foo::f2",
+        kind: FuncDef(
+            Signature {
+                result: None,
+                args: [],
+            },
+        ),
+        is_export: Some(
+            true,
+        ),
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 0,
+            },
+            end: Position {
+                line: 3,
+                character: 27,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 7,
+            },
+            end: Position {
+                line: 3,
+                character: 14,
+            },
+        },
+        documentation: "```zeek\nglobal foo::f2: function();\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+    Decl {
+        module: Global,
+        id: "f3",
+        fqid: "f3",
+        kind: FuncDef(
+            Signature {
+                result: None,
+                args: [],
+            },
+        ),
+        is_export: Some(
+            true,
+        ),
+        range: Range {
+            start: Position {
+                line: 4,
+                character: 0,
+            },
+            end: Position {
+                line: 4,
+                character: 30,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 4,
+                character: 7,
+            },
+            end: Position {
+                line: 4,
+                character: 17,
+            },
+        },
+        documentation: "```zeek\nglobal GLOBAL::f3: function();\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+]

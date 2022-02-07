@@ -7,7 +7,7 @@ use std::{
     str::Utf8Error,
     sync::Arc,
 };
-use tracing::{error, instrument};
+use tracing::{debug, error, instrument};
 
 use crate::parse::{tree_sitter_zeek, Parse};
 
@@ -287,6 +287,13 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 return None;
             }
 
+            // Helper to compute a module ID from a given string.
+            let comp_module_id = |id: &str| match id {
+                "GLOBAL" => ModuleId::Global,
+                "" => ModuleId::None,
+                _ => ModuleId::String(id.into()),
+            };
+
             // Figure out the module this decl is for.
             let mut module = {
                 let mut module_id = None;
@@ -298,7 +305,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         // module decl when looking backwards from `node`.
                         while let Some(m) = node.prev_sibling() {
                             if m.kind() == "module_decl" {
-                                module_id = Some(ModuleId::String(
+                                module_id = Some(comp_module_id(
                                     m.named_children_not("nl")
                                         .into_iter()
                                         .next()?
@@ -326,7 +333,26 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
             let range = decl.range();
             let selection_range = id.range();
 
-            let id = id.utf8_text(source).ok()?.to_string();
+            let id = {
+                // The grammar doesn't expose module ids in identifiers like `mod::f` directly, parse by hand.
+                let x = id.utf8_text(source).ok()?;
+                let spl = x.splitn(2, "::").collect::<Vec<_>>();
+
+                match spl.len() {
+                    // The module was part of the ID.
+                    2 => {
+                        module = comp_module_id(spl[0]);
+                        spl[1].to_string()
+                    }
+                    // Just a plain local ID.
+                    1 => spl[0].to_string(),
+                    // This just looks plain wrong.
+                    _ => {
+                        debug!("unexpected empty id at {:?}", id.range());
+                        return None;
+                    }
+                }
+            };
 
             let documentation = if let Some(docs) = zeekygen_comments(decl, source) {
                 format!(
@@ -657,6 +683,8 @@ mod test {
     use insta::assert_debug_snapshot;
     use lspower::lsp::{Position, Url};
 
+    use super::Query;
+
     const SOURCE: &str = r#"module test;
 
               export {
@@ -739,6 +767,30 @@ mod test {
         let func_decls = decls_(func_body);
         assert_eq!(func_decls.len(), 1);
         assert_debug_snapshot!(func_decls);
+    }
+
+    #[test]
+    fn decls_weird_modules() {
+        let mut db = Database::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.set_source(
+            uri.clone(),
+            Arc::new(
+                "module x;
+export {
+global f1: function();
+global foo::f2: function();
+global GLOBAL::f3: function();
+}"
+                .into(),
+            ),
+        );
+
+        let decls = db.decls(uri.clone());
+        let mut decls = decls.iter().collect::<Vec<_>>();
+        decls.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+
+        assert_debug_snapshot!(decls);
     }
 
     #[test]

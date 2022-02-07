@@ -829,6 +829,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
         DeclKind::Hook => SymbolKind::OPERATOR,
         DeclKind::Event => SymbolKind::EVENT,
+        DeclKind::Field => SymbolKind::FIELD,
     }
 }
 
@@ -852,6 +853,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
         DeclKind::Hook => CompletionItemKind::OPERATOR,
         DeclKind::Event => CompletionItemKind::EVENT,
+        DeclKind::Field => CompletionItemKind::FIELD,
     }
 }
 

@@ -9,7 +9,7 @@ Some(
         module: None,
         id: "f1",
         fqid: "x::X::f1",
-        kind: Variable,
+        kind: Field,
         is_export: None,
         range: Range {
             start: Position {

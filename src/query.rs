@@ -25,6 +25,7 @@ pub enum DeclKind {
     Hook,
     Event,
     Variable,
+    Field,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
@@ -462,7 +463,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                                 Some(Decl {
                                     id: id.to_string(),
                                     fqid: format!("{fqid}::{id}"),
-                                    kind: DeclKind::Variable,
+                                    kind: DeclKind::Field,
                                     range: id_.range(),
                                     selection_range: id_.range(),
                                     documentation,

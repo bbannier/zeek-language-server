@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 728
+assertion_line: 757
 expression: root_decls
 
 ---
@@ -101,7 +101,7 @@ expression: root_decls
                     module: None,
                     id: "y",
                     fqid: "test::Y::y",
-                    kind: Variable,
+                    kind: Field,
                     is_export: None,
                     range: Range {
                         start: Position {

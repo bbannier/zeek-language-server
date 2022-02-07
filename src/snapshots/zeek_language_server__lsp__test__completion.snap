@@ -1,39 +1,133 @@
 ---
 source: src/lsp.rs
-assertion_line: 986
+assertion_line: 1045
 expression: result
 
 ---
-Ok(
-    Some(
-        Array(
-            [
-                CompletionItem {
-                    label: "mod_x::X",
-                    kind: Some(
-                        Variable,
-                    ),
-                    detail: None,
-                    documentation: Some(
-                        String(
-                            "```zeek\nglobal X = 3;\n```",
-                        ),
-                    ),
-                    deprecated: None,
-                    preselect: None,
-                    sort_text: None,
-                    filter_text: None,
-                    insert_text: None,
-                    insert_text_format: None,
-                    insert_text_mode: None,
-                    text_edit: None,
-                    additional_text_edits: None,
-                    command: None,
-                    commit_characters: None,
-                    data: None,
-                    tags: None,
-                },
-            ],
+[
+    CompletionItem {
+        label: "X",
+        kind: Some(
+            Variable,
         ),
-    ),
-)
+        detail: None,
+        documentation: Some(
+            String(
+                "```zeek\nglobal X = 3;\n```",
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
+        label: "Y",
+        kind: Some(
+            Variable,
+        ),
+        detail: None,
+        documentation: Some(
+            String(
+                "```zeek\nglobal GLOBAL::Y = 3;\n```",
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
+        label: "Z",
+        kind: Some(
+            Variable,
+        ),
+        detail: None,
+        documentation: Some(
+            String(
+                "```zeek\nglobal mod_x::Z = 3;\n```",
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
+        label: "mod_a::A",
+        kind: Some(
+            Variable,
+        ),
+        detail: None,
+        documentation: Some(
+            String(
+                "```zeek\nglobal A = 1;\n```",
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
+        label: "mod_b::B",
+        kind: Some(
+            Variable,
+        ),
+        detail: None,
+        documentation: Some(
+            String(
+                "```zeek\nglobal B = 2;\n```",
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+]

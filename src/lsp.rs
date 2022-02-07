@@ -515,8 +515,8 @@ impl LanguageServer for Backend {
         };
 
         // Get the node directly under the cursor as a starting point.
-        let node = tree.root_node();
-        let mut node = match node.descendant_for_position(position.position) {
+        let root = tree.root_node();
+        let mut node = match root.descendant_for_position(position.position) {
             Some(n) => n,
             None => return Ok(None),
         };
@@ -588,9 +588,24 @@ impl LanguageServer for Backend {
         let mut items = HashSet::new();
         let mut node = node;
 
+        let current_module = root
+            .named_child("module_decl")
+            .and_then(|m| m.named_child("id"))
+            .and_then(|id| id.utf8_text(source.as_bytes()).ok());
+
         loop {
             for d in query::decls_(node, uri.clone(), source.as_bytes()) {
-                items.insert(d);
+                // Slightly fudge the ID we use for local declarations by removing the current
+                // module from the FQID.
+                let fqid = match current_module {
+                    Some(mid) => {
+                        let id = d.fqid.as_str();
+                        id.strip_prefix(&format!("{mid}::")).unwrap_or(id)
+                    }
+                    None => &d.fqid,
+                }
+                .into();
+                items.insert(Decl { fqid, ..d });
             }
 
             node = match node.parent() {
@@ -855,8 +870,9 @@ pub(crate) mod test {
     use insta::assert_debug_snapshot;
     use lspower::{
         lsp::{
-            CompletionParams, HoverParams, PartialResultParams, Position, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionParams, CompletionResponse, HoverParams, PartialResultParams, Position,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -962,19 +978,27 @@ pub(crate) mod test {
             Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
             "module mod_b; global B = 2;",
         );
+
+        let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
         db.add_file(
-            Arc::new(Url::from_file_path("/x/x.zeek").unwrap()),
-            "module mod_x; global X = 3;",
+            uri.clone(),
+            "module mod_x;
+             @load a
+             @load b
+             global X = 3;
+             global mod_x::Z = 3;
+             global GLOBAL::Y = 3;",
         );
+
+        // let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
+        // db.add_file(uri.clone(), "module foo; global bar: function();");
 
         let server = serve(db);
 
         let result = server
             .completion(CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(
-                        Url::from_file_path("/x/x.zeek").unwrap(),
-                    ),
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
                     position: Position::new(0, 0),
                 },
                 work_done_progress_params: WorkDoneProgressParams {
@@ -986,6 +1010,15 @@ pub(crate) mod test {
                 context: None,
             })
             .await;
+
+        // Sort results for debug output diffing.
+        let result = match result {
+            Ok(Some(CompletionResponse::Array(mut r))) => {
+                r.sort_by(|a, b| a.label.cmp(&b.label));
+                r
+            }
+            _ => panic!(),
+        };
 
         assert_debug_snapshot!(result);
     }

@@ -512,8 +512,8 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let position = params.text_document_position;
-        let uri = Arc::new(position.text_document.uri);
+        let uri = Arc::new(params.text_document_position.text_document.uri);
+        let position = params.text_document_position.position;
 
         let state = self.state()?;
 
@@ -526,30 +526,36 @@ impl LanguageServer for Backend {
 
         // Get the node directly under the cursor as a starting point.
         let root = tree.root_node();
-        let mut node = match root.descendant_for_position(position.position) {
+        let mut node = match root.descendant_for_position(position) {
             Some(n) => n,
             None => return Ok(None),
         };
 
-        // If the node has no text try to find a previous node with text.
+        // If the node has no interesting text try to find an earlier node with text.
         while node
             .utf8_text(source.as_bytes())
             .ok()
-            // The grammar might expose newlines as AST nodes. Such nodes should be ignored for
-            // completion.
+            // The grammar might expose newlines as AST nodes. Such nodes should be ignored for completion.
             .map(str::trim)
-            .map_or(0, str::len)
+            // The grammar might expose `$` or `?$` in a node. Strip it away. This also takes care of
+            // explicit nodes for just the field access or check.
+            .map(|s| s.replace(&['$', '?'], ""))
+            .map_or(0, |s| s.len())
             == 0
         {
-            node = match node.prev_sibling() {
-                Some(s) => s,
-                None => match node.parent() {
-                    Some(p) => p,
-                    // We might arrive here if we are completing for a source file without any
-                    // text. In that case we return the original node since there is nothing
-                    // interesting to find.
-                    None => node,
-                },
+            // If we are completing at the end of a line the end of the node will be on the next
+            // line. Instead search the next node _before the_start_ of the current node.
+            let start = node.range().start.character;
+            if start == 0 {
+                break;
+            }
+
+            node = match root.descendant_for_position(Position {
+                character: start - 1,
+                ..position
+            }) {
+                Some(n) => n,
+                None => break,
             };
         }
 

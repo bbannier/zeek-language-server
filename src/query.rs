@@ -153,7 +153,7 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    pub fn next_sibling(&self) -> Option<Self> {
+    fn next_sibling(&self) -> Option<Self> {
         let mut n = self.0;
         while let Some(p) = n.next_named_sibling() {
             if p.kind() != "nl" {
@@ -166,7 +166,7 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    pub fn prev_sibling(&self) -> Option<Self> {
+    fn prev_sibling(&self) -> Option<Self> {
         let mut n = self.0;
         while let Some(p) = n.prev_named_sibling() {
             if p.kind() != "nl" {

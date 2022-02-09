@@ -45,7 +45,7 @@
     "build": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint --ext=ts .",
-    "vsix": "vsce package"
+    "vsix": "vsce package -o zeek-language-server.vsix"
   },
   "dependencies": {
     "vscode-languageclient": "^7.0.0"

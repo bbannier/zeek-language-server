@@ -89,9 +89,13 @@ pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
         .collect())
 }
 
-pub(crate) fn init_script_filename() -> &'static str {
+pub(crate) fn essential_input_files() -> Vec<&'static str> {
     // TODO(bbannier): does this function need a flag for bare mode?
-    "base/init-default.zeek"
+    vec![
+        "base/init-bare.zeek",
+        "base/init-frameworks-and-bifs.zeek",
+        "base/init-default.zeek",
+    ]
 }
 
 #[cfg(test)]

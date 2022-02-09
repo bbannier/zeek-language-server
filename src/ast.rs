@@ -1,12 +1,12 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use lspower::lsp::Url;
 use salsa::Snapshot;
-use tracing::instrument;
+use tracing::{error, instrument};
 
 use crate::{
     lsp::Database,
@@ -97,35 +97,42 @@ fn loaded_decls(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Decl>> {
 
 #[instrument(skip(db))]
 fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
-    let implicit_load = zeek::init_script_filename();
+    let mut decls = HashSet::new();
 
-    let mut implicit_file = None;
-    // This loop looks horrible, but is okay since this function will be cached most of the time
+    // These loops looks horrible, but is okay since this function will be cached most of the time
     // (unless global state changes).
-    for f in db.files().iter() {
-        let path = match f.to_file_path() {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
+    for essential_input in zeek::essential_input_files() {
+        let mut implicit_file = None;
+        for f in db.files().iter() {
+            let path = match f.to_file_path() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
 
-        if !path.ends_with(&implicit_load) {
-            continue;
-        }
+            if !path.ends_with(&essential_input) {
+                continue;
+            }
 
-        for p in db.prefixes().iter() {
-            if path.strip_prefix(p).is_ok() {
-                implicit_file = Some(f.clone());
-                break;
+            for p in db.prefixes().iter() {
+                if path.strip_prefix(p).is_ok() {
+                    implicit_file = Some(f.clone());
+                    break;
+                }
             }
         }
+
+        let implicit_load = if let Some(f) = implicit_file {
+            f
+        } else {
+            error!("could not resolve load of '{essential_input}'");
+            continue;
+        };
+
+        decls.extend(db.loaded_decls(implicit_load).as_ref().iter().cloned());
     }
 
-    let implicit_load = match implicit_file {
-        Some(f) => f,
-        None => return Arc::new(Vec::new()), // TODO(bbannier): this could also be an error.
-    };
-
-    db.loaded_decls(implicit_load)
+    let decls = decls.into_iter().collect::<Vec<_>>();
+    Arc::new(decls)
 }
 
 pub(crate) fn load_to_file(

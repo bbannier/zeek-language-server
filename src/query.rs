@@ -302,8 +302,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                                         .into_iter()
                                         .next()?
                                         .utf8_text(source)
-                                        .ok()?
-                                        .into(),
+                                        .ok()?,
                                 ));
                                 break;
                             }

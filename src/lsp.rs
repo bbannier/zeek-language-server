@@ -441,7 +441,7 @@ impl LanguageServer for Backend {
         // declarations in other modules. Sort declarations by module so users get a clean view.
         // Then show declarations under their module, or at the top-level if they aren't exported
         // into a module.
-        let decls = state.decls(uri.clone());
+        let decls = state.decls(uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
         decls.sort_by_key(|d| format!("{}", d.module));
         let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =

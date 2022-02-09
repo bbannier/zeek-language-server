@@ -14,8 +14,8 @@ use lspower::{
         DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
         FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse, Hover,
         HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-        InitializedParams, LanguageString, Location, MarkedString, MessageType, OneOf,
-        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        InitializedParams, LanguageString, Location, MarkedString, MarkupContent, MessageType,
+        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
         ProgressToken, Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
         SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
         TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
@@ -843,7 +843,10 @@ fn to_completion_item(d: &Decl) -> CompletionItem {
     CompletionItem {
         label: d.fqid.clone(),
         kind: Some(to_completion_item_kind(&d.kind)),
-        documentation: Some(Documentation::String(d.documentation.clone())),
+        documentation: Some(Documentation::MarkupContent(MarkupContent {
+            kind: lspower::lsp::MarkupKind::Markdown,
+            value: d.documentation.clone(),
+        })),
         ..CompletionItem::default()
     }
 }

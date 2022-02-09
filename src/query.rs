@@ -34,15 +34,6 @@ pub struct Signature {
     pub args: Vec<Decl>,
 }
 
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
-pub struct Type(pub String);
-
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
-pub struct TypeField {
-    pub id: String,
-    pub typ: String,
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Decl {
     pub module: ModuleId,

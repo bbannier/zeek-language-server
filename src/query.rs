@@ -118,6 +118,25 @@ impl<'a> Node<'a> {
         self.0.utf8_text(source)
     }
 
+    #[must_use]
+    pub fn error(&self) -> String {
+        if self.0.is_error() {
+            self.0
+                .child(0)
+                .map_or_else(|| self.to_sexp(), |c| format!("unexpected {}", c.kind()))
+        } else if self.0.is_missing() {
+            let msg = self.to_sexp().replacen("MISSING", "missing", 1);
+
+            #[allow(clippy::map_unwrap_or)]
+            msg.strip_prefix('(')
+                .and_then(|m| m.strip_suffix(')'))
+                .map(String::from)
+                .unwrap_or_else(|| msg)
+        } else {
+            self.to_sexp()
+        }
+    }
+
     pub fn parent(&self) -> Option<Self> {
         self.0.parent().map(Into::into)
     }
@@ -205,6 +224,24 @@ impl<'a> Node<'a> {
     pub fn named_descendant_for_position(&self, position: Position) -> Option<Self> {
         let range = Range::new(position, position);
         self.named_descendant_for_point_range(range)
+    }
+
+    /// Extract all error nodes under the node.
+    #[must_use]
+    pub fn errors(&self) -> Vec<Node> {
+        fn errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
+            let mut cur = n.walk();
+
+            let res = n.children(&mut cur).flat_map(errors);
+
+            if n.is_error() || n.is_missing() {
+                res.chain(std::iter::once(n)).collect()
+            } else {
+                res.collect()
+            }
+        }
+
+        errors(self.0).into_iter().map(Node::from).collect()
     }
 }
 

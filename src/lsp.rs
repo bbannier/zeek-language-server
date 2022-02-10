@@ -9,16 +9,16 @@ use lspower::{
     jsonrpc::{Error, ErrorCode, Result},
     lsp::{
         notification::Progress, request::WorkDoneProgressCreate, CompletionItem,
-        CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
-        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
-        FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-        HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-        InitializedParams, LanguageString, Location, MarkedString, MarkupContent, MessageType,
-        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
+        CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
+        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+        DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+        Documentation, FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse,
+        Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
+        InitializeResult, InitializedParams, LanguageString, Location, MarkedString, MarkupContent,
+        MessageType, OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams,
+        ProgressParamsValue, ProgressToken, Range, ServerCapabilities, SignatureHelp,
+        SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
+        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
         WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
     },
@@ -171,6 +171,42 @@ impl Backend {
             client.send_custom_notification::<Progress>(params).await;
         }
     }
+
+    async fn file_changed(&self, uri: Arc<Url>) -> Result<()> {
+        let state = self.state()?;
+
+        state.file_changed(uri.clone());
+
+        if let Some(client) = &self.client {
+            let tree = match state.parse(uri.clone()) {
+                Some(t) => t,
+                None => return Ok(()),
+            };
+
+            let diags = tree
+                .root_node()
+                .errors()
+                .into_iter()
+                .map(|err| {
+                    Diagnostic::new(
+                        err.range(),
+                        Some(DiagnosticSeverity::WARNING),
+                        None,
+                        None,
+                        err.error(),
+                        None,
+                        None,
+                    )
+                })
+                .collect();
+
+            client
+                .publish_diagnostics(uri.as_ref().clone(), diags, None)
+                .await;
+        }
+
+        Ok(())
+    }
 }
 
 #[lspower::async_trait]
@@ -290,10 +326,9 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let source = params.text_document.text;
+        let uri = Arc::new(uri);
 
         if let Ok(mut state) = self.state_mut() {
-            let uri = Arc::new(uri);
-
             state.set_source(uri.clone(), Arc::new(source));
 
             let mut files = state.files();
@@ -302,8 +337,10 @@ impl LanguageServer for Backend {
                 files.insert(uri.clone());
                 state.set_files(Arc::new(files.clone()));
             }
+        }
 
-            state.file_changed(uri);
+        if let Err(e) = self.file_changed(uri).await {
+            error!("could not apply file change: {e}");
         }
     }
 
@@ -324,7 +361,10 @@ impl LanguageServer for Backend {
 
         if let Ok(mut state) = self.state_mut() {
             state.set_source(uri.clone(), Arc::new(source));
-            state.file_changed(uri);
+        }
+
+        if let Err(e) = self.file_changed(uri).await {
+            error!("could not apply file change: {e}");
         }
     }
 
@@ -808,19 +848,6 @@ impl LanguageServer for Backend {
             active_signature: None,
             active_parameter,
         }))
-    }
-}
-
-/// Extract all error nodes under the given node.
-fn _errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
-    let mut cur = n.walk();
-
-    let res = n.children(&mut cur).flat_map(_errors);
-
-    if n.is_error() || n.is_missing() {
-        res.chain(std::iter::once(n)).collect()
-    } else {
-        res.collect()
     }
 }
 

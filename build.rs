@@ -2,6 +2,7 @@ use std::{
     env::{self, current_dir},
     path::PathBuf,
     process::Command,
+    str::FromStr,
 };
 
 use cc::Build;
@@ -31,6 +32,7 @@ fn main() {
 
     Build::new()
         .file(src_dir.join("parser.c"))
+        .include(out_dir.join("src"))
         .warnings(false)
         .compile("tree-sitter-zeek");
 }

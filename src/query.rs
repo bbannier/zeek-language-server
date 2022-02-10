@@ -22,8 +22,8 @@ pub enum DeclKind {
     Type(Vec<Decl>),
     FuncDef(Signature),
     FuncDecl(Signature),
-    Hook,
-    Event,
+    Hook(Signature),
+    Event(Signature),
     Variable,
     Field,
 }
@@ -507,7 +507,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
 
                     DeclKind::Type(fields)
                 }
-                "event_decl" => DeclKind::Event,
+                "hook_decl" => DeclKind::Hook(signature(decl)?),
+                "event_decl" => DeclKind::Event(signature(decl)?),
                 "func_decl" => DeclKind::FuncDecl(signature(decl)?),
                 _ => {
                     return None;
@@ -538,8 +539,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
 // TODO(bbannier): it seems we should be able to also accomplish this by looking at the function signature.
 #[instrument]
 pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
-    if node.kind() != "func_decl" {
-        return HashSet::new();
+    match node.kind() {
+        "func_decl" | "hook_decl" | "event_decl" => {}
+        _ => return HashSet::new(),
     }
 
     // Synthesize declarations for function arguments. Ideally the grammar would expose

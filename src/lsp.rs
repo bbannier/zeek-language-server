@@ -690,7 +690,6 @@ impl LanguageServer for Backend {
             items
                 .iter()
                 .chain(other_decls)
-                .filter(|d| d.kind != DeclKind::Event)
                 .unique()
                 .map(to_completion_item)
                 .collect::<Vec<_>>(),
@@ -801,7 +800,10 @@ impl LanguageServer for Backend {
         };
 
         let signature = match f.kind {
-            DeclKind::FuncDecl(s) | DeclKind::FuncDef(s) => s,
+            DeclKind::FuncDecl(s)
+            | DeclKind::FuncDef(s)
+            | DeclKind::Event(s)
+            | DeclKind::Hook(s) => s,
             _ => return Ok(None),
         };
 
@@ -860,8 +862,8 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::RedefRecord => SymbolKind::INTERFACE,
         DeclKind::Type(_) => SymbolKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
-        DeclKind::Hook => SymbolKind::OPERATOR,
-        DeclKind::Event => SymbolKind::EVENT,
+        DeclKind::Hook(_) => SymbolKind::OPERATOR,
+        DeclKind::Event(_) => SymbolKind::EVENT,
         DeclKind::Field => SymbolKind::FIELD,
     }
 }
@@ -887,8 +889,8 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
         DeclKind::Type(_) => CompletionItemKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
-        DeclKind::Hook => CompletionItemKind::OPERATOR,
-        DeclKind::Event => CompletionItemKind::EVENT,
+        DeclKind::Hook(_) => CompletionItemKind::OPERATOR,
+        DeclKind::Event(_) => CompletionItemKind::EVENT,
         DeclKind::Field => CompletionItemKind::FIELD,
     }
 }

@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 757
+assertion_line: 786
 expression: root_decls
 
 ---
@@ -178,7 +178,12 @@ expression: root_decls
         module: None,
         id: "zeek_init",
         fqid: "bar::zeek_init",
-        kind: Event,
+        kind: Event(
+            Signature {
+                result: None,
+                args: [],
+            },
+        ),
         is_export: Some(
             false,
         ),

@@ -1,0 +1,78 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -D warnings
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        name:
+          - linux-x86-64-gnu
+          - mac-x86-64
+        include:
+          - name: linux-x86-64-gnu
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: mac-x86-64
+            os: macos-latest
+            target: x86_64-apple-darwin
+
+    name: Binaries for ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: actions/cache@v2
+        with:
+          path: ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - name: Install tree-sitter-cli
+        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        with:
+          command: install
+          args: tree-sitter-cli
+      - name: Install Zeek
+        run: |
+          if [[ ${{ matrix.name }} == *linux* ]]; then \
+            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_20.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
+            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_20.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
+            sudo apt-get update; \
+            sudo apt-get install -y zeek; \
+            sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
+          elif [[ ${{ matrix.name }} == *mac* ]]; then \
+            brew install zeek; \
+          fi
+      - name: Test
+        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        with:
+          command: test
+      - name: Test all features
+        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        with:
+          command: test
+          args: --all-features
+      - name: Build
+        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        with:
+          command: build
+          args: --release --locked --target ${{ matrix.target }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2.3.1
+        with:
+          name: zeek-language-server-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/zeek-language-server

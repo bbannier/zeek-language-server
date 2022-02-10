@@ -12,8 +12,8 @@ cc = "1.0.72"
 insta = "1.12.0"
 
 [features]
-default = ["jaeger"]
-jaeger = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry"]
+default = []
+telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry"]
 
 [dependencies]
 clap = { version = "3.0.14", features = ["derive"] }

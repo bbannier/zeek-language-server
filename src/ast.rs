@@ -34,6 +34,9 @@ pub trait Ast: Files + Parse + Query {
 
     #[must_use]
     fn implicit_decls(&self) -> Arc<Vec<Decl>>;
+
+    #[must_use]
+    fn possible_loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -133,6 +136,49 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
 
     let decls = decls.into_iter().collect::<Vec<_>>();
     Arc::new(decls)
+}
+
+#[instrument(skip(db))]
+fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
+    let path = match uri.to_file_path() {
+        Ok(p) => p,
+        Err(_) => return Arc::new(Vec::new()),
+    };
+
+    let path = match path.parent() {
+        Some(p) => p,
+        None => return Arc::new(Vec::new()),
+    };
+
+    let prefixes = db.prefixes();
+    let files = db.files();
+
+    let loads = files
+        .iter()
+        .filter(|f| f.path() != uri.path())
+        .filter_map(|f| {
+            // Always strip any extension.
+            let f = f.to_file_path().ok()?.with_extension("");
+
+            // For `__load__.zeek` files one should use the directory name for loading.
+            let f = if f.file_stem()? == "__load__" {
+                f.parent()?
+            } else {
+                &f
+            };
+
+            if let Ok(f) = f.strip_prefix(path) {
+                Some(String::from(Path::new(".").join(f).to_str()?))
+            } else {
+                prefixes.iter().find_map(|p| {
+                    let l = f.strip_prefix(p).ok()?.to_str()?;
+                    Some(String::from(l))
+                })
+            }
+        })
+        .collect();
+
+    Arc::new(loads)
 }
 
 pub(crate) fn load_to_file(

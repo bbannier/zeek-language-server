@@ -659,6 +659,21 @@ impl LanguageServer for Backend {
             }
         }
 
+        // If we are completing a file return valid load patterns.
+        if node.kind() == "file" {
+            return Ok(Some(CompletionResponse::from(
+                state
+                    .possible_loads(uri.clone())
+                    .iter()
+                    .map(|load| CompletionItem {
+                        label: load.clone(),
+                        kind: Some(CompletionItemKind::FILE),
+                        ..CompletionItem::default()
+                    })
+                    .collect::<Vec<_>>(),
+            )));
+        }
+
         // We are just completing some arbitrary identifier at this point.
         let mut items = HashSet::new();
         let mut node = node;
@@ -1059,9 +1074,6 @@ pub(crate) mod test {
              global GLOBAL::Y = 3;",
         );
 
-        // let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
-        // db.add_file(uri.clone(), "module foo; global bar: function();");
-
         let server = serve(db);
 
         let result = server
@@ -1092,6 +1104,43 @@ pub(crate) mod test {
         assert_debug_snapshot!(result);
     }
 
+    #[tokio::test]
+    async fn completion_load() {
+        let mut db = TestDatabase::new();
+        db.add_prefix("/p1");
+        db.add_prefix("/p2");
+        db.add_file(
+            Arc::new(Url::from_file_path("/p1/foo/a1.zeek").unwrap()),
+            "",
+        );
+        db.add_file(
+            Arc::new(Url::from_file_path("/p2/foo/b1.zeek").unwrap()),
+            "",
+        );
+
+        let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
+        db.add_file(uri.clone(), "@load f");
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    text_document_position: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(0, 6),
+                    },
+                    work_done_progress_params: WorkDoneProgressParams {
+                        work_done_token: None,
+                    },
+                    partial_result_params: PartialResultParams {
+                        partial_result_token: None,
+                    },
+                    context: None,
+                })
+                .await
+        );
+    }
 
     #[tokio::test]
     async fn hover_variable() {

@@ -1,0 +1,56 @@
+---
+source: src/lsp.rs
+assertion_line: 1130
+expression: "server.completion(CompletionParams{text_document_position:\n                                       TextDocumentPositionParams{text_document:\n                                                                      TextDocumentIdentifier::new(uri.as_ref().clone()),\n                                                                  position:\n                                                                      Position::new(0,\n                                                                                    6),},\n                                   work_done_progress_params:\n                                       WorkDoneProgressParams{work_done_token:\n                                                                  None,},\n                                   partial_result_params:\n                                       PartialResultParams{partial_result_token:\n                                                               None,},\n                                   context: None,}).await"
+
+---
+Ok(
+    Some(
+        Array(
+            [
+                CompletionItem {
+                    label: "foo/a1",
+                    kind: Some(
+                        File,
+                    ),
+                    detail: None,
+                    documentation: None,
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: None,
+                    filter_text: None,
+                    insert_text: None,
+                    insert_text_format: None,
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                },
+                CompletionItem {
+                    label: "foo/b1",
+                    kind: Some(
+                        File,
+                    ),
+                    detail: None,
+                    documentation: None,
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: None,
+                    filter_text: None,
+                    insert_text: None,
+                    insert_text_format: None,
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                },
+            ],
+        ),
+    ),
+)

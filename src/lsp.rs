@@ -411,6 +411,25 @@ impl LanguageServer for Backend {
         match node.kind() {
             "id" => {
                 if let Some(decl) = ast::resolve(&state, node, uri) {
+                    let kind = match &decl.kind {
+                        DeclKind::Global => "global",
+                        DeclKind::Option => "option",
+                        DeclKind::Const => "constant",
+                        DeclKind::Redef => "redef",
+                        DeclKind::RedefEnum => "redef enum",
+                        DeclKind::RedefRecord => "redef record",
+                        DeclKind::Type(_) => "record",
+                        DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
+                        DeclKind::Hook(_) => "hook",
+                        DeclKind::Event(_) => "event",
+                        DeclKind::Variable => "variable",
+                        DeclKind::Field => "field",
+                    };
+                    contents.push(MarkedString::String(format!(
+                        "### {kind} `{id}`",
+                        id = decl.id
+                    )));
+
                     contents.push(MarkedString::String(decl.documentation));
                 }
             }
@@ -1073,17 +1092,51 @@ pub(crate) mod test {
         assert_debug_snapshot!(result);
     }
 
+
     #[tokio::test]
-    async fn hover_decl_in_func_parameters() {
+    async fn hover_variable() {
         let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
-        db.add_file(uri.clone(), "function f(x: X, y: Y) {\ny;\n}");
+        db.add_file(
+            uri.clone(),
+            "
+type X: record {};
+global f: function(): X;
+local x = f();
+",
+        );
         let server = serve(db);
 
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                position: Position::new(1, 0),
+                position: Position::new(3, 7),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        assert_debug_snapshot!(server.hover(params).await);
+    }
+
+    #[tokio::test]
+    async fn hover_decl_in_func_parameters() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+type X: record {};
+type Y: record {};
+function f(x: X, y: Y) {
+    y;
+}",
+        );
+        let server = serve(db);
+
+        let params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                position: Position::new(4, 4),
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
         };

@@ -430,6 +430,10 @@ impl LanguageServer for Backend {
                         id = decl.id
                     )));
 
+                    if let Some(typ) = ast::typ(&state, &decl) {
+                        contents.push(MarkedString::String(format!("Type: `{}`", typ.id)));
+                    }
+
                     contents.push(MarkedString::String(decl.documentation));
                 }
             }

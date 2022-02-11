@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 1144
+assertion_line: 1148
 expression: server.hover(params).await
 
 ---
@@ -23,6 +23,9 @@ Ok(
                     ),
                     String(
                         "### variable `y`",
+                    ),
+                    String(
+                        "Type: `Y`",
                     ),
                     String(
                         "```zeek\ny: Y\n```",

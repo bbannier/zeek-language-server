@@ -33,4 +33,5 @@ In a copy of this directory:
 This extension provides configuration through VSCode's configuration settings.
 All configuration settings are under `zeekLanguageServer.*`.
 
-`zeekLanguageServer.path` is required and needs to be set before using the extension.
+- `zeekLanguageServer.path`: if set used to launch the language server
+  executable; if unset the executable is looked up in `PATH`.

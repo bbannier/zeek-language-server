@@ -14,11 +14,11 @@ use lspower::{
         DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
         Documentation, FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse,
         Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
-        InitializeResult, InitializedParams, LanguageString, Location, MarkedString, MarkupContent,
-        MessageType, OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams,
-        ProgressParamsValue, ProgressToken, Range, ServerCapabilities, SignatureHelp,
-        SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
-        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
+        InitializeResult, InitializedParams, Location, MarkedString, MarkupContent, MessageType,
+        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        ProgressToken, Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
+        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
         WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
     },
@@ -397,12 +397,12 @@ impl LanguageServer for Backend {
 
         let mut contents = vec![
             #[cfg(debug_assertions)]
-            MarkedString::LanguageString(LanguageString {
+            MarkedString::LanguageString(lspower::lsp::LanguageString {
                 value: text.into(),
                 language: "zeek".into(),
             }),
             #[cfg(debug_assertions)]
-            MarkedString::LanguageString(LanguageString {
+            MarkedString::LanguageString(lspower::lsp::LanguageString {
                 value: node.to_sexp(),
                 language: "lisp".into(),
             }),

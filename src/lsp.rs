@@ -442,7 +442,7 @@ impl LanguageServer for Backend {
                     state.prefixes().as_ref(),
                 );
                 if let Some(uri) = uri {
-                    contents.push(MarkedString::String(uri.path().to_string()));
+                    contents.push(MarkedString::String(format!("`{}`", uri.path())));
                 }
             }
             _ => {}

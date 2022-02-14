@@ -1,17 +1,20 @@
-#[cfg(feature = "jaeger")]
-use tracing_subscriber::{layer::SubscriberExt, prelude::*};
+#[cfg(feature = "telemetry")]
+use {
+    clap::Parser,
+    tracing_subscriber::{layer::SubscriberExt, prelude::*},
+};
 
-use {clap::Parser, eyre::Result, tracing::info, zeek_language_server::lsp::run};
+use {eyre::Result, tracing::info, zeek_language_server::lsp::run};
 
+#[cfg(feature = "telemetry")]
 #[derive(Parser, Debug)]
 #[clap(about, version)]
 struct Args {
-    #[cfg(feature = "jaeger")]
     #[clap(short, long, default_value = "http://127.0.0.1:14268/api/traces")]
     collector_endpoint: String,
 }
 
-#[cfg(feature = "jaeger")]
+#[cfg(feature = "telemetry")]
 fn init_logging(args: &Args) -> Result<()> {
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_collector_endpoint(&args.collector_endpoint)
@@ -27,7 +30,7 @@ fn init_logging(args: &Args) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[cfg(feature = "jaeger")]
+    #[cfg(feature = "telemetry")]
     init_logging(&Args::parse())?;
 
     info!("starting Zeek language server");

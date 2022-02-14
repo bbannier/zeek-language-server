@@ -13,10 +13,10 @@ insta = "1.12.0"
 
 [features]
 default = []
-telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry"]
+telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry", "clap"]
 
 [dependencies]
-clap = { version = "3.0.14", features = ["derive"] }
+clap = { version = "3.0.14", features = ["derive"], optional = true }
 eyre = "0.6.6"
 itertools = "0.10.3"
 lspower = "1.5.0"

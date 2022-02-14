@@ -255,7 +255,7 @@ pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) 
             match type_decl.kind {
                 DeclKind::Type(fields) => {
                     // Find the given id in the fields.
-                    return fields.into_iter().find(|f| dbg!(&f.id) == dbg!(id));
+                    return fields.into_iter().find(|f| &f.id == id);
                 }
                 _ => return None,
             }

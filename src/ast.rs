@@ -243,10 +243,16 @@ pub(crate) fn load_to_file(
         // File known w/ extension.
         let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
 
+        let load_with_extension = {
+            let mut l = load.as_os_str().to_owned();
+            l.push(".zeek");
+            PathBuf::from(l)
+        };
+
         // File known w/o extension.
         let known_no_ext = files
             .iter()
-            .find(|(_, p)| p.ends_with(load.with_extension("zeek")));
+            .find(|(_, p)| p.ends_with(&load_with_extension));
 
         // Load is directory with `__load__.zeek`.
         let known_directory = files

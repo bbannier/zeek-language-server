@@ -757,10 +757,7 @@ mod test {
         };
 
         let loads = |source: &'static str| {
-            super::loads_raw(
-                parse(&source).expect("cannot parse").root_node().into(),
-                &source,
-            )
+            super::loads_raw(parse(source).expect("cannot parse").root_node(), source)
         };
 
         assert_eq!(loads(""), Vec::<&str>::new());
@@ -780,7 +777,7 @@ mod test {
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| {
-            let mut xs = super::decls_(n.into(), uri.clone(), SOURCE.as_bytes())
+            let mut xs = super::decls_(n, uri.clone(), SOURCE.as_bytes())
                 .into_iter()
                 .collect::<Vec<_>>();
             xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
@@ -824,7 +821,7 @@ global GLOBAL::f3: function();
             ),
         );
 
-        let decls = db.decls(uri.clone());
+        let decls = db.decls(uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
         decls.sort_by(|a, b| a.range.start.cmp(&b.range.start));
 
@@ -836,7 +833,7 @@ global GLOBAL::f3: function();
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
         db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
-        let tree = db.parse(uri.clone()).unwrap();
+        let tree = db.parse(uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
 
@@ -883,6 +880,6 @@ function f1(x: count, y: string) {
             .named_descendant_for_position(Position::new(0, 0))
             .unwrap();
         assert_eq!(outside_f1.kind(), "module_decl");
-        assert!(super::fn_param_decls(outside_f1, uri.clone(), source.as_bytes()).is_empty());
+        assert!(super::fn_param_decls(outside_f1, uri, source.as_bytes()).is_empty());
     }
 }

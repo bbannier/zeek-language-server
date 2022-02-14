@@ -643,7 +643,7 @@ impl LanguageServer for Backend {
 
                 // Compute completion.
                 if let Some(decl) = decl {
-                    // FIXME(bbannier): also complete for redefs of record or enums.
+                    // FIXME(bbannier): also complete for redefs of enums.
                     if let DeclKind::Type(fields) = decl.kind {
                         return Ok(Some(CompletionResponse::from(
                             fields
@@ -667,7 +667,7 @@ impl LanguageServer for Backend {
         if node.kind() == "file" {
             return Ok(Some(CompletionResponse::from(
                 state
-                    .possible_loads(uri.clone())
+                    .possible_loads(uri)
                     .iter()
                     .map(|load| CompletionItem {
                         label: load.clone(),

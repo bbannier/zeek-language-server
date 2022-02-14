@@ -63,7 +63,7 @@ mod test {
         std::sync::Arc,
     };
 
-    const SOURCE: &'static str = "event zeek_init() {}";
+    const SOURCE: &str = "event zeek_init() {}";
 
     #[test]
     fn can_parse() -> Result<()> {

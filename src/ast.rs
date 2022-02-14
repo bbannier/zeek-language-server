@@ -181,6 +181,36 @@ fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
     Arc::new(loads)
 }
 
+fn is_redef(d: &Decl) -> bool {
+    matches!(
+        &d.kind,
+        DeclKind::Redef | DeclKind::RedefEnum | DeclKind::RedefRecord(_)
+    )
+}
+
+fn resolve_redef(db: &Snapshot<Database>, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> {
+    if !is_redef(redef) {
+        return Arc::new(Vec::new());
+    }
+
+    let implicit_decls = db.implicit_decls();
+    let loaded_decls = db.loaded_decls(scope.clone());
+    let decls = db.decls(scope);
+
+    let all_decls: HashSet<_> = decls
+        .iter()
+        .chain(implicit_decls.iter())
+        .chain(loaded_decls.iter())
+        .collect();
+
+    let xs = all_decls
+        .into_iter()
+        .filter(|x| x.fqid == redef.fqid)
+        .cloned()
+        .collect::<Vec<_>>();
+    Arc::new(xs)
+}
+
 pub(crate) fn load_to_file(
     load: &Path,
     base: &Url,
@@ -255,7 +285,7 @@ pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) 
             match type_decl.kind {
                 DeclKind::Type(fields) => {
                     // Find the given id in the fields.
-                    return fields.into_iter().find(|f| &f.id == id);
+                    return fields.into_iter().find(|f| f.id == id);
                 }
                 _ => return None,
             }
@@ -279,10 +309,13 @@ pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) 
 pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>) -> Option<Decl> {
     let source = db.source(uri.clone());
 
+    let mut result = None;
+
     let mut scope = scope;
     loop {
         if let Some(decl) = query::decl_at(id, scope, uri.clone(), source.as_bytes()) {
-            return Some(decl);
+            result = Some(decl);
+            break;
         }
 
         if let Some(p) = scope.parent() {
@@ -292,12 +325,57 @@ pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>)
         }
     }
 
-    // We haven't found a decl yet, look in loaded modules.
-    db.implicit_decls()
-        .iter()
-        .chain(db.loaded_decls(uri).iter())
-        .find(|d| d.fqid == id)
-        .cloned()
+    if let Some(r) = &result {
+        // If we have found a non-redef decl this is the final decl visible at this point as redefs
+        // elsewhere cannot add to it here, yet.
+        if !is_redef(r) {
+            return result;
+        }
+    }
+
+    // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
+    // into account.
+    let implicit_decls = db.implicit_decls();
+    let loaded_decls = db.loaded_decls(uri.clone());
+    let last_decl = if let Some(redef) = &result {
+        redef
+    } else {
+        implicit_decls
+            .iter()
+            .chain(loaded_decls.iter())
+            .filter(|d| d.fqid == id)
+            .last()?
+    };
+
+    if is_redef(last_decl) {
+        // If we have found a redef resolve it and synthesize a new, full decl.
+        // NOTE: since we have found the last decl, all other relevant redefs are already in scope.
+        let redef = last_decl;
+        let decls = resolve_redef(db, redef, uri);
+
+        let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
+        let redefs = decls
+            .iter()
+            .filter(|d| is_redef(d))
+            .filter_map(|r| match &r.kind {
+                DeclKind::RedefRecord(fields) => Some(fields.clone()),
+                _ => None,
+            })
+            .flatten();
+        match original_decl.kind {
+            DeclKind::Type(mut fields) => {
+                fields.extend(redefs);
+                Some(Decl {
+                    kind: DeclKind::Type(fields),
+                    ..original_decl
+                })
+            }
+            _ => None,
+        }
+    } else {
+        // If the decl we have found is not a redef return it directly.
+        Some(last_decl.clone())
+    }
 }
 
 /// Determine the type of the given decl.
@@ -362,13 +440,13 @@ mod test {
         );
 
         let b = Arc::new(Url::from_file_path("/tmp/b.zeek").unwrap());
-        db.add_file(b.clone(), "@load c");
+        db.add_file(b, "@load c");
 
         let c = Arc::new(Url::from_file_path("/tmp/c.zeek").unwrap());
-        db.add_file(c.clone(), "@load d");
+        db.add_file(c, "@load d");
 
         let d = Arc::new(Url::from_file_path("/tmp/d.zeek").unwrap());
-        db.add_file(d.clone(), "");
+        db.add_file(d, "");
 
         assert_debug_snapshot!(db.0.loaded_files_recursive(a));
     }
@@ -381,13 +459,13 @@ mod test {
         let pre1 = PathBuf::from_str("/tmp/p").unwrap();
         let p1 = Arc::new(Url::from_file_path(pre1.join("p1/p1.zeek")).unwrap());
         db.add_prefix(pre1);
-        db.add_file(p1.clone(), "");
+        db.add_file(p1, "");
 
         // Prefix file in external directory.
         let pre2 = PathBuf::from_str("/p").unwrap();
         let p2 = Arc::new(Url::from_file_path(pre2.join("p2/p2.zeek")).unwrap());
         db.add_prefix(pre2);
-        db.add_file(p2.clone(), "");
+        db.add_file(p2, "");
 
         let foo = Arc::new(Url::from_file_path("/tmp/foo.zeek").unwrap());
         db.add_file(
@@ -487,7 +565,7 @@ y$yx$f1;
             .named_descendant_for_position(Position::new(24, 5))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, node, uri));
     }
 
     #[test]
@@ -547,6 +625,57 @@ x::x;",
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
         assert_debug_snapshot!(super::resolve(&db, node, uri));
+    }
+
+    #[test]
+    fn resolve_redef() {
+        let mut db = TestDatabase::new();
+        db.add_file(
+            Arc::new(Url::from_file_path("/x.zeek").unwrap()),
+            "module x;
+type X: record { x1: count; };",
+        );
+
+        let uri = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "module y;
+@load x
+redef record x::X += { x2: count; };
+global x: x::X;
+x;
+x$x1;
+x$x2;",
+        );
+
+        let db = db.snapshot();
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let x = root
+            .named_descendant_for_position(Position::new(4, 0))
+            .unwrap();
+        assert_eq!(x.utf8_text(source.as_bytes()), Ok("x"));
+        assert_eq!(
+            super::resolve(&db, x, uri.clone()).unwrap().kind,
+            super::DeclKind::Global
+        );
+
+        let x1 = root
+            .named_descendant_for_position(Position::new(5, 3))
+            .unwrap();
+        assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
+        assert_eq!(
+            super::resolve(&db, x1, uri.clone()).unwrap().kind,
+            super::DeclKind::Field
+        );
+
+        let x2 = root
+            .named_descendant_for_position(Position::new(6, 3))
+            .unwrap();
+        assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
+        assert_debug_snapshot!(super::resolve(&db, x2, uri));
     }
 
     #[test]

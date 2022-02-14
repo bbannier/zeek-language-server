@@ -17,15 +17,17 @@ pub enum DeclKind {
     Option,
     Const,
     Redef,
-    RedefEnum,
-    RedefRecord(Vec<Decl>),
     Type(Vec<Decl>),
+    RedefRecord(Vec<Decl>),
+    Enum(Vec<Decl>),
+    RedefEnum(Vec<Decl>),
     FuncDef(Signature),
     FuncDecl(Signature),
     Hook(Signature),
     Event(Signature),
     Variable,
     Field,
+    EnumMember,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
@@ -355,6 +357,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
 
                 module_id.unwrap_or(ModuleId::None)
             };
+            let module_name = module.clone();
 
             let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
 
@@ -434,7 +437,23 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 Some(Signature { result, args })
             };
 
-            let extract_fields = || {
+            let extract_documentation = |n: Node| -> Option<String> {
+                let documentation = if let Some(docs) = zeekygen_comments(n, source) {
+                    format!(
+                        "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
+                        source = n.utf8_text(source).ok()?
+                    )
+                } else {
+                    format!(
+                        "```zeek\n# In {fqid}\n{source}\n```",
+                        source = n.utf8_text(source).ok()?
+                    )
+                };
+
+                Some(documentation)
+            };
+
+            let extract_fields = |decl: Node| {
                 // Records wrap their field list in an extra `type` node, `redef_record_decl`
                 // directly contain them.
                 let typ = if let Some(c) = decl.named_child("type") {
@@ -450,17 +469,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         let id_ = c.named_child("id")?;
                         let id = id_.utf8_text(source).ok()?;
 
-                        let documentation = if let Some(docs) = zeekygen_comments(c, source) {
-                            format!(
-                                "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
-                                source = c.utf8_text(source).ok()?
-                            )
-                        } else {
-                            format!(
-                                "```zeek\n# In {fqid}\n{source}\n```",
-                                source = c.utf8_text(source).ok()?
-                            )
-                        };
+                        let documentation = extract_documentation(c)?;
 
                         Some(Decl {
                             id: id.to_string(),
@@ -479,6 +488,53 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
 
                 Some(fields)
             };
+
+            let type_decl = |decl: Node| -> Option<DeclKind> {
+                if let Some(enum_body) = decl.named_child("type")?.named_child("enum_body") {
+                    let values = enum_body
+                        .named_children("enum_body_elem")
+                        .into_iter()
+                        .filter_map(|n| {
+                            let id_ = n.named_child("id")?;
+                            let id = id_.utf8_text(source).ok()?;
+
+                            // Enum values live in the parent scope.
+                            let fqid = match &module_name {
+                                ModuleId::Global | ModuleId::None => id.to_string(),
+                                ModuleId::String(m) => format!("{m}::{id}"),
+                            };
+                            let id = id.to_string();
+
+                            let range = id_.range();
+                            let selection_range = range;
+                            let documentation = extract_documentation(n)?;
+                            Some(Decl {
+                                module: module.clone(),
+                                id,
+                                fqid,
+                                kind: DeclKind::EnumMember,
+                                range,
+                                selection_range,
+                                documentation,
+                                uri: uri.clone(),
+                                // An enum value is exported if its wrapping decl is exported.
+                                is_export: Some(in_export(decl)),
+                            })
+                        })
+                        .collect();
+                    Some(DeclKind::Enum(values))
+                } else {
+                    Some(DeclKind::Type(extract_fields(decl)?))
+                }
+            };
+
+            // Declarations like enums inject their fields into the current scope. Store them here
+            // so we can bubble them up as well.
+            //
+            // TODO(bbannier): This pollutes the global list of decls with decls which are
+            // conceptually nested. Maybe we could not expose them here, but still have them
+            // available in e.g., completions, lookups, etc.
+            let mut additional_decls = Vec::new();
 
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
@@ -506,10 +562,53 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         }
                     }
                 }
-                "redef_enum_decl" => DeclKind::RedefEnum,
-                "redef_record_decl" => DeclKind::RedefRecord(extract_fields()?),
+                "redef_enum_decl" => {
+                    let fields = decl
+                        .named_child("enum_body")?
+                        .named_children("enum_body_elem")
+                        .into_iter()
+                        .filter_map(|c| {
+                            let id_ = c.named_child("id")?;
+                            let id = id_.utf8_text(source).ok()?;
+
+                            // Enum values live in the parent scope.
+                            let fqid = match &module_name {
+                                ModuleId::Global | ModuleId::None => id.to_string(),
+                                ModuleId::String(m) => format!("{m}::{id}"),
+                            };
+                            let id = id.to_string();
+
+                            let documentation = extract_documentation(c)?;
+
+                            Some(Decl {
+                                module: module_name.clone(),
+                                id,
+                                fqid,
+                                kind: DeclKind::EnumMember,
+                                range: id_.range(),
+                                selection_range: id_.range(),
+                                documentation,
+                                uri: uri.clone(),
+
+                                // An enum value is exported if its wrapping decl is exported.
+                                is_export: Some(in_export(decl)),
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    additional_decls.extend(fields.iter().cloned());
+                    DeclKind::RedefEnum(fields)
+                }
+                "redef_record_decl" => DeclKind::RedefRecord(extract_fields(decl)?),
                 "option_decl" => DeclKind::Option,
-                "type_decl" => DeclKind::Type(extract_fields()?),
+                "type_decl" => {
+                    let kind = type_decl(decl)?;
+
+                    if let DeclKind::Enum(fields) = &kind {
+                        additional_decls.extend(fields.iter().cloned());
+                    }
+
+                    kind
+                }
                 "hook_decl" => DeclKind::Hook(signature(decl)?),
                 "event_decl" => DeclKind::Event(signature(decl)?),
                 "func_decl" => DeclKind::FuncDecl(signature(decl)?),
@@ -518,22 +617,26 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 }
             };
 
-            Some(Decl {
-                module: if in_export(decl) {
-                    module
-                } else {
-                    ModuleId::None
-                },
-                id,
-                fqid,
-                kind,
-                is_export: Some(in_export(decl)),
-                range,
-                selection_range,
-                documentation,
-                uri: uri.clone(),
-            })
+            Some(
+                std::iter::once(Decl {
+                    module: if in_export(decl) {
+                        module
+                    } else {
+                        ModuleId::None
+                    },
+                    id,
+                    fqid,
+                    kind,
+                    is_export: Some(in_export(decl)),
+                    range,
+                    selection_range,
+                    documentation,
+                    uri: uri.clone(),
+                })
+                .chain(additional_decls.into_iter()),
+            )
         })
+        .flatten()
         .chain(fn_param_decls(node, uri.clone(), source).into_iter())
         .collect()
 }

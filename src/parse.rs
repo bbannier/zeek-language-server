@@ -58,7 +58,6 @@ mod test {
 
     use {
         crate::{lsp::Database, parse::Parse, Files},
-        eyre::Result,
         insta::assert_debug_snapshot,
         std::sync::Arc,
     };
@@ -66,7 +65,7 @@ mod test {
     const SOURCE: &str = "event zeek_init() {}";
 
     #[test]
-    fn can_parse() -> Result<()> {
+    fn can_parse() {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
@@ -75,7 +74,5 @@ mod test {
         let tree = db.parse(uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
-
-        Ok(())
     }
 }

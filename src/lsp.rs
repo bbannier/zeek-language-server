@@ -416,14 +416,16 @@ impl LanguageServer for Backend {
                         DeclKind::Option => "option",
                         DeclKind::Const => "constant",
                         DeclKind::Redef => "redef",
-                        DeclKind::RedefEnum => "redef enum",
+                        DeclKind::RedefEnum(_) => "redef enum",
                         DeclKind::RedefRecord(_) => "redef record",
+                        DeclKind::Enum(_) => "enum",
                         DeclKind::Type(_) => "record",
                         DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
                         DeclKind::Hook(_) => "hook",
                         DeclKind::Event(_) => "event",
                         DeclKind::Variable => "variable",
                         DeclKind::Field => "field",
+                        DeclKind::EnumMember => "enum member",
                     };
                     contents.push(MarkedString::String(format!(
                         "### {kind} `{id}`",
@@ -480,7 +482,10 @@ impl LanguageServer for Backend {
                 detail: None,
                 tags: None,
                 children: match &d.kind {
-                    DeclKind::Type(fields) | DeclKind::RedefRecord(fields) => Some(
+                    DeclKind::Type(fields)
+                    | DeclKind::RedefRecord(fields)
+                    | DeclKind::Enum(fields)
+                    | DeclKind::RedefEnum(fields) => Some(
                         fields
                             .iter()
                             .map(|f| DocumentSymbol {
@@ -505,7 +510,11 @@ impl LanguageServer for Backend {
         // Then show declarations under their module, or at the top-level if they aren't exported
         // into a module.
         let decls = state.decls(uri);
-        let mut decls = decls.iter().collect::<Vec<_>>();
+        let mut decls = decls
+            .iter()
+            // Filter out top-level enum members since they are also exposed inside their enum here.
+            .filter(|d| d.kind != DeclKind::EnumMember)
+            .collect::<Vec<_>>();
         decls.sort_by_key(|d| format!("{}", d.module));
         let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
             decls.into_iter().partition(|d| d.module != ModuleId::None);
@@ -714,8 +723,10 @@ impl LanguageServer for Backend {
         let other_decls = loaded_decls
             .iter()
             .chain(implicit_decls.iter())
-            // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
             .filter(|i| {
+                // Filter out redefs since they only add noise.
+                !ast::is_redef(i) &&
+                // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
                 if let Some(text) = text_at_completion {
                     rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &i.fqid.to_lowercase())
                         > 0.0
@@ -896,13 +907,13 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::VARIABLE,
         DeclKind::Option => SymbolKind::PROPERTY,
         DeclKind::Const => SymbolKind::CONSTANT,
-        DeclKind::RedefEnum => SymbolKind::ENUM,
-        DeclKind::RedefRecord(_) => SymbolKind::INTERFACE,
-        DeclKind::Type(_) => SymbolKind::CLASS,
+        DeclKind::Enum(_) | DeclKind::RedefEnum(_) => SymbolKind::ENUM,
+        DeclKind::Type(_) | DeclKind::RedefRecord(_) => SymbolKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
         DeclKind::Hook(_) => SymbolKind::OPERATOR,
         DeclKind::Event(_) => SymbolKind::EVENT,
         DeclKind::Field => SymbolKind::FIELD,
+        DeclKind::EnumMember => SymbolKind::ENUM_MEMBER,
     }
 }
 
@@ -923,13 +934,13 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::Global | DeclKind::Variable | DeclKind::Redef => CompletionItemKind::VARIABLE,
         DeclKind::Option => CompletionItemKind::PROPERTY,
         DeclKind::Const => CompletionItemKind::CONSTANT,
-        DeclKind::RedefEnum => CompletionItemKind::ENUM,
-        DeclKind::RedefRecord(_) => CompletionItemKind::INTERFACE,
-        DeclKind::Type(_) => CompletionItemKind::CLASS,
+        DeclKind::Enum(_) | DeclKind::RedefEnum(_) => CompletionItemKind::ENUM,
+        DeclKind::Type(_) | DeclKind::RedefRecord(_) => CompletionItemKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
         DeclKind::Hook(_) => CompletionItemKind::OPERATOR,
         DeclKind::Event(_) => CompletionItemKind::EVENT,
         DeclKind::Field => CompletionItemKind::FIELD,
+        DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
     }
 }
 

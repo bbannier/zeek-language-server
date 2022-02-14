@@ -181,10 +181,11 @@ fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
     Arc::new(loads)
 }
 
-fn is_redef(d: &Decl) -> bool {
+#[must_use]
+pub fn is_redef(d: &Decl) -> bool {
     matches!(
         &d.kind,
-        DeclKind::Redef | DeclKind::RedefEnum | DeclKind::RedefRecord(_)
+        DeclKind::Redef | DeclKind::RedefEnum(_) | DeclKind::RedefRecord(_)
     )
 }
 
@@ -418,6 +419,22 @@ pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
         // For function declarations produce the function's return type.
         DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => {
             resolve_id(db, &sig.result?, node, d.uri)
+        }
+
+        // For enum members return the enum.
+        DeclKind::EnumMember => {
+            // Depending on whether we are in an enum type decl or enum redef decl we need to go up
+            // to a different height. In the end we only use the ID so detect that, so we go to the
+            // outer entity and then resolve the ID.
+            let mut n = tree.root_node().named_descendant_for_point_range(d.range)?;
+            while let Some(p) = n.parent() {
+                match n.kind() {
+                    "type_decl" | "redef_enum_decl" => break,
+                    _ => n = p,
+                }
+            }
+
+            resolve(db, n.named_child("id")?, d.uri)
         }
 
         // Other kinds we return directly.

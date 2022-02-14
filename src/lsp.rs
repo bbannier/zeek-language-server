@@ -417,7 +417,7 @@ impl LanguageServer for Backend {
                         DeclKind::Const => "constant",
                         DeclKind::Redef => "redef",
                         DeclKind::RedefEnum => "redef enum",
-                        DeclKind::RedefRecord => "redef record",
+                        DeclKind::RedefRecord(_) => "redef record",
                         DeclKind::Type(_) => "record",
                         DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
                         DeclKind::Hook(_) => "hook",
@@ -480,7 +480,7 @@ impl LanguageServer for Backend {
                 detail: None,
                 tags: None,
                 children: match &d.kind {
-                    DeclKind::Type(fields) => Some(
+                    DeclKind::Type(fields) | DeclKind::RedefRecord(fields) => Some(
                         fields
                             .iter()
                             .map(|f| DocumentSymbol {
@@ -897,7 +897,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::Option => SymbolKind::PROPERTY,
         DeclKind::Const => SymbolKind::CONSTANT,
         DeclKind::RedefEnum => SymbolKind::ENUM,
-        DeclKind::RedefRecord => SymbolKind::INTERFACE,
+        DeclKind::RedefRecord(_) => SymbolKind::INTERFACE,
         DeclKind::Type(_) => SymbolKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
         DeclKind::Hook(_) => SymbolKind::OPERATOR,
@@ -924,7 +924,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::Option => CompletionItemKind::PROPERTY,
         DeclKind::Const => CompletionItemKind::CONSTANT,
         DeclKind::RedefEnum => CompletionItemKind::ENUM,
-        DeclKind::RedefRecord => CompletionItemKind::INTERFACE,
+        DeclKind::RedefRecord(_) => CompletionItemKind::INTERFACE,
         DeclKind::Type(_) => CompletionItemKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
         DeclKind::Hook(_) => CompletionItemKind::OPERATOR,

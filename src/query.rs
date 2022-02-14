@@ -18,7 +18,7 @@ pub enum DeclKind {
     Const,
     Redef,
     RedefEnum,
-    RedefRecord,
+    RedefRecord(Vec<Decl>),
     Type(Vec<Decl>),
     FuncDef(Signature),
     FuncDecl(Signature),
@@ -434,6 +434,52 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 Some(Signature { result, args })
             };
 
+            let extract_fields = || {
+                // Records wrap their field list in an extra `type` node, `redef_record_decl`
+                // directly contain them.
+                let typ = if let Some(c) = decl.named_child("type") {
+                    c
+                } else {
+                    decl
+                };
+
+                let fields = typ
+                    .named_children("type_spec")
+                    .into_iter()
+                    .filter_map(|c| {
+                        let id_ = c.named_child("id")?;
+                        let id = id_.utf8_text(source).ok()?;
+
+                        let documentation = if let Some(docs) = zeekygen_comments(c, source) {
+                            format!(
+                                "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
+                                source = c.utf8_text(source).ok()?
+                            )
+                        } else {
+                            format!(
+                                "```zeek\n# In {fqid}\n{source}\n```",
+                                source = c.utf8_text(source).ok()?
+                            )
+                        };
+
+                        Some(Decl {
+                            id: id.to_string(),
+                            fqid: format!("{fqid}::{id}"),
+                            kind: DeclKind::Field,
+                            range: id_.range(),
+                            selection_range: id_.range(),
+                            documentation,
+                            uri: uri.clone(),
+
+                            module: ModuleId::None,
+                            is_export: None,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(fields)
+            };
+
             let kind = match decl.kind() {
                 "const_decl" => DeclKind::Const,
                 "var_decl" => {
@@ -461,52 +507,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                     }
                 }
                 "redef_enum_decl" => DeclKind::RedefEnum,
-                "redef_record_decl" => DeclKind::RedefRecord,
+                "redef_record_decl" => DeclKind::RedefRecord(extract_fields()?),
                 "option_decl" => DeclKind::Option,
-                "type_decl" => {
-                    let typ = decl.named_child("type")?;
-
-                    let fields = typ
-                        .named_children_not("nl")
-                        .into_iter()
-                        .filter_map(|c| {
-                            if c.kind() == "type_spec" {
-                                let id_ = c.named_child("id")?;
-                                let id = id_.utf8_text(source).ok()?;
-
-                                let documentation = if let Some(docs) = zeekygen_comments(c, source)
-                                {
-                                    format!(
-                                        "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
-                                        source = c.utf8_text(source).ok()?
-                                    )
-                                } else {
-                                    format!(
-                                        "```zeek\n# In {fqid}\n{source}\n```",
-                                        source = c.utf8_text(source).ok()?
-                                    )
-                                };
-
-                                Some(Decl {
-                                    id: id.to_string(),
-                                    fqid: format!("{fqid}::{id}"),
-                                    kind: DeclKind::Field,
-                                    range: id_.range(),
-                                    selection_range: id_.range(),
-                                    documentation,
-                                    uri: uri.clone(),
-
-                                    module: ModuleId::None,
-                                    is_export: None,
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>();
-
-                    DeclKind::Type(fields)
-                }
+                "type_decl" => DeclKind::Type(extract_fields()?),
                 "hook_decl" => DeclKind::Hook(signature(decl)?),
                 "event_decl" => DeclKind::Event(signature(decl)?),
                 "func_decl" => DeclKind::FuncDecl(signature(decl)?),
@@ -736,6 +739,11 @@ mod test {
 
               global fun: function(x: count): string;
               function fun(x: count): string { return ""; }
+
+              redef record Y += {
+                  ## A new field.
+                  y2: count &optional;
+              };
               "#;
 
     #[test]
@@ -782,7 +790,7 @@ mod test {
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
         let root_decls = decls_(tree.root_node());
-        assert_eq!(6, root_decls.len());
+        assert_eq!(7, root_decls.len());
         assert_debug_snapshot!(root_decls);
 
         // Test decls with scope. While they should not be visible from outside the scope (tested

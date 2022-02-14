@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 786
+assertion_line: 791
 expression: root_decls
 
 ---
@@ -384,6 +384,89 @@ expression: root_decls
             },
         },
         documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/foo/bar.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+    Decl {
+        module: None,
+        id: "Y",
+        fqid: "bar::Y",
+        kind: RedefRecord(
+            [
+                Decl {
+                    module: None,
+                    id: "y2",
+                    fqid: "bar::Y::y2",
+                    kind: Field,
+                    is_export: None,
+                    range: Range {
+                        start: Position {
+                            line: 24,
+                            character: 18,
+                        },
+                        end: Position {
+                            line: 24,
+                            character: 20,
+                        },
+                    },
+                    selection_range: Range {
+                        start: Position {
+                            line: 24,
+                            character: 18,
+                        },
+                        end: Position {
+                            line: 24,
+                            character: 20,
+                        },
+                    },
+                    documentation: "A new field.\n```zeek\n# In bar::Y\ny2: count &optional;\n```",
+                    uri: Url {
+                        scheme: "file",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: None,
+                        port: None,
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                },
+            ],
+        ),
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 22,
+                character: 14,
+            },
+            end: Position {
+                line: 25,
+                character: 16,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 22,
+                character: 27,
+            },
+            end: Position {
+                line: 22,
+                character: 28,
+            },
+        },
+        documentation: "```zeek\nredef record Y += {\n                  ## A new field.\n                  y2: count &optional;\n              };\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

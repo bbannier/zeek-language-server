@@ -16,7 +16,7 @@ use lspower::{
         Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
         InitializeResult, InitializedParams, Location, MarkedString, MarkupContent, MessageType,
         OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
         SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
         TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
         WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
@@ -243,7 +243,10 @@ impl LanguageServer for Backend {
                 }),
                 ..ServerCapabilities::default()
             },
-            ..InitializeResult::default()
+            server_info: Some(ServerInfo {
+                name: env!("CARGO_PKG_NAME").to_string(),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            }),
         })
     }
 

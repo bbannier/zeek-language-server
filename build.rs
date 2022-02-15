@@ -23,7 +23,9 @@ fn main() {
         .arg(&grammar)
         .current_dir(&out_dir)
         .status()
-        .expect("failed to generate tree-sitter bindings")
+        .expect(
+            "failed to generate tree-sitter bindings, is tree-sitter CLI installed and in PATH?"
+        )
         .success());
 
     // Compile tree-sitter C output.

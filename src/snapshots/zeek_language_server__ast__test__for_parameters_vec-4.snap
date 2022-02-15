@@ -1,0 +1,50 @@
+---
+source: src/ast.rs
+assertion_line: 799
+expression: "super::resolve(&db, ta, uri.clone())"
+
+---
+Some(
+    Decl {
+        module: None,
+        id: "ta",
+        fqid: "ta",
+        kind: LoopIndex(
+            0,
+            "table([1]=\"a\", [2]=\"b\")",
+        ),
+        is_export: None,
+        range: Range {
+            start: Position {
+                line: 4,
+                character: 5,
+            },
+            end: Position {
+                line: 4,
+                character: 7,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 4,
+                character: 5,
+            },
+            end: Position {
+                line: 4,
+                character: 7,
+            },
+        },
+        documentation: "Index 0 of `table([1]=\"a\", [2]=\"b\")`",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

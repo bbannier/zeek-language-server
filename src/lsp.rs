@@ -426,6 +426,7 @@ impl LanguageServer for Backend {
                         DeclKind::Variable => "variable",
                         DeclKind::Field => "field",
                         DeclKind::EnumMember => "enum member",
+                        DeclKind::LoopIndex(_, _) => "loop index",
                     };
                     contents.push(MarkedString::String(format!(
                         "### {kind} `{id}`",
@@ -904,7 +905,9 @@ impl LanguageServer for Backend {
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
     match kind {
-        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => SymbolKind::VARIABLE,
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef | DeclKind::LoopIndex(_, _) => {
+            SymbolKind::VARIABLE
+        }
         DeclKind::Option => SymbolKind::PROPERTY,
         DeclKind::Const => SymbolKind::CONSTANT,
         DeclKind::Enum(_) | DeclKind::RedefEnum(_) => SymbolKind::ENUM,
@@ -931,7 +934,9 @@ fn to_completion_item(d: &Decl) -> CompletionItem {
 
 fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
     match kind {
-        DeclKind::Global | DeclKind::Variable | DeclKind::Redef => CompletionItemKind::VARIABLE,
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef | DeclKind::LoopIndex(_, _) => {
+            CompletionItemKind::VARIABLE
+        }
         DeclKind::Option => CompletionItemKind::PROPERTY,
         DeclKind::Const => CompletionItemKind::CONSTANT,
         DeclKind::Enum(_) | DeclKind::RedefEnum(_) => CompletionItemKind::ENUM,

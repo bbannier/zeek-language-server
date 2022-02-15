@@ -28,6 +28,7 @@ pub enum DeclKind {
     Variable,
     Field,
     EnumMember,
+    LoopIndex(usize, String), // Stores loop index `i` for a given init expression.
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
@@ -638,11 +639,11 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
         })
         .flatten()
         .chain(fn_param_decls(node, uri.clone(), source).into_iter())
+        .chain(loop_param_decls(node, &uri, source).into_iter())
         .collect()
 }
 
 /// Extract declarations for function parameters on the given node.
-// TODO(bbannier): it seems we should be able to also accomplish this by looking at the function signature.
 #[instrument]
 pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
     match node.kind() {
@@ -679,6 +680,47 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
                 selection_range: arg.range(),
                 uri: uri.clone(),
                 documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
+            })
+        })
+        .collect()
+}
+
+/// Extract for loop parameters on the given node.
+// TODO(bbannier): Loop parameters should be visible in scopes above the current block.
+fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> {
+    if node.kind() != "for" {
+        return HashSet::new();
+    }
+
+    let params = node.named_children("id");
+
+    if params.is_empty() || params.len() > 2 {
+        return HashSet::new();
+    }
+
+    let init = match node
+        .named_child("expr")
+        .and_then(|n| n.utf8_text(source).ok())
+    {
+        Some(t) => t,
+        None => return HashSet::new(),
+    };
+
+    params
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let id = n.utf8_text(source).ok()?.to_string();
+            Some(Decl {
+                module: ModuleId::None,
+                id: id.clone(),
+                fqid: id,
+                kind: DeclKind::LoopIndex(i, init.to_string()),
+                is_export: None,
+                range: n.range(),
+                selection_range: n.range(),
+                documentation: format!("Index {i} of `{init}`"),
+                uri: uri.clone(),
             })
         })
         .collect()

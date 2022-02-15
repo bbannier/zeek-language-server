@@ -1,0 +1,7 @@
+---
+source: src/ast.rs
+assertion_line: 776
+expression: "super::resolve(&db, i2, uri.clone())"
+
+---
+None

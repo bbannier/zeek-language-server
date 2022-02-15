@@ -744,4 +744,59 @@ global x2 = f2();
             "X2"
         );
     }
+
+    #[test]
+    fn for_parameters_vec() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            r#"function f() {
+for (i in vector(1, 2, 3)) { i; }
+i;
+for (s in set(1, 2, 3)) { s; }
+for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
+}"#,
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+        let source = db.source(uri.clone());
+
+        // Vector iteration.
+        let i1 = root
+            .named_descendant_for_position(Position::new(1, 29))
+            .unwrap();
+        assert_eq!(i1.utf8_text(source.as_bytes()), Ok("i"));
+        assert_debug_snapshot!(super::resolve(&db, i1, uri.clone()));
+
+        // TODO(bbannier): In Zeek we should be able to see the loop parameter after the loop, but
+        // currently don't. It seems one should be able to see the loop var eve if the loop is
+        // wrapped in `{...}`, unsure how to model that.
+        let i2 = root
+            .named_descendant_for_position(Position::new(2, 0))
+            .unwrap();
+        assert_eq!(i2.utf8_text(db.source(uri.clone()).as_bytes()), Ok("i"));
+        assert_debug_snapshot!(super::resolve(&db, i2, uri.clone()));
+
+        // Set iteration.
+        let s = root
+            .named_descendant_for_position(Position::new(3, 26))
+            .unwrap();
+        assert_eq!(s.utf8_text(source.as_bytes()), Ok("s"));
+        assert_debug_snapshot!(super::resolve(&db, s, uri.clone()));
+
+        // Table iteration.
+        let ta = root
+            .named_descendant_for_position(Position::new(4, 42))
+            .unwrap();
+        let tb = root
+            .named_descendant_for_position(Position::new(4, 46))
+            .unwrap();
+        assert_eq!(ta.utf8_text(source.as_bytes()), Ok("ta"));
+        assert_eq!(tb.utf8_text(source.as_bytes()), Ok("tb"));
+        assert_debug_snapshot!(super::resolve(&db, ta, uri.clone()));
+        assert_debug_snapshot!(super::resolve(&db, tb, uri));
+    }
 }

@@ -1,0 +1,50 @@
+---
+source: src/ast.rs
+assertion_line: 787
+expression: "super::resolve(&db, s, uri.clone())"
+
+---
+Some(
+    Decl {
+        module: None,
+        id: "s",
+        fqid: "s",
+        kind: LoopIndex(
+            0,
+            "set(1, 2, 3)",
+        ),
+        is_export: None,
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 5,
+            },
+            end: Position {
+                line: 3,
+                character: 6,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 5,
+            },
+            end: Position {
+                line: 3,
+                character: 6,
+            },
+        },
+        documentation: "Index 0 of `set(1, 2, 3)`",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

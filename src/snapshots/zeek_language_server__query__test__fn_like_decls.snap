@@ -1,0 +1,424 @@
+---
+source: src/query.rs
+assertion_line: 1182
+expression: "super::decls_(root, uri, source.as_bytes())"
+
+---
+{
+    Decl {
+        module: None,
+        id: "ev",
+        fqid: "ev",
+        kind: Event(
+            Signature {
+                result: None,
+                args: [
+                    Decl {
+                        module: None,
+                        id: "c",
+                        fqid: "c",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 2,
+                                character: 17,
+                            },
+                            end: Position {
+                                line: 2,
+                                character: 18,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 2,
+                                character: 17,
+                            },
+                            end: Position {
+                                line: 2,
+                                character: 30,
+                            },
+                        },
+                        documentation: "```zeek\nc: connection\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                    Decl {
+                        module: None,
+                        id: "os",
+                        fqid: "os",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 2,
+                                character: 32,
+                            },
+                            end: Position {
+                                line: 2,
+                                character: 34,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 2,
+                                character: 32,
+                            },
+                            end: Position {
+                                line: 2,
+                                character: 50,
+                            },
+                        },
+                        documentation: "```zeek\nos: endpoint_stats\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                    Decl {
+                        module: None,
+                        id: "rs",
+                        fqid: "rs",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 2,
+                                character: 52,
+                            },
+                            end: Position {
+                                line: 2,
+                                character: 54,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 2,
+                                character: 52,
+                            },
+                            end: Position {
+                                line: 2,
+                                character: 70,
+                            },
+                        },
+                        documentation: "```zeek\nrs: endpoint_stats\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 2,
+                character: 0,
+            },
+            end: Position {
+                line: 2,
+                character: 72,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 2,
+                character: 7,
+            },
+            end: Position {
+                line: 2,
+                character: 9,
+            },
+        },
+        documentation: "```zeek\nglobal ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+    Decl {
+        module: None,
+        id: "fn",
+        fqid: "fn",
+        kind: FuncDef(
+            Signature {
+                result: Some(
+                    "string",
+                ),
+                args: [
+                    Decl {
+                        module: None,
+                        id: "n",
+                        fqid: "n",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                character: 20,
+                            },
+                            end: Position {
+                                line: 1,
+                                character: 21,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 1,
+                                character: 20,
+                            },
+                            end: Position {
+                                line: 1,
+                                character: 28,
+                            },
+                        },
+                        documentation: "```zeek\nn: count\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 1,
+                character: 0,
+            },
+            end: Position {
+                line: 1,
+                character: 38,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 1,
+                character: 7,
+            },
+            end: Position {
+                line: 1,
+                character: 9,
+            },
+        },
+        documentation: "```zeek\nglobal fn: function(n: count): string;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+    Decl {
+        module: None,
+        id: "hk",
+        fqid: "hk",
+        kind: Hook(
+            Signature {
+                result: None,
+                args: [
+                    Decl {
+                        module: None,
+                        id: "info",
+                        fqid: "info",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 3,
+                                character: 16,
+                            },
+                            end: Position {
+                                line: 3,
+                                character: 20,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 3,
+                                character: 16,
+                            },
+                            end: Position {
+                                line: 3,
+                                character: 26,
+                            },
+                        },
+                        documentation: "```zeek\ninfo: Info\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                    Decl {
+                        module: None,
+                        id: "s",
+                        fqid: "s",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 3,
+                                character: 28,
+                            },
+                            end: Position {
+                                line: 3,
+                                character: 29,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 3,
+                                character: 28,
+                            },
+                            end: Position {
+                                line: 3,
+                                character: 35,
+                            },
+                        },
+                        documentation: "```zeek\ns: Seen\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                    Decl {
+                        module: None,
+                        id: "items",
+                        fqid: "items",
+                        kind: Variable,
+                        is_export: None,
+                        range: Range {
+                            start: Position {
+                                line: 3,
+                                character: 37,
+                            },
+                            end: Position {
+                                line: 3,
+                                character: 42,
+                            },
+                        },
+                        selection_range: Range {
+                            start: Position {
+                                line: 3,
+                                character: 37,
+                            },
+                            end: Position {
+                                line: 3,
+                                character: 53,
+                            },
+                        },
+                        documentation: "```zeek\nitems: set[Item]\n```",
+                        uri: Url {
+                            scheme: "file",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: None,
+                            port: None,
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 0,
+            },
+            end: Position {
+                line: 3,
+                character: 55,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 7,
+            },
+            end: Position {
+                line: 3,
+                character: 9,
+            },
+        },
+        documentation: "```zeek\nglobal hk: hook(info: Info, s: Seen, items: set[Item]);\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+}

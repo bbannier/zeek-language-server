@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use lspower::lsp::{Position, Range, Url};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     fmt,
     hash::Hash,
     str::Utf8Error,
@@ -11,7 +11,7 @@ use tracing::{debug, error, instrument};
 
 use crate::parse::{tree_sitter_zeek, Parse};
 
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
     Global,
     Option,
@@ -31,7 +31,7 @@ pub enum DeclKind {
     LoopIndex(usize, String), // Stores loop index `i` for a given init expression.
 }
 
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub struct Signature {
     pub result: Option<String>,
     pub args: Vec<Decl>,
@@ -48,6 +48,106 @@ pub struct Decl {
     pub selection_range: Range,
     pub documentation: String,
     pub uri: Arc<Url>,
+}
+
+impl PartialOrd for Decl {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.module.partial_cmp(&other.module) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.id.partial_cmp(&other.id) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.fqid.partial_cmp(&other.fqid) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.kind.partial_cmp(&other.kind) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.is_export.partial_cmp(&other.is_export) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+
+        match OrderedRange(self.range).partial_cmp(&OrderedRange(other.range)) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+
+        match OrderedRange(self.selection_range).partial_cmp(&OrderedRange(other.selection_range)) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+
+        match self.documentation.partial_cmp(&other.documentation) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.uri.partial_cmp(&other.uri)
+    }
+}
+
+impl Ord for Decl {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.module.cmp(&other.module) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.id.cmp(&other.id) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.fqid.cmp(&other.fqid) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.kind.cmp(&other.kind) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.is_export.cmp(&other.is_export) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match OrderedRange(self.range).cmp(&OrderedRange(other.range)) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match OrderedRange(self.selection_range).cmp(&OrderedRange(other.selection_range)) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.documentation.cmp(&other.documentation) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.uri.cmp(&other.uri)
+    }
+}
+
+#[derive(PartialEq, Eq)]
+struct OrderedRange(Range);
+impl PartialOrd for OrderedRange {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.0.start.partial_cmp(&other.0.start) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.0.end.partial_cmp(&other.0.end)
+    }
+}
+impl Ord for OrderedRange {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.0.start.cmp(&other.0.start) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.0.end.cmp(&other.0.end)
+    }
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
@@ -70,7 +170,7 @@ impl Hash for Decl {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ModuleId {
     String(String),
     Global,
@@ -269,15 +369,18 @@ fn in_export(mut node: Node) -> bool {
 
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
+pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
+    let signature = "((formal_args)? (type)?@fn_result)@signature";
+    let signature = format!("[{signature} (func_params ({signature}))]");
+    let typ = format!("[(type {signature}?) {signature}]?@typ");
     let query = match tree_sitter::Query::new(
         unsafe { tree_sitter_zeek() },
-        "(_ (_ ([\"global\" \"local\"]?)@scope (id)@id (type (func_params))?@fn)@decl)@outer_node",
+        &format!(r#"(_ (_ (["global" "local"]?)@scope (id)@id {typ})@decl)@outer_node"#),
     ) {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
-            return HashSet::new();
+            return BTreeSet::new();
         }
     };
 
@@ -289,9 +392,17 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
         .capture_index_for_name("id")
         .expect("id should be captured");
 
-    let c_fn = query
-        .capture_index_for_name("fn")
-        .expect("fn should be captured");
+    let c_typ = query
+        .capture_index_for_name("typ")
+        .expect("typ should be captured");
+
+    let c_signature = query
+        .capture_index_for_name("signature")
+        .expect("signature should be captured");
+
+    let c_fn_result = query
+        .capture_index_for_name("fn_result")
+        .expect("fn_result should be captured");
 
     let c_decl = query
         .capture_index_for_name("decl")
@@ -362,6 +473,21 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
 
             let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
 
+            let typ = c.nodes_for_capture_index(c_typ).next().map(Node::from);
+
+            let signature = c
+                .nodes_for_capture_index(c_signature)
+                .next()
+                .map(Node::from);
+
+            let fn_args = signature.map_or_else(Vec::new, |xs| xs.named_children("formal_arg"));
+
+            let fn_result = c
+                .nodes_for_capture_index(c_fn_result)
+                .next()
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(String::from);
+
             let range = decl.range();
             let selection_range = id.range();
 
@@ -403,39 +529,30 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                 ModuleId::String(m) => format!("{}::{}", &m, &id),
             };
 
-            let signature = |n: Node| -> Option<Signature> {
-                let func_params = n.named_child("func_params")?;
-                let result = func_params
-                    .named_child("type")
-                    .and_then(|n| n.utf8_text(source).ok())
-                    .map(String::from);
-                let args = func_params
-                    .named_child("formal_args")
-                    .map_or(Vec::new(), |args| {
-                        args.named_children("formal_arg")
-                            .into_iter()
-                            .filter_map(|arg| {
-                                let arg_id_ = arg.named_child("id")?;
-                                let arg_id = arg_id_.utf8_text(source).ok()?;
+            let signature = || -> Option<Signature> {
+                let args = fn_args
+                    .iter()
+                    .filter_map(|arg| {
+                        let arg_id_ = arg.named_child("id")?;
+                        let arg_id = arg_id_.utf8_text(source).ok()?;
 
-                                Some(Decl {
-                                    module: ModuleId::None,
-                                    id: arg_id.to_string(),
-                                    fqid: arg_id.to_string(),
-                                    kind: DeclKind::Variable,
-                                    is_export: None,
-                                    range: arg_id_.range(),
-                                    selection_range: arg.range(),
-                                    uri: uri.clone(),
-                                    documentation: format!(
-                                        "```zeek\n{}\n```",
-                                        arg.utf8_text(source).ok()?
-                                    ),
-                                })
-                            })
-                            .collect()
-                    });
-                Some(Signature { result, args })
+                        Some(Decl {
+                            module: ModuleId::None,
+                            id: arg_id.to_string(),
+                            fqid: arg_id.to_string(),
+                            kind: DeclKind::Variable,
+                            is_export: None,
+                            range: arg_id_.range(),
+                            selection_range: arg.range(),
+                            uri: uri.clone(),
+                            documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
+                        })
+                    })
+                    .collect();
+                Some(Signature {
+                    result: fn_result,
+                    args,
+                })
             };
 
             let extract_documentation = |n: Node| -> Option<String> {
@@ -545,8 +662,24 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
                         .next()
                         .expect("scope should be present");
 
-                    if let Some(f) = c.nodes_for_capture_index(c_fn).next() {
-                        DeclKind::FuncDef(signature(Node(f))?)
+                    // Translate typ into possible func-like kind. We need this since the grammar
+                    // does not expose the type of these.
+                    let fn_like = if let Some(typ) = typ.and_then(|n| n.utf8_text(source).ok()) {
+                        if typ.starts_with("function(") {
+                            Some(DeclKind::FuncDef(signature()?))
+                        } else if typ.starts_with("hook(") {
+                            Some(DeclKind::Hook(signature()?))
+                        } else if typ.starts_with("event(") {
+                            Some(DeclKind::Event(signature()?))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(fn_like) = fn_like {
+                        fn_like
                     } else {
                         // Just a plain & clean variable declaration.
                         match scope.kind() {
@@ -610,9 +743,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
 
                     kind
                 }
-                "hook_decl" => DeclKind::Hook(signature(decl)?),
-                "event_decl" => DeclKind::Event(signature(decl)?),
-                "func_decl" => DeclKind::FuncDecl(signature(decl)?),
+                "hook_decl" => DeclKind::Hook(signature()?),
+                "event_decl" => DeclKind::Event(signature()?),
+                "func_decl" => DeclKind::FuncDecl(signature()?),
                 _ => {
                     return None;
                 }
@@ -770,18 +903,18 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[salsa::query_group(QueryStorage)]
 pub trait Query: Parse {
     #[must_use]
-    fn decls(&self, uri: Arc<Url>) -> Arc<HashSet<Decl>>;
+    fn decls(&self, uri: Arc<Url>) -> Arc<BTreeSet<Decl>>;
 
     #[must_use]
     fn loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
 }
 
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<HashSet<Decl>> {
+fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
     let source = db.source(uri.clone());
     let tree = match db.parse(uri.clone()) {
         Some(t) => t,
-        None => return Arc::new(HashSet::new()),
+        None => return Arc::new(BTreeSet::new()),
     };
 
     Arc::new(decls_(tree.root_node(), uri, source.as_bytes()))
@@ -878,7 +1011,7 @@ mod test {
               }; ##< But it also has a field y
 
               module bar;
-              event zeek_init() { local x=1; \n
+              event zeek_init() { local x=1;
                   # Comment.
               }
 
@@ -921,13 +1054,7 @@ mod test {
 
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
-        let decls_ = |n: Node| {
-            let mut xs = super::decls_(n, uri.clone(), SOURCE.as_bytes())
-                .into_iter()
-                .collect::<Vec<_>>();
-            xs.sort_by(|a, b| a.range.start.cmp(&b.range.start));
-            xs
-        };
+        let decls_ = |n: Node| super::decls_(n, uri.clone(), SOURCE.as_bytes());
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
@@ -1026,5 +1153,25 @@ function f1(x: count, y: string) {
             .unwrap();
         assert_eq!(outside_f1.kind(), "module_decl");
         assert!(super::fn_param_decls(outside_f1, uri, source.as_bytes()).is_empty());
+    }
+
+    #[test]
+    fn fn_like_decls() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+global fn: function(n: count): string;
+global ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);
+global hk: hook(info: Info, s: Seen, items: set[Item]);",
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+        let source = db.source(uri.clone());
+
+        assert_debug_snapshot!(super::decls_(root, uri, source.as_bytes()));
     }
 }

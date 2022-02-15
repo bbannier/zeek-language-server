@@ -4,6 +4,9 @@ use {
     tracing_subscriber::{layer::SubscriberExt, prelude::*},
 };
 
+#[cfg(feature = "profiling")]
+use pyroscope::PyroscopeAgent;
+
 use {eyre::Result, tracing::info, zeek_language_server::lsp::run};
 
 #[cfg(feature = "telemetry")]
@@ -30,12 +33,20 @@ fn init_logging(args: &Args) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(feature = "profiling")]
+    let mut agent = PyroscopeAgent::builder("http://localhost:4040", "myapp").build()?;
+    #[cfg(feature = "profiling")]
+    agent.start();
+
     #[cfg(feature = "telemetry")]
     init_logging(&Args::parse())?;
 
     info!("starting Zeek language server");
 
     run().await;
+
+    #[cfg(feature = "profiling")]
+    agent.stop();
 
     Ok(())
 }

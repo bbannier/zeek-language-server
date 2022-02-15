@@ -18,6 +18,9 @@ use crate::{
 #[salsa::query_group(AstStorage)]
 pub trait Ast: Files + Parse + Query {
     #[salsa::input]
+    fn workspace_folders(&self) -> Arc<Vec<Url>>;
+
+    #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
 
     #[salsa::input]

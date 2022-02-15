@@ -32,6 +32,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 use tracing::{error, instrument, warn};
+use walkdir::WalkDir;
 
 #[cfg(test)]
 pub(crate) use test::TestDatabase;
@@ -212,10 +213,15 @@ impl Backend {
 #[lspower::async_trait]
 impl LanguageServer for Backend {
     #[instrument]
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let workspace_folders = params
+            .workspace_folders
+            .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
+
         if let Ok(mut state) = self.state_mut() {
             state.set_files(Arc::new(BTreeSet::new()));
             state.set_prefixes(Arc::new(Vec::new()));
+            state.set_workspace_folders(Arc::new(workspace_folders));
         }
 
         Ok(InitializeResult {
@@ -271,6 +277,34 @@ impl LanguageServer for Backend {
             Err(e) => {
                 self.log_message(MessageType::ERROR, e).await;
             }
+        }
+
+        // Load files in workspace folders.
+        let changes = self.state().ok().map(|state| {
+            state
+                .workspace_folders()
+                .iter()
+                .filter_map(|f| f.to_file_path().ok())
+                .flat_map(|dir| {
+                    WalkDir::new(dir)
+                        .into_iter()
+                        .filter_map(std::result::Result::ok)
+                        .filter(|e| !e.file_type().is_dir())
+                        .filter_map(|f| {
+                            if f.path().extension()? != "zeek" {
+                                return None;
+                            }
+
+                            let uri = Url::from_file_path(f.path()).ok()?;
+                            Some(FileEvent::new(uri, FileChangeType::CREATED))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        });
+        if let Some(changes) = changes {
+            self.did_change_watched_files(DidChangeWatchedFilesParams { changes })
+                .await;
         }
     }
 

@@ -13,7 +13,7 @@ where
         .args(args)
         .output()
         .await
-        .map_err(Into::into)
+        .map_err(|_| eyre!("zeek-config not found in PATH"))
 }
 
 #[derive(Copy, Debug, Clone)]

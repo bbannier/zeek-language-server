@@ -78,12 +78,23 @@ struct Backend {
 }
 
 impl Backend {
-    async fn log_message<M>(&self, typ: lspower::lsp::MessageType, message: M)
+    async fn info_message<M>(&self, message: M)
     where
         M: std::fmt::Display,
     {
         if let Some(client) = &self.client {
-            client.log_message(typ, message).await;
+            // Send these to the log by default.
+            client.log_message(MessageType::INFO, message).await;
+        }
+    }
+
+    async fn warn_message<M>(&self, message: M)
+    where
+        M: std::fmt::Display,
+    {
+        if let Some(client) = &self.client {
+            // Show warnings to the user.
+            client.show_message(MessageType::WARNING, message).await;
         }
     }
 
@@ -252,6 +263,14 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        // Check prerequistes.
+        if let Err(e) = zeek::prefixes().await {
+            self.warn_message(format!(
+                "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
+            ))
+            .await;
+        }
+
         let workspace_folders = params
             .workspace_folders
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
@@ -290,16 +309,13 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
-        self.log_message(MessageType::INFO, "server initialized!")
-            .await;
-
-        let prefixes = match zeek::prefixes().await {
-            Ok(p) => p,
-            Err(_) => Vec::new(),
-        };
-
-        if let Ok(mut state) = self.state_mut() {
-            state.set_prefixes(Arc::new(prefixes));
+        match zeek::prefixes().await {
+            Ok(prefixes) => {
+                if let Ok(mut state) = self.state_mut() {
+                    state.set_prefixes(Arc::new(prefixes));
+                }
+            }
+            Err(e) => error!("{e}"),
         }
 
         // Load all visible files.
@@ -313,10 +329,10 @@ impl LanguageServer for Backend {
                 })
                 .await;
             }
-            Err(e) => {
-                self.log_message(MessageType::ERROR, e).await;
-            }
+            Err(_) => {}
         }
+
+        self.info_message("server initialized!").await;
     }
 
     #[instrument]

@@ -19,6 +19,7 @@ profiling = ["pyroscope"]
 [dependencies]
 clap = { version = "3.0.14", features = ["derive"], optional = true }
 eyre = "0.6.6"
+futures = "0.3.21"
 itertools = "0.10.3"
 lspower = "1.5.0"
 opentelemetry = { version = "0.17.0", features = ["trace", "rt-tokio"], optional = true }

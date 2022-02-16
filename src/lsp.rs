@@ -228,12 +228,11 @@ impl Backend {
                 Error::new(ErrorCode::InternalError)
             })?
             .into_iter()
-            .filter_map(|f| Url::from_file_path(f.path).ok())
-            .collect::<Vec<_>>();
+            .filter_map(|f| Url::from_file_path(f.path).ok());
 
-        let workspace_files = self
-            .state()?
-            .workspace_folders()
+        let workspace_folders = self.state()?.workspace_folders();
+
+        let workspace_files = workspace_folders
             .iter()
             .filter_map(|f| f.to_file_path().ok())
             .flat_map(|dir| {
@@ -248,14 +247,10 @@ impl Backend {
                             None
                         }
                     })
-                // .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
+                    .collect::<Vec<_>>()
+            });
 
-        Ok(system_files
-            .into_iter()
-            .chain(workspace_files.into_iter())
-            .collect())
+        Ok(system_files.chain(workspace_files).collect())
     }
 }
 
@@ -319,17 +314,14 @@ impl LanguageServer for Backend {
         }
 
         // Load all visible files.
-        match self.visible_files().await {
-            Ok(files) => {
-                self.did_change_watched_files(DidChangeWatchedFilesParams {
-                    changes: files
-                        .into_iter()
-                        .filter_map(|f| Some(FileEvent::new(f, FileChangeType::CREATED)))
-                        .collect(),
-                })
-                .await;
-            }
-            Err(_) => {}
+        if let Ok(files) = self.visible_files().await {
+            self.did_change_watched_files(DidChangeWatchedFilesParams {
+                changes: files
+                    .into_iter()
+                    .map(|f| FileEvent::new(f, FileChangeType::CREATED))
+                    .collect(),
+            })
+            .await;
         }
 
         self.info_message("server initialized!").await;
@@ -373,6 +365,7 @@ impl LanguageServer for Backend {
 
             // At this point we are working with CREATED or CHANGED events.
 
+            // TODO(bbannier): Parallelize file reading.
             let source = match std::fs::read_to_string(uri.path()) {
                 Ok(s) => s,
                 Err(e) => {
@@ -386,9 +379,30 @@ impl LanguageServer for Backend {
             };
         }
 
+        let files = Arc::new(files);
+
         // Commit new file list.
         if let Ok(mut state) = self.state_mut() {
-            state.set_files(Arc::new(files));
+            state.set_files(files.clone());
+        }
+
+        // Preload expensive information. Ultimately we want to be able to load implicit
+        // declarations quickly since they are on the critical part of getting the user to useful
+        // completions right after server startup.
+        //
+        // We explicitly precompute per-file information here so we can parallelize this work.
+        if let Ok(state) = self.state() {
+            let mut _preload_decls = Vec::new();
+            for f in files.as_ref() {
+                let f = f.clone();
+                let db = state.snapshot();
+                _preload_decls.push(tokio::spawn(async move {
+                    let _x = db.decls(f.clone());
+                    let _x = db.loads(f.clone());
+                    let _x = db.loaded_files(f.clone());
+                }));
+            }
+            futures::future::join_all(_preload_decls).await;
         }
 
         // Reload implicit declarations.

@@ -813,7 +813,7 @@ impl LanguageServer for Backend {
             };
         }
 
-        let loaded_decls = state.loaded_decls(uri);
+        let loaded_decls = state.explicit_decls_recursive(uri);
         let implicit_decls = state.implicit_decls();
 
         let other_decls = loaded_decls

@@ -32,8 +32,9 @@ pub trait Ast: Files + Parse + Query {
     #[must_use]
     fn loaded_files_recursive(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
 
+    /// Get the decls in uri and all files explicitly loaded by it.
     #[must_use]
-    fn loaded_decls(&self, url: Arc<Url>) -> Arc<Vec<Decl>>;
+    fn explicit_decls_recursive(&self, url: Arc<Url>) -> Arc<BTreeSet<Decl>>;
 
     #[must_use]
     fn implicit_decls(&self) -> Arc<Vec<Decl>>;
@@ -89,12 +90,12 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 }
 
 #[instrument(skip(db))]
-fn loaded_decls(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Decl>> {
-    let mut decls = Vec::new();
+fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
+    let mut decls = db.decls(uri.clone()).as_ref().clone();
 
-    for load in db.loaded_files_recursive(url).as_ref() {
+    for load in db.loaded_files_recursive(uri).as_ref() {
         for decl in db.decls(load.clone()).iter() {
-            decls.push(decl.clone());
+            decls.insert(decl.clone());
         }
     }
 
@@ -134,7 +135,12 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
             continue;
         };
 
-        decls.extend(db.loaded_decls(implicit_load).as_ref().iter().cloned());
+        decls.extend(
+            db.explicit_decls_recursive(implicit_load)
+                .as_ref()
+                .iter()
+                .cloned(),
+        );
     }
 
     let decls = decls.into_iter().collect::<Vec<_>>();
@@ -198,13 +204,13 @@ fn resolve_redef(db: &Snapshot<Database>, redef: &Decl, scope: Arc<Url>) -> Arc<
     }
 
     let implicit_decls = db.implicit_decls();
-    let loaded_decls = db.loaded_decls(scope.clone());
+    let loaded_decls = db.explicit_decls_recursive(scope.clone());
     let decls = db.decls(scope);
 
-    let all_decls: HashSet<_> = decls
+    let all_decls: HashSet<_> = implicit_decls
         .iter()
-        .chain(implicit_decls.iter())
         .chain(loaded_decls.iter())
+        .chain(decls.iter())
         .collect();
 
     let xs = all_decls
@@ -346,13 +352,13 @@ pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>)
     // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
     // into account.
     let implicit_decls = db.implicit_decls();
-    let loaded_decls = db.loaded_decls(uri.clone());
+    let explicit_decls_recursive = db.explicit_decls_recursive(uri.clone());
     let last_decl = if let Some(redef) = &result {
         redef
     } else {
         implicit_decls
             .iter()
-            .chain(loaded_decls.iter())
+            .chain(explicit_decls_recursive.iter())
             .filter(|d| d.fqid == id)
             .last()?
     };

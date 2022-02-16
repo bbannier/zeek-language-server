@@ -1,7 +1,7 @@
 use crate::{
     ast::{self, load_to_file, Ast},
     parse::Parse,
-    query::{self, Decl, DeclKind, ModuleId, Query},
+    query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
     zeek, Files,
 };
 use itertools::Itertools;
@@ -505,8 +505,8 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = ast::resolve(&state, node, uri) {
-                    let kind = match &decl.kind {
+                if let Some(decl) = &state.resolve(NodeLocation::from_node(uri, node)) {
+                    let kind = match decl.kind {
                         DeclKind::Global => "global",
                         DeclKind::Option => "option",
                         DeclKind::Const => "constant",
@@ -528,11 +528,11 @@ impl LanguageServer for Backend {
                         id = decl.id
                     )));
 
-                    if let Some(typ) = ast::typ(&state, &decl) {
+                    if let Some(typ) = state.typ(decl.clone()) {
                         contents.push(MarkedString::String(format!("Type: `{}`", typ.id)));
                     }
 
-                    contents.push(MarkedString::String(decl.documentation));
+                    contents.push(MarkedString::String(decl.documentation.clone()));
                 }
             }
             "file" => {
@@ -743,13 +743,13 @@ impl LanguageServer for Backend {
             .and_then(|ctx| ctx.trigger_character)
             .map_or(false, |c| c == "$")
         {
-            if let Some(r) = ast::resolve(&state, node, uri.clone()) {
-                let decl = ast::typ(&state, &r);
+            if let Some(r) = state.resolve(NodeLocation::from_node(uri.clone(), node)) {
+                let decl = state.typ(r);
 
                 // Compute completion.
                 if let Some(decl) = decl {
                     // FIXME(bbannier): also complete for redefs of enums.
-                    if let DeclKind::Type(fields) = decl.kind {
+                    if let DeclKind::Type(fields) = &decl.kind {
                         return Ok(Some(CompletionResponse::from(
                             fields
                                 .iter()
@@ -869,7 +869,8 @@ impl LanguageServer for Backend {
         })?;
 
         let location = match node.kind() {
-            "id" => ast::resolve(&state, node, uri)
+            "id" => state
+                .resolve(NodeLocation::from_node(uri, node))
                 .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
             "file" => {
                 let file = PathBuf::from(text);
@@ -939,12 +940,12 @@ impl LanguageServer for Backend {
             Err(_) => return Ok(None),
         };
 
-        let f = match ast::resolve_id(&state, id, node, uri) {
+        let f = match state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node)) {
             Some(f) => f,
             _ => return Ok(None),
         };
 
-        let signature = match f.kind {
+        let signature = match &f.kind {
             DeclKind::FuncDecl(s)
             | DeclKind::FuncDef(s)
             | DeclKind::Event(s)
@@ -957,7 +958,7 @@ impl LanguageServer for Backend {
             Some(t) => t,
             None => return Ok(None),
         };
-        let source = state.source(f.uri);
+        let source = state.source(f.uri.clone());
 
         let label = format!(
             "{}({})",
@@ -977,9 +978,9 @@ impl LanguageServer for Backend {
         let parameters = Some(
             signature
                 .args
-                .into_iter()
+                .iter()
                 .map(|a| ParameterInformation {
-                    label: ParameterLabel::Simple(a.id),
+                    label: ParameterLabel::Simple(a.id.clone()),
                     documentation: None,
                 })
                 .collect(),

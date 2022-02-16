@@ -5,13 +5,11 @@ use std::{
 };
 
 use lspower::lsp::Url;
-use salsa::Snapshot;
 use tracing::{error, instrument};
 
 use crate::{
-    lsp::Database,
     parse::Parse,
-    query::{self, Decl, DeclKind, Node, Query},
+    query::{self, Decl, DeclKind, NodeLocation, Query},
     zeek, Files,
 };
 
@@ -41,6 +39,206 @@ pub trait Ast: Files + Parse + Query {
 
     #[must_use]
     fn possible_loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
+
+    /// Find decl with ID from the node up the tree and in all other loaded files.
+    #[must_use]
+    fn resolve(&self, node: NodeLocation) -> Option<Arc<Decl>>;
+
+    /// Determine the type of the given decl.
+    fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>>;
+
+    /// Resolve anidentifier in a scope.
+    fn resolve_id(&self, id: Arc<String>, scope: NodeLocation) -> Option<Arc<Decl>>;
+}
+
+#[instrument(skip(db))]
+fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<Decl>> {
+    let uri = scope.uri;
+    let tree = db.parse(uri.clone())?;
+    let scope = tree
+        .root_node()
+        .named_descendant_for_point_range(scope.range)?;
+    let source = db.source(uri.clone());
+
+    let mut result = None;
+
+    let mut scope = scope;
+    loop {
+        if let Some(decl) = query::decl_at(id.as_str(), scope, uri.clone(), source.as_bytes()) {
+            result = Some(decl);
+            break;
+        }
+
+        if let Some(p) = scope.parent() {
+            scope = p;
+        } else {
+            break;
+        }
+    }
+
+    if let Some(r) = &result {
+        // If we have found a non-redef decl this is the final decl visible at this point as redefs
+        // elsewhere cannot add to it here, yet.
+        if !is_redef(r) {
+            return Some(Arc::new(r.clone()));
+        }
+    }
+
+    // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
+    // into account.
+    let implicit_decls = db.implicit_decls();
+    let explicit_decls_recursive = db.explicit_decls_recursive(uri.clone());
+    let last_decl = if let Some(redef) = &result {
+        redef
+    } else {
+        implicit_decls
+            .iter()
+            .chain(explicit_decls_recursive.iter())
+            .filter(|d| d.fqid == id.as_str())
+            .last()?
+    };
+
+    if is_redef(last_decl) {
+        // If we have found a redef resolve it and synthesize a new, full decl.
+        // NOTE: since we have found the last decl, all other relevant redefs are already in scope.
+        let redef = last_decl;
+        let decls = resolve_redef(db, redef, uri);
+
+        let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
+        let redefs = decls
+            .iter()
+            .filter(|d| is_redef(d))
+            .filter_map(|r| match &r.kind {
+                DeclKind::RedefRecord(fields) => Some(fields.clone()),
+                _ => None,
+            })
+            .flatten();
+        match original_decl.kind {
+            DeclKind::Type(mut fields) => {
+                fields.extend(redefs);
+                Some(Arc::new(Decl {
+                    kind: DeclKind::Type(fields),
+                    ..original_decl
+                }))
+            }
+            _ => None,
+        }
+    } else {
+        // If the decl we have found is not a redef return it directly.
+        Some(Arc::new(last_decl.clone()))
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+    let uri = &decl.uri;
+
+    let tree = db.parse(uri.clone())?;
+
+    let node = tree
+        .root_node()
+        .named_descendant_for_point_range(decl.range)?;
+
+    let d = match node.kind() {
+        "var_decl" | "formal_arg" => {
+            let typ = node.named_children_not("nl").into_iter().nth(1)?;
+
+            match typ.kind() {
+                "type" => db.resolve(NodeLocation::from_node(uri.clone(), typ)),
+                "initializer" => typ
+                    .named_child("init")
+                    .and_then(|n| db.resolve(NodeLocation::from_node(uri.clone(), n))),
+                _ => None,
+            }
+        }
+        "id" => node
+            .parent()?
+            .named_child("type")
+            .and_then(|n| db.resolve(NodeLocation::from_node(uri.clone(), n))),
+        _ => None,
+    };
+
+    // Perform additional unwrapping if needed.
+    d.and_then(|d| match &d.kind {
+        // For function declarations produce the function's return type.
+        DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_id(
+            Arc::new(sig.result.clone()?),
+            NodeLocation::from_node(d.uri.clone(), node),
+        ),
+
+        // For enum members return the enum.
+        DeclKind::EnumMember => {
+            // Depending on whether we are in an enum type decl or enum redef decl we need to go up
+            // to a different height. In the end we only use the ID so detect that, so we go to the
+            // outer entity and then resolve the ID.
+            let mut n = tree.root_node().named_descendant_for_point_range(d.range)?;
+            while let Some(p) = n.parent() {
+                match n.kind() {
+                    "type_decl" | "redef_enum_decl" => break,
+                    _ => n = p,
+                }
+            }
+
+            db.resolve(NodeLocation::from_node(d.uri.clone(), n.named_child("id")?))
+        }
+
+        // Other kinds we return directly.
+        _ => Some(d),
+    })
+}
+
+fn resolve(db: &dyn Ast, node: NodeLocation) -> Option<Arc<Decl>> {
+    let uri = node.uri;
+    let tree = db.parse(uri.clone())?;
+    let node = tree
+        .root_node()
+        .named_descendant_for_point_range(node.range)?;
+    let source = db.source(uri.clone());
+
+    match node.kind() {
+        // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
+        "expr" | "init" => {
+            return node
+                .named_child_not("nl")
+                .and_then(|c| db.resolve(NodeLocation::from_node(uri.clone(), c)));
+        }
+        // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
+        "field_access" | "field_check" => {
+            let xs = node.named_children_not("nl");
+            let lhs = xs.get(0).copied()?;
+            let rhs = xs.get(1).copied()?;
+
+            let id = rhs.utf8_text(source.as_bytes()).ok()?;
+
+            let var_decl = db.resolve(NodeLocation::from_node(uri, lhs))?;
+            let type_decl = db.typ(var_decl)?;
+
+            match &type_decl.kind {
+                DeclKind::Type(fields) => {
+                    // Find the given id in the fields.
+                    return fields
+                        .iter()
+                        .find(|f| f.id == id)
+                        .map(Clone::clone)
+                        .map(Arc::new);
+                }
+                _ => return None,
+            }
+        }
+        _ => {}
+    }
+
+    // If the node is part of a field access or check resolve it in the referenced record.
+    if let Some(p) = node.parent() {
+        if p.kind() == "field_access" || p.kind() == "field_check" {
+            return db.resolve(NodeLocation::from_node(uri, p));
+        }
+    }
+
+    // Try to find a decl with name of the given node up the tree.
+    let id = node.utf8_text(source.as_bytes()).ok()?.to_string();
+
+    db.resolve_id(Arc::new(id), NodeLocation::from_node(uri, node))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -198,7 +396,8 @@ pub fn is_redef(d: &Decl) -> bool {
     )
 }
 
-fn resolve_redef(db: &Snapshot<Database>, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> {
+#[instrument(skip(db))]
+fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> {
     if !is_redef(redef) {
         return Arc::new(Vec::new());
     }
@@ -276,181 +475,6 @@ pub(crate) fn load_to_file(
     })
 }
 
-/// Find decl with ID from the node up the tree and in all other loaded files.
-pub(crate) fn resolve(snapshot: &Snapshot<Database>, node: Node, uri: Arc<Url>) -> Option<Decl> {
-    let source = snapshot.source(uri.clone());
-
-    match node.kind() {
-        // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
-        "expr" | "init" => {
-            return node
-                .named_child_not("nl")
-                .and_then(|c| resolve(snapshot, c, uri.clone()));
-        }
-        // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
-        "field_access" | "field_check" => {
-            let xs = node.named_children_not("nl");
-            let lhs = xs.get(0).copied()?;
-            let rhs = xs.get(1).copied()?;
-
-            let id = rhs.utf8_text(source.as_bytes()).ok()?;
-
-            let var_decl = resolve(snapshot, lhs, uri)?;
-            let type_decl = typ(snapshot, &var_decl)?;
-
-            match type_decl.kind {
-                DeclKind::Type(fields) => {
-                    // Find the given id in the fields.
-                    return fields.into_iter().find(|f| f.id == id);
-                }
-                _ => return None,
-            }
-        }
-        _ => {}
-    }
-
-    // If the node is part of a field access or check resolve it in the referenced record.
-    if let Some(p) = node.parent() {
-        if p.kind() == "field_access" || p.kind() == "field_check" {
-            return resolve(snapshot, p, uri);
-        }
-    }
-
-    // Try to find a decl with name of the given node up the tree.
-    let id = node.utf8_text(source.as_bytes()).ok()?;
-
-    resolve_id(snapshot, id, node, uri)
-}
-
-pub fn resolve_id(db: &Snapshot<Database>, id: &str, scope: Node, uri: Arc<Url>) -> Option<Decl> {
-    let source = db.source(uri.clone());
-
-    let mut result = None;
-
-    let mut scope = scope;
-    loop {
-        if let Some(decl) = query::decl_at(id, scope, uri.clone(), source.as_bytes()) {
-            result = Some(decl);
-            break;
-        }
-
-        if let Some(p) = scope.parent() {
-            scope = p;
-        } else {
-            break;
-        }
-    }
-
-    if let Some(r) = &result {
-        // If we have found a non-redef decl this is the final decl visible at this point as redefs
-        // elsewhere cannot add to it here, yet.
-        if !is_redef(r) {
-            return result;
-        }
-    }
-
-    // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
-    // into account.
-    let implicit_decls = db.implicit_decls();
-    let explicit_decls_recursive = db.explicit_decls_recursive(uri.clone());
-    let last_decl = if let Some(redef) = &result {
-        redef
-    } else {
-        implicit_decls
-            .iter()
-            .chain(explicit_decls_recursive.iter())
-            .filter(|d| d.fqid == id)
-            .last()?
-    };
-
-    if is_redef(last_decl) {
-        // If we have found a redef resolve it and synthesize a new, full decl.
-        // NOTE: since we have found the last decl, all other relevant redefs are already in scope.
-        let redef = last_decl;
-        let decls = resolve_redef(db, redef, uri);
-
-        let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
-        let redefs = decls
-            .iter()
-            .filter(|d| is_redef(d))
-            .filter_map(|r| match &r.kind {
-                DeclKind::RedefRecord(fields) => Some(fields.clone()),
-                _ => None,
-            })
-            .flatten();
-        match original_decl.kind {
-            DeclKind::Type(mut fields) => {
-                fields.extend(redefs);
-                Some(Decl {
-                    kind: DeclKind::Type(fields),
-                    ..original_decl
-                })
-            }
-            _ => None,
-        }
-    } else {
-        // If the decl we have found is not a redef return it directly.
-        Some(last_decl.clone())
-    }
-}
-
-/// Determine the type of the given decl.
-pub(crate) fn typ(db: &Snapshot<Database>, decl: &Decl) -> Option<Decl> {
-    let uri = &decl.uri;
-
-    let tree = db.parse(uri.clone())?;
-
-    let node = tree
-        .root_node()
-        .named_descendant_for_point_range(decl.range)?;
-
-    let d = match node.kind() {
-        "var_decl" | "formal_arg" => {
-            let typ = node.named_children_not("nl").into_iter().nth(1)?;
-
-            match typ.kind() {
-                "type" => resolve(db, typ, uri.clone()),
-                "initializer" => typ
-                    .named_child("init")
-                    .and_then(|n| resolve(db, n, uri.clone())),
-                _ => None,
-            }
-        }
-        "id" => node
-            .parent()?
-            .named_child("type")
-            .and_then(|n| resolve(db, n, uri.clone())),
-        _ => None,
-    };
-
-    // Perform additional unwrapping if needed.
-    d.and_then(|d| match d.kind {
-        // For function declarations produce the function's return type.
-        DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => {
-            resolve_id(db, &sig.result?, node, d.uri)
-        }
-
-        // For enum members return the enum.
-        DeclKind::EnumMember => {
-            // Depending on whether we are in an enum type decl or enum redef decl we need to go up
-            // to a different height. In the end we only use the ID so detect that, so we go to the
-            // outer entity and then resolve the ID.
-            let mut n = tree.root_node().named_descendant_for_point_range(d.range)?;
-            while let Some(p) = n.parent() {
-                match n.kind() {
-                    "type_decl" | "redef_enum_decl" => break,
-                    _ => n = p,
-                }
-            }
-
-            resolve(db, n.named_child("id")?, d.uri)
-        }
-
-        // Other kinds we return directly.
-        _ => Some(d),
-    })
-}
-
 #[cfg(test)]
 mod test {
     use std::{path::PathBuf, str::FromStr, sync::Arc};
@@ -458,7 +482,7 @@ mod test {
     use insta::assert_debug_snapshot;
     use lspower::lsp::{Position, Url};
 
-    use crate::{ast::Ast, lsp::TestDatabase, parse::Parse, Files};
+    use crate::{ast::Ast, lsp::TestDatabase, parse::Parse, query::NodeLocation, Files};
 
     #[test]
     fn loaded_files_recursive() {
@@ -546,7 +570,7 @@ y$yx$f1;
 ",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
@@ -556,48 +580,48 @@ y$yx$f1;
             .named_descendant_for_position(Position::new(13, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
 
         // `c?$f1` resolves to `f1: count`.
         let node = root
             .named_descendant_for_position(Position::new(15, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
 
         // `y` resolves to `y: count` via function argument.
         let node = root
             .named_descendant_for_position(Position::new(18, 4))
             .unwrap();
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
 
         // `x2$f1` resolves to `f1:count ...` via function argument.
         let node = root
             .named_descendant_for_position(Position::new(19, 7))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
 
         // `x$f1` resolves to `f1: count ...`.
         let node = root
             .named_descendant_for_position(Position::new(14, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
 
         // `x2$f1` resolves to `f1: count ...`.
         let node = root
             .named_descendant_for_position(Position::new(20, 8))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
 
         // Check resolution when multiple field accesses are involved.
         let node = root
             .named_descendant_for_position(Position::new(24, 5))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
     }
 
     #[test]
@@ -614,7 +638,7 @@ global x = fun();
 x$f;",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
 
@@ -623,7 +647,7 @@ x$f;",
             .named_descendant_for_position(Position::new(4, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
     }
 
     #[test]
@@ -647,7 +671,7 @@ x$f;",
 x::x;",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
 
@@ -656,7 +680,7 @@ x::x;",
             .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
-        assert_debug_snapshot!(super::resolve(&db, node, uri));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
     }
 
     #[test]
@@ -680,7 +704,7 @@ x$x1;
 x$x2;",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
@@ -690,7 +714,9 @@ x$x2;",
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()), Ok("x"));
         assert_eq!(
-            super::resolve(&db, x, uri.clone()).unwrap().kind,
+            db.resolve(NodeLocation::from_node(uri.clone(), x))
+                .unwrap()
+                .kind,
             super::DeclKind::Global
         );
 
@@ -699,7 +725,9 @@ x$x2;",
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert_eq!(
-            super::resolve(&db, x1, uri.clone()).unwrap().kind,
+            db.resolve(NodeLocation::from_node(uri.clone(), x1))
+                .unwrap()
+                .kind,
             super::DeclKind::Field
         );
 
@@ -707,7 +735,7 @@ x$x2;",
             .named_descendant_for_position(Position::new(6, 3))
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
-        assert_debug_snapshot!(super::resolve(&db, x2, uri));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, x2)));
     }
 
     #[test]
@@ -726,7 +754,7 @@ global x2 = f2();
 ",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let source = db.source(uri.clone());
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
@@ -736,9 +764,12 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert_eq!(
-            &super::typ(&db, &super::resolve(&db, x1, uri.clone()).unwrap())
-                .unwrap()
-                .id,
+            &db.typ(
+                db.resolve(NodeLocation::from_node(uri.clone(), x1))
+                    .unwrap()
+            )
+            .unwrap()
+            .id,
             "X1"
         );
 
@@ -747,7 +778,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
         assert_eq!(
-            &super::typ(&db, &super::resolve(&db, x2, uri).unwrap())
+            &db.typ(db.resolve(NodeLocation::from_node(uri, x2)).unwrap())
                 .unwrap()
                 .id,
             "X2"
@@ -768,7 +799,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
 }"#,
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
         let source = db.source(uri.clone());
@@ -778,7 +809,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .named_descendant_for_position(Position::new(1, 29))
             .unwrap();
         assert_eq!(i1.utf8_text(source.as_bytes()), Ok("i"));
-        assert_debug_snapshot!(super::resolve(&db, i1, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i1)));
 
         // TODO(bbannier): In Zeek we should be able to see the loop parameter after the loop, but
         // currently don't. It seems one should be able to see the loop var eve if the loop is
@@ -787,14 +818,14 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
         assert_eq!(i2.utf8_text(db.source(uri.clone()).as_bytes()), Ok("i"));
-        assert_debug_snapshot!(super::resolve(&db, i2, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i2)));
 
         // Set iteration.
         let s = root
             .named_descendant_for_position(Position::new(3, 26))
             .unwrap();
         assert_eq!(s.utf8_text(source.as_bytes()), Ok("s"));
-        assert_debug_snapshot!(super::resolve(&db, s, uri.clone()));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), s)));
 
         // Table iteration.
         let ta = root
@@ -805,7 +836,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .unwrap();
         assert_eq!(ta.utf8_text(source.as_bytes()), Ok("ta"));
         assert_eq!(tb.utf8_text(source.as_bytes()), Ok("tb"));
-        assert_debug_snapshot!(super::resolve(&db, ta, uri.clone()));
-        assert_debug_snapshot!(super::resolve(&db, tb, uri));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), ta)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, tb)));
     }
 }

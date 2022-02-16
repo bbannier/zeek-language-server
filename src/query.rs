@@ -150,6 +150,39 @@ impl Ord for OrderedRange {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeLocation {
+    pub range: Range,
+    pub uri: Arc<Url>,
+}
+
+impl NodeLocation {
+    #[must_use]
+    pub fn from_node(uri: Arc<Url>, node: Node) -> Self {
+        Self {
+            range: node.range(),
+            uri,
+        }
+    }
+
+    #[must_use]
+    pub fn from_range(uri: Arc<Url>, range: Range) -> Self {
+        Self { range, uri }
+    }
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for NodeLocation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.range.start.line.hash(state);
+        self.range.start.character.hash(state);
+        self.range.end.line.hash(state);
+        self.range.end.character.hash(state);
+
+        self.uri.hash(state);
+    }
+}
+
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Decl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -158,13 +191,7 @@ impl Hash for Decl {
         self.kind.hash(state);
         self.is_export.hash(state);
         self.is_export.hash(state);
-
-        self.range.start.line.hash(state);
-        self.range.start.character.hash(state);
-
-        self.range.end.line.hash(state);
-        self.range.end.character.hash(state);
-
+        NodeLocation::from_range(self.uri.clone(), self.range).hash(state);
         self.documentation.hash(state);
         self.uri.hash(state);
     }
@@ -859,7 +886,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
         .collect()
 }
 
-#[instrument]
+#[instrument(skip(source))]
 pub fn decl_at(id: &str, mut node: Node, uri: Arc<Url>, source: &[u8]) -> Option<Decl> {
     loop {
         if let Some(decl) = decls_(node, uri.clone(), source)

@@ -34,7 +34,8 @@ fn init_logging(args: &Args) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     #[cfg(feature = "profiling")]
-    let mut agent = PyroscopeAgent::builder("http://localhost:4040", "myapp").build()?;
+    let mut agent =
+        PyroscopeAgent::builder("http://localhost:4040", env!("CARGO_PKG_NAME")).build()?;
     #[cfg(feature = "profiling")]
     agent.start();
 

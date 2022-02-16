@@ -208,6 +208,44 @@ impl Backend {
 
         Ok(())
     }
+
+    async fn visible_files(&self) -> Result<Vec<Url>> {
+        let system_files = zeek::system_files()
+            .await
+            .map_err(|e| {
+                error!("could not read system files: {e}");
+                Error::new(ErrorCode::InternalError)
+            })?
+            .into_iter()
+            .filter_map(|f| Url::from_file_path(f.path).ok())
+            .collect::<Vec<_>>();
+
+        let workspace_files = self
+            .state()?
+            .workspace_folders()
+            .iter()
+            .filter_map(|f| f.to_file_path().ok())
+            .flat_map(|dir| {
+                WalkDir::new(dir)
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .filter(|e| !e.file_type().is_dir())
+                    .filter_map(|f| {
+                        if f.path().extension()? == "zeek" {
+                            Url::from_file_path(f.path()).ok()
+                        } else {
+                            None
+                        }
+                    })
+                // .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        Ok(system_files
+            .into_iter()
+            .chain(workspace_files.into_iter())
+            .collect())
+    }
 }
 
 #[lspower::async_trait]
@@ -264,15 +302,13 @@ impl LanguageServer for Backend {
             state.set_prefixes(Arc::new(prefixes));
         }
 
-        match zeek::system_files().await {
+        // Load all visible files.
+        match self.visible_files().await {
             Ok(files) => {
                 self.did_change_watched_files(DidChangeWatchedFilesParams {
                     changes: files
                         .into_iter()
-                        .filter_map(|f| {
-                            let uri = Url::from_file_path(f.path).ok()?;
-                            Some(FileEvent::new(uri, FileChangeType::CREATED))
-                        })
+                        .filter_map(|f| Some(FileEvent::new(f, FileChangeType::CREATED)))
                         .collect(),
                 })
                 .await;
@@ -280,34 +316,6 @@ impl LanguageServer for Backend {
             Err(e) => {
                 self.log_message(MessageType::ERROR, e).await;
             }
-        }
-
-        // Load files in workspace folders.
-        let changes = self.state().ok().map(|state| {
-            state
-                .workspace_folders()
-                .iter()
-                .filter_map(|f| f.to_file_path().ok())
-                .flat_map(|dir| {
-                    WalkDir::new(dir)
-                        .into_iter()
-                        .filter_map(std::result::Result::ok)
-                        .filter(|e| !e.file_type().is_dir())
-                        .filter_map(|f| {
-                            if f.path().extension()? != "zeek" {
-                                return None;
-                            }
-
-                            let uri = Url::from_file_path(f.path()).ok()?;
-                            Some(FileEvent::new(uri, FileChangeType::CREATED))
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        });
-        if let Some(changes) = changes {
-            self.did_change_watched_files(DidChangeWatchedFilesParams { changes })
-                .await;
         }
     }
 
@@ -320,12 +328,34 @@ impl LanguageServer for Backend {
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         let progress_token = self.progress_begin("Indexing").await.ok();
 
+        // Create new list of files and update individual sources.
+        let mut files = match self.state() {
+            Ok(s) => s.files().as_ref().clone(),
+            Err(e) => {
+                error!("could not get current state: {e}");
+                return;
+            }
+        };
+
         for change in params.changes {
-            let uri = change.uri;
+            let uri = Arc::new(change.uri);
 
             #[allow(clippy::cast_possible_truncation)]
             self.progress(progress_token.clone(), Some(uri.path().to_string()), None)
                 .await;
+
+            match change.typ {
+                FileChangeType::DELETED => {
+                    files.remove(uri.as_ref());
+                    continue;
+                }
+                FileChangeType::CREATED => {
+                    files.insert(uri.clone());
+                }
+                _ => {}
+            }
+
+            // At this point we are working with CREATED or CHANGED events.
 
             let source = match std::fs::read_to_string(uri.path()) {
                 Ok(s) => s,
@@ -336,15 +366,13 @@ impl LanguageServer for Backend {
             };
 
             if let Ok(mut state) = self.state_mut() {
-                let uri = Arc::new(uri);
-
                 state.set_source(uri.clone(), Arc::new(source));
-
-                let mut files = state.files();
-                let files = Arc::make_mut(&mut files);
-                files.insert(uri.clone());
-                state.set_files(Arc::new(files.clone()));
             };
+        }
+
+        // Commit new file list.
+        if let Ok(mut state) = self.state_mut() {
+            state.set_files(Arc::new(files));
         }
 
         // Reload implicit declarations.

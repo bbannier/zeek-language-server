@@ -1,0 +1,128 @@
+---
+source: src/ast.rs
+assertion_line: 771
+expression: c_type
+
+---
+Decl {
+    module: None,
+    id: "connection",
+    fqid: "connection",
+    kind: Type(
+        [
+            Decl {
+                module: None,
+                id: "id",
+                fqid: "connection::id",
+                kind: Field,
+                is_export: None,
+                range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 26,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 28,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 26,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 28,
+                    },
+                },
+                documentation: "```zeek\n# In connection\nid: string;\n```",
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/init-bare.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            },
+            Decl {
+                module: None,
+                id: "name",
+                fqid: "x::connection::name",
+                kind: Field,
+                is_export: None,
+                range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 29,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 33,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 29,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 33,
+                    },
+                },
+                documentation: "```zeek\n# In x::connection\nname: string;\n```",
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            },
+        ],
+    ),
+    is_export: Some(
+        false,
+    ),
+    range: Range {
+        start: Position {
+            line: 1,
+            character: 0,
+        },
+        end: Position {
+            line: 1,
+            character: 40,
+        },
+    },
+    selection_range: Range {
+        start: Position {
+            line: 1,
+            character: 5,
+        },
+        end: Position {
+            line: 1,
+            character: 15,
+        },
+    },
+    documentation: "```zeek\ntype connection: record { id: string; };\n```",
+    uri: Url {
+        scheme: "file",
+        cannot_be_a_base: false,
+        username: "",
+        password: None,
+        host: None,
+        port: None,
+        path: "/init-bare.zeek",
+        query: None,
+        fragment: None,
+    },
+}

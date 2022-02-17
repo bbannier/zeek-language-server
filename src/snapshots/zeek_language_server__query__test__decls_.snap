@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 1070
+assertion_line: 1102
 expression: root_decls
 
 ---
@@ -94,7 +94,7 @@ expression: root_decls
     Decl {
         module: None,
         id: "Y",
-        fqid: "bar::Y",
+        fqid: "Y",
         kind: RedefRecord(
             [
                 Decl {

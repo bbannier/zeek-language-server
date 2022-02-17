@@ -748,7 +748,6 @@ impl LanguageServer for Backend {
 
                 // Compute completion.
                 if let Some(decl) = decl {
-                    // FIXME(bbannier): also complete for redefs of enums.
                     if let DeclKind::Type(fields) = &decl.kind {
                         return Ok(Some(CompletionResponse::from(
                             fields
@@ -757,7 +756,7 @@ impl LanguageServer for Backend {
                                 .filter_map(|item| {
                                     // By default we use FQIDs for completion labels. Since for
                                     // record fields this would be e.g., `mod::rec::field` where we
-                                    // want just `field` rework them slightly.
+                                    // want just `field`, rework them slightly.
                                     let label = item.label.split("::").last()?.to_string();
                                     Some(CompletionItem { label, ..item })
                                 })

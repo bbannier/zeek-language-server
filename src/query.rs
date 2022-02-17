@@ -499,6 +499,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
             let module_name = module.clone();
 
             let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
+            let id_written = id.utf8_text(source).ok()?;
 
             let typ = c.nodes_for_capture_index(c_typ).next().map(Node::from);
 
@@ -520,8 +521,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
 
             let id = {
                 // The grammar doesn't expose module ids in identifiers like `mod::f` directly, parse by hand.
-                let x = id.utf8_text(source).ok()?;
-                let spl = x.splitn(2, "::").collect::<Vec<_>>();
+                let spl = id_written.splitn(2, "::").collect::<Vec<_>>();
 
                 match spl.len() {
                     // The module was part of the ID.
@@ -777,6 +777,15 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                     return None;
                 }
             };
+
+            // If a redef record isn't already fully qualified it either refers to something in the
+            // current module which we can find, or it refers to a GLOBAL record. Sanitize the FQID
+            // for that.
+            if let DeclKind::RedefRecord(_) = &kind {
+                if !id_written.contains("::") {
+                    fqid = id.clone();
+                }
+            }
 
             Some(
                 std::iter::once(Decl {

@@ -739,6 +739,39 @@ x$x2;",
     }
 
     #[test]
+    fn redef_global_record() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        db.add_file(
+            Arc::new(Url::from_file_path("/init-bare.zeek").unwrap()),
+            "module GLOBAL;
+type connection: record { id: string; };",
+        );
+        db.add_file(
+            uri.clone(),
+            "module x;
+@load init-bare
+redef record connection += { name: string; };
+global c: connection;",
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(uri.clone());
+
+        let c = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(3, 7))
+            .unwrap();
+        assert_eq!(c.utf8_text(source.as_bytes()), Ok("c"));
+        let c_res = db.resolve(NodeLocation::from_node(uri, c)).unwrap();
+        assert_eq!(c_res.kind, super::DeclKind::Global);
+        let c_type = db.typ(c_res).unwrap();
+        assert_debug_snapshot!(c_type);
+    }
+
+    #[test]
     fn typ_fn_call() {
         let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());

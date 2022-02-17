@@ -9,7 +9,10 @@ features.
 
 ## Installation
 
-This project requires Rust which can be set up e.g., with [rustup] and
+In order to see symbols from Zeek system scripts, Zeek needs to be installed
+and `zeek-config` should be in `PATH`.
+
+This project requires Rust to build which can be set up e.g., with [rustup] and
 [tree-sitter](https://tree-sitter.github.io/) CLI tools.
 
 The project can then be installed with

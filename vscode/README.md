@@ -5,7 +5,8 @@ Provides support for zeek-language-server, a LSP server for Zeek script.
 ## Requirements
 
 This extension currently provides binaries for x86_64 Darwin and Linux
-platforms.[^other]
+platforms.[^other] A VSIX file is [published on
+Github](https://github.com/bbannier/zeek-language-server/releases/).
 
 A [Zeek](https://zeek.org) installation is required, and `zeek-config` needs to
 be in `PATH`.

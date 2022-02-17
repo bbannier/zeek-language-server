@@ -42,12 +42,14 @@
   },
   "scripts": {
     "vscode:prepublish": "tsc -b",
+    "vscode:uninstall": "node ./src/lifecycle",
     "build": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint --ext=ts .",
     "vsix": "vsce package -o zeek-language-server.vsix"
   },
   "dependencies": {
+    "got": "^11.8.2",
     "vscode-languageclient": "^7.0.0"
   },
   "devDependencies": {

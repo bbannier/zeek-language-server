@@ -28,8 +28,8 @@ pyroscope = { version = "0.3.1", optional = true }
 rust-fuzzy-search = "0.1.1"
 salsa = "0.16.1"
 tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread", "io-std", "process", "time"] }
-tracing = "0.1.30"
+tracing = "0.1.31"
 tracing-opentelemetry = { version = "0.17.1", optional = true }
-tracing-subscriber = { version = "0.3.8", features = ["tracing-log"], optional = true }
+tracing-subscriber = { version = "0.3.9", features = ["tracing-log"], optional = true }
 tree-sitter = "0.20.4"
 walkdir = "2.3.2"

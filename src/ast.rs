@@ -60,12 +60,46 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
         .named_descendant_for_point_range(scope.range)?;
     let source = db.source(uri.clone());
 
-    let mut result = None;
+    let node = scope;
 
+    let combined_decl_with_redefs = |decls: Vec<Decl>| -> Option<Decl> {
+        let (decl, redefs): (Vec<_>, Vec<_>) = decls.into_iter().partition(|d| !is_redef(d));
+
+        let decl = decl.into_iter().next()?;
+
+        let redefd_fields = redefs
+            .into_iter()
+            .filter_map(|r| match r.kind {
+                DeclKind::RedefRecord(fields) => Some(fields),
+                _ => None,
+            })
+            .flatten();
+
+        match decl.kind {
+            DeclKind::Type(mut fields) => {
+                fields.extend(redefd_fields);
+                Some(Decl {
+                    kind: DeclKind::Type(fields),
+                    ..decl
+                })
+            }
+            _ => Some(decl),
+        }
+    };
+
+    let mut decls = Vec::new();
     let mut scope = scope;
     loop {
-        if let Some(decl) = query::decl_at(id.as_str(), scope, uri.clone(), source.as_bytes()) {
-            result = Some(decl);
+        decls.extend(
+            // Find all decls with this name, defined before the node. We do this so that e.g.,
+            // redefs in the same file are only in effect after they have been declared.
+            query::decls_(scope, uri.clone(), source.as_bytes())
+                .into_iter()
+                .filter(|d| d.id == id.as_str() || d.fqid == id.as_str())
+                .filter(|d| d.range.start <= node.range().start),
+        );
+
+        if decls.iter().any(|d| !is_redef(d)) {
             break;
         }
 
@@ -75,6 +109,14 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
             break;
         }
     }
+
+    // If we have found something that isn't a redef this is the decl which should be visible at
+    // this point. Combine it with all redefs visible up to this point.
+    if decls.iter().any(|d| !is_redef(d)) {
+        return combined_decl_with_redefs(decls).map(Arc::new);
+    }
+
+    let result = decls.into_iter().next();
 
     if let Some(r) = &result {
         // If we have found a non-redef decl this is the final decl visible at this point as redefs
@@ -86,13 +128,15 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
 
     // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
     // into account.
+    let decls = db.decls(uri.clone());
     let implicit_decls = db.implicit_decls();
     let explicit_decls_recursive = db.explicit_decls_recursive(uri.clone());
     let last_decl = if let Some(redef) = &result {
         redef
     } else {
-        implicit_decls
+        decls
             .iter()
+            .chain(implicit_decls.iter())
             .chain(explicit_decls_recursive.iter())
             .filter(|d| d.fqid == id.as_str())
             .last()?
@@ -769,6 +813,57 @@ global c: connection;",
         assert_eq!(c_res.kind, super::DeclKind::Global);
         let c_type = db.typ(c_res).unwrap();
         assert_debug_snapshot!(c_type);
+    }
+
+    #[test]
+    fn redef_record_same_file() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "module x;
+type A: record {};
+global g: A;
+redef record A += { c: count &optional; };
+function f(a: A) {
+    a$c;
+}",
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(uri.clone());
+
+        let g = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(2, 7))
+            .unwrap();
+        assert_eq!(g.utf8_text(source.as_bytes()), Ok("g"));
+        assert_debug_snapshot!(db.typ(db.resolve(NodeLocation::from_node(uri.clone(), g)).unwrap()));
+
+        let f_a = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(4, 11))
+            .unwrap();
+        assert_eq!(f_a.utf8_text(source.as_bytes()), Ok("a"));
+        assert_debug_snapshot!(db.typ(
+            db.resolve(NodeLocation::from_node(uri.clone(), f_a))
+                .unwrap()
+        ));
+
+        let a = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(5, 4))
+            .unwrap();
+        assert_eq!(a.utf8_text(source.as_bytes()), Ok("a"));
+        assert_debug_snapshot!(db.typ(db.resolve(NodeLocation::from_node(uri.clone(), a)).unwrap()));
+
+        let a_c = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(5, 6))
+            .unwrap();
+        assert_eq!(a_c.utf8_text(source.as_bytes()), Ok("c"));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, a_c)));
     }
 
     #[test]

@@ -130,7 +130,7 @@ impl Ord for Decl {
 }
 
 #[derive(PartialEq, Eq)]
-struct OrderedRange(Range);
+struct OrderedRange(pub Range);
 impl PartialOrd for OrderedRange {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match self.0.start.partial_cmp(&other.0.start) {
@@ -457,45 +457,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                 return None;
             }
 
-            // Helper to compute a module ID from a given string.
-            let comp_module_id = |id: &str| match id {
-                "GLOBAL" => ModuleId::Global,
-                "" => ModuleId::None,
-                _ => ModuleId::String(id.into()),
-            };
-
             // Figure out the module this decl is for.
-            let mut module = {
-                let mut module_id = None;
-
-                let mut node = decl;
-                while let Some(n) = node.parent() {
-                    if n.kind() == "source_file" {
-                        // Found a source file. Now find the most recent
-                        // module decl when looking backwards from `node`.
-                        while let Some(m) = node.prev_sibling() {
-                            if m.kind() == "module_decl" {
-                                module_id = Some(comp_module_id(
-                                    m.named_children_not("nl")
-                                        .into_iter()
-                                        .next()?
-                                        .utf8_text(source)
-                                        .ok()?,
-                                ));
-                                break;
-                            }
-
-                            // Go to sibling before.
-                            node = m;
-                        }
-                    }
-
-                    // Go one level higher.
-                    node = n;
-                }
-
-                module_id.unwrap_or(ModuleId::None)
-            };
+            let mut module = parent_module(decl, source)?;
             let module_name = module.clone();
 
             let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
@@ -526,7 +489,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                 match spl.len() {
                     // The module was part of the ID.
                     2 => {
-                        module = comp_module_id(spl[0]);
+                        module = compute_module_id(spl[0]);
                         spl[1].to_string()
                     }
                     // Just a plain local ID.
@@ -789,11 +752,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
 
             Some(
                 std::iter::once(Decl {
-                    module: if in_export(decl) {
-                        module
-                    } else {
-                        ModuleId::None
-                    },
+                    module,
                     id,
                     fqid,
                     kind,
@@ -810,6 +769,48 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
         .chain(fn_param_decls(node, uri.clone(), source).into_iter())
         .chain(loop_param_decls(node, &uri, source).into_iter())
         .collect()
+}
+
+/// Helper to compute a module ID from a given string.
+fn compute_module_id(id: &str) -> ModuleId {
+    match id {
+        "GLOBAL" => ModuleId::Global,
+        "" => ModuleId::None,
+        _ => ModuleId::String(id.into()),
+    }
+}
+
+/// Compute the module a node is in.
+#[must_use]
+fn parent_module(mut node: Node, source: &[u8]) -> Option<ModuleId> {
+    let mut module_id = None;
+
+    while let Some(n) = node.parent() {
+        if n.kind() == "source_file" {
+            // Found a source file. Now find the most recent
+            // module decl when looking backwards from `node`.
+            while let Some(m) = node.prev_sibling() {
+                if m.kind() == "module_decl" {
+                    module_id = Some(compute_module_id(
+                        m.named_children_not("nl")
+                            .into_iter()
+                            .next()?
+                            .utf8_text(source)
+                            .ok()?,
+                    ));
+                    break;
+                }
+
+                // Go to sibling before.
+                node = m;
+            }
+        }
+
+        // Go one level higher.
+        node = n;
+    }
+
+    Some(module_id.unwrap_or(ModuleId::None))
 }
 
 /// Extract declarations for function parameters on the given node.
@@ -893,25 +894,6 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
             })
         })
         .collect()
-}
-
-#[instrument(skip(source))]
-pub fn decl_at(id: &str, mut node: Node, uri: Arc<Url>, source: &[u8]) -> Option<Decl> {
-    loop {
-        if let Some(decl) = decls_(node, uri.clone(), source)
-            .into_iter()
-            .find(|d| d.id == id || d.fqid == id)
-        {
-            return Some(decl);
-        }
-
-        node = match node.parent() {
-            Some(p) => p,
-            None => break,
-        };
-    }
-
-    None
 }
 
 #[instrument]

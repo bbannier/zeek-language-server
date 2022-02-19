@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 942
+assertion_line: 1161
 expression: "query(\"mod\").await"
 
 ---
@@ -36,7 +36,7 @@ Ok(
                     },
                 },
                 container_name: Some(
-                    "NONE",
+                    "mod_a",
                 ),
             },
             SymbolInformation {
@@ -68,7 +68,7 @@ Ok(
                     },
                 },
                 container_name: Some(
-                    "NONE",
+                    "mod_b",
                 ),
             },
             SymbolInformation {
@@ -100,7 +100,7 @@ Ok(
                     },
                 },
                 container_name: Some(
-                    "NONE",
+                    "mod_x",
                 ),
             },
         ],

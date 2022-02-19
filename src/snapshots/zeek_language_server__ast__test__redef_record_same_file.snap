@@ -1,7 +1,7 @@
 ---
 source: src/ast.rs
-assertion_line: 585
-expression: "db.resolve(NodeLocation::from_node(uri.clone(), node))"
+assertion_line: 818
+expression: "db.typ(db.resolve(NodeLocation::from_node(uri.clone(), g)).unwrap())"
 
 ---
 Some(
@@ -9,33 +9,35 @@ Some(
         module: String(
             "x",
         ),
-        id: "c",
-        fqid: "x::c",
-        kind: Global,
+        id: "A",
+        fqid: "x::A",
+        kind: Type(
+            [],
+        ),
         is_export: Some(
             false,
         ),
         range: Range {
             start: Position {
-                line: 10,
+                line: 1,
                 character: 0,
             },
             end: Position {
-                line: 10,
-                character: 16,
+                line: 1,
+                character: 18,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 10,
-                character: 7,
+                line: 1,
+                character: 5,
             },
             end: Position {
-                line: 10,
-                character: 8,
+                line: 1,
+                character: 6,
             },
         },
-        documentation: "```zeek\nglobal c: count;\n```",
+        documentation: "```zeek\ntype A: record {};\n```",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

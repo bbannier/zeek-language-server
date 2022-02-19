@@ -1,11 +1,11 @@
 ---
 source: src/ast.rs
-assertion_line: 771
+assertion_line: 773
 expression: c_type
 
 ---
 Decl {
-    module: None,
+    module: Global,
     id: "connection",
     fqid: "connection",
     kind: Type(

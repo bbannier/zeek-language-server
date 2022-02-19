@@ -42,7 +42,6 @@
   },
   "scripts": {
     "vscode:prepublish": "tsc -b",
-    "vscode:uninstall": "node ./src/lifecycle",
     "build": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint --ext=ts .",

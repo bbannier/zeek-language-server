@@ -12,10 +12,11 @@ use lspower::{
         CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
         DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
         DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-        Documentation, FileChangeType, FileEvent, GotoDefinitionParams, GotoDefinitionResponse,
-        Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
-        InitializeResult, InitializedParams, Location, MarkedString, MarkupContent, MessageType,
-        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        Documentation, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+        InitializedParams, Location, MarkedString, MarkupContent, MessageType, OneOf,
+        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
         ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
         SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
         TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
@@ -293,6 +294,7 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec!["(".into(), ",".into()]),
                     ..SignatureHelpOptions::default()
                 }),
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -995,6 +997,37 @@ impl LanguageServer for Backend {
             active_signature: None,
             active_parameter,
         }))
+    }
+
+    #[instrument]
+    async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        fn compute_folds(n: query::Node, include_self: bool) -> Vec<FoldingRange> {
+            let range = n.range();
+            let mut folds = if include_self {
+                vec![FoldingRange {
+                    start_line: range.start.line,
+                    start_character: Some(range.start.character),
+                    end_line: range.end.line,
+                    end_character: Some(range.end.character),
+                    kind: None,
+                }]
+            } else {
+                Vec::new()
+            };
+
+            for child in n.named_children_not("nl") {
+                folds.extend(compute_folds(child, true));
+            }
+
+            folds
+        }
+
+        let tree = match self.state()?.parse(Arc::new(params.text_document.uri)) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        Ok(Some(compute_folds(tree.root_node(), false)))
     }
 }
 

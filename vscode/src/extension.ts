@@ -20,7 +20,7 @@ import {
 } from "vscode-languageclient/node";
 import { promisify } from "util";
 
-const TAG = "v0.1.0";
+const TAG = "v0.2.0";
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
 

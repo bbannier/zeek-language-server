@@ -3,7 +3,7 @@
   "displayName": "zeek-language-server",
   "description": "A language server for Zeek script",
   "author": "Benjamin Bannier",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "publisher": "bbannier",
   "preview": true,

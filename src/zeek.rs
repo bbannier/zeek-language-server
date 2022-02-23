@@ -1,5 +1,8 @@
-use std::str;
-use std::{ffi::OsStr, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    str,
+};
 
 use eyre::{eyre, Result};
 use walkdir::WalkDir;
@@ -53,6 +56,47 @@ pub async fn prefixes() -> Result<Vec<PathBuf>> {
     ])
 }
 
+#[derive(Debug)]
+pub struct CheckResult {
+    pub file: String,
+    pub line: u32,
+    pub error: String,
+}
+
+/// Check the file for with Zeek from the given directory.
+///
+/// # Errors
+///
+/// Will return `Err` if `zeek` cannot be run.
+pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
+    file: P1,
+    cwd: P2,
+) -> Result<Vec<CheckResult>> {
+    let check = tokio::process::Command::new("zeek")
+        .current_dir(cwd)
+        .arg("--parse-only")
+        .arg(file.as_ref())
+        .output()
+        .await?;
+
+    let errline = regex::Regex::new(r"error in (\S*), line (\d+): (.*)$").expect("valid regex");
+
+    let stderr = str::from_utf8(&check.stderr)?;
+
+    Ok(stderr
+        .lines()
+        .filter_map(|l| {
+            errline.captures(l).and_then(|cap| {
+                Some(CheckResult {
+                    file: cap[1].to_string(),
+                    line: cap[2].parse().ok()?,
+                    error: cap[3].to_string(),
+                })
+            })
+        })
+        .collect())
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct SystemFile {
     /// Full path of the file.
@@ -101,6 +145,7 @@ pub(crate) fn essential_input_files() -> Vec<&'static str> {
 #[cfg(test)]
 mod test {
     use crate::zeek;
+    use std::io::Write;
 
     #[tokio::test]
     async fn script_dir() {
@@ -116,5 +161,20 @@ mod test {
         let files = zeek::system_files().await.expect("can read system files");
 
         assert_ne!(files, vec![]);
+    }
+
+    #[tokio::test]
+    async fn check() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, "invalid code").unwrap();
+
+        let checks = zeek::check(&file, std::env::current_dir().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(checks.len(), 1);
+        let check = &checks[0];
+        assert_eq!(check.file, file.path().to_string_lossy().to_string());
+        assert_eq!(check.line, 1);
+        assert!(!check.error.is_empty());
     }
 }

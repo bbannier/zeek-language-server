@@ -11,16 +11,16 @@ use lspower::{
         notification::Progress, request::WorkDoneProgressCreate, CompletionItem,
         CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
         DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-        Documentation, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
-        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-        HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-        InitializedParams, Location, MarkedString, MarkupContent, MessageType, OneOf,
-        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, Documentation, FileChangeType, FileEvent, FoldingRange,
+        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString,
+        MarkupContent, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server, TokenCanceller,
@@ -462,6 +462,76 @@ impl LanguageServer for Backend {
 
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
+        }
+    }
+
+    #[instrument]
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        let state = match self.state() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let uri = params.text_document.uri;
+
+        let file = match uri.to_file_path() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+
+        // Figure out a directory to run the check from. If there is any workspace folder we just
+        // pick the first one (TODO: this might be incorrect if there are multiple folders given);
+        // else use the directory the file is in.
+        let workspace_folder = state
+            .workspace_folders()
+            .get(0)
+            .and_then(|f| f.to_file_path().ok());
+
+        let file_dir = match file.parent() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let checks = if let Some(folder) = workspace_folder {
+            zeek::check(&file, folder).await
+        } else {
+            zeek::check(&file, file_dir).await
+        };
+
+        let checks = match checks {
+            Ok(c) => c,
+            Err(e) => {
+                self.warn_message(format!("cannot run zeek for error checking: {e}"))
+                    .await;
+                return;
+            }
+        };
+
+        let diags = checks
+            .into_iter()
+            // Only look at diagnostics for the saved file.
+            // TODO(bbannier): We could look at all files here.
+            .filter(|c| c.file == file.to_string_lossy())
+            .map(|c| {
+                // Zeek positions index starting with one.
+                let line = if c.line == 0 { 0 } else { c.line - 1 };
+
+                let position = Position::new(line, 0);
+                // TODO(bbannier): More granular severity, distinguish between warnings and errors.
+                Diagnostic::new(
+                    Range::new(position, position),
+                    None,
+                    None,
+                    Some("zeek".to_string()),
+                    c.error,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+
+        if let Some(client) = &self.client {
+            client.publish_diagnostics(uri, diags, None).await;
         }
     }
 

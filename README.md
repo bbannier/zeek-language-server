@@ -28,6 +28,8 @@ release.
 We provide [binaries for
 releases](https://github.com/bbannier/zeek-language-server/releases) for x86_64
 Darwin or Linux systems. You should then set up your client to use this binary.
+A list of editor plugins can be found e.g.,
+[here](https://langserver.org/#implementations-client).
 
 ## Building from source
 

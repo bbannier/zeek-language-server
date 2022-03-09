@@ -12,6 +12,9 @@ features.
 In order to see symbols from Zeek system scripts, Zeek needs to be installed
 and `zeek-config` should be in `PATH`.
 
+For optional formatting support
+[`zeek-format`](https://github.com/ckreibich/zeekscript/) should be in `PATH`.
+
 ### Editor setup
 
 #### vscode

@@ -29,7 +29,7 @@ pyroscope = { version = "0.3.1", optional = true }
 regex = "1.5.5"
 rust-fuzzy-search = "0.1.1"
 salsa = "0.16.1"
-tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread", "io-std", "process", "time"] }
+tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread", "io-std", "io-util", "process", "time"] }
 tracing = "0.1.32"
 tracing-opentelemetry = { version = "0.17.2", optional = true }
 tracing-subscriber = { version = "0.3.9", features = ["tracing-log"], optional = true }

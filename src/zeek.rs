@@ -1,10 +1,12 @@
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
+    process::Stdio,
     str,
 };
 
 use eyre::{eyre, Result};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use walkdir::WalkDir;
 
 async fn zeek_config<I, S>(args: I) -> Result<std::process::Output>
@@ -142,6 +144,40 @@ pub(crate) fn essential_input_files() -> Vec<&'static str> {
     ]
 }
 
+pub(crate) async fn has_format() -> bool {
+    format("").await.is_ok()
+}
+
+pub(crate) async fn format(doc: &str) -> Result<String> {
+    let mut fmt = tokio::process::Command::new("zeek-format")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    fmt.stdin
+        .take()
+        .ok_or_else(|| eyre!("could not pass file data to zeek-format"))?
+        .write_all(doc.as_bytes())
+        .await?;
+
+    let mut stdout = fmt
+        .stdout
+        .take()
+        .ok_or_else(|| eyre!("could not read result from zeek-format"))?;
+
+    if !tokio::spawn(async move { fmt.wait().await })
+        .await??
+        .success()
+    {
+        return Err(eyre!("failed to run zeek-format"));
+    }
+
+    let mut buffer = String::new();
+    stdout.read_to_string(&mut buffer).await?;
+
+    Ok(buffer)
+}
+
 #[cfg(test)]
 mod test {
     use crate::zeek;
@@ -176,5 +212,19 @@ mod test {
         assert_eq!(check.file, file.path().to_string_lossy().to_string());
         assert_eq!(check.line, 1);
         assert!(!check.error.is_empty());
+    }
+
+    #[tokio::test]
+    async fn format() {
+        if !zeek::has_format().await {
+            return;
+        }
+
+        assert_eq!(
+            zeek::format("event    foo( c: count , s : string  ) {   }")
+                .await
+                .unwrap(),
+            String::from("event foo(c: count, s: string) { }\n")
+        );
     }
 }

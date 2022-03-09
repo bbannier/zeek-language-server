@@ -11,16 +11,17 @@ use lspower::{
         notification::Progress, request::WorkDoneProgressCreate, CompletionItem,
         CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
         DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
-        DocumentSymbolResponse, Documentation, FileChangeType, FileEvent, FoldingRange,
-        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString,
-        MarkupContent, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
-        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+        FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+        InitializedParams, Location, MarkedString, MarkupContent, MessageType, OneOf,
+        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
+        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
+        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server, TokenCanceller,
@@ -295,6 +296,7 @@ impl LanguageServer for Backend {
                     ..SignatureHelpOptions::default()
                 }),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                document_formatting_provider: Some(OneOf::Left(zeek::has_format().await)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1098,6 +1100,27 @@ impl LanguageServer for Backend {
         };
 
         Ok(Some(compute_folds(tree.root_node(), false)))
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = Arc::new(params.text_document.uri);
+        let source = self.state()?.source(uri);
+
+        let num_lines = u32::try_from(source.lines().count()).expect("too many lines");
+        let end = u32::try_from(source.lines().last().map_or(0, str::len)).expect("line too long");
+        let end = Position::new(num_lines, end);
+        let range = Range::new(Position::new(0, 0), end);
+
+        let formatted = zeek::format(&source)
+            .await
+            .map_err(|_| Error::internal_error())?;
+
+        // The edit consists of removing the original source range, and inserting the new text
+        // after that (edits cannot overlap).
+        Ok(Some(vec![
+            TextEdit::new(range, String::new()),
+            TextEdit::new(Range::new(end, end), formatted),
+        ]))
     }
 }
 

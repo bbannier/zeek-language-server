@@ -221,10 +221,10 @@ mod test {
         }
 
         assert_eq!(
-            zeek::format("event    foo( c: count , s : string  ) {   }")
+            zeek::format(" global   foo  : event(  c: count, s : string)  ; ")
                 .await
                 .unwrap(),
-            String::from("event foo(c: count, s: string) { }\n")
+            String::from("global foo: event(c: count, s: string);\n")
         );
     }
 }

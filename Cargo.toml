@@ -14,11 +14,11 @@ tempfile = "3.3.0"
 
 [features]
 default = []
-telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry", "clap"]
+telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tracing-opentelemetry"]
 profiling = ["pyroscope"]
 
 [dependencies]
-clap = { version = "3.1.6", features = ["derive"], optional = true }
+clap = { version = "3.1.6", features = ["derive"] }
 eyre = "0.6.7"
 futures = "0.3.21"
 itertools = "0.10.3"

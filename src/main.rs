@@ -1,18 +1,17 @@
+use clap::Parser;
+
 #[cfg(feature = "telemetry")]
-use {
-    clap::Parser,
-    tracing_subscriber::{layer::SubscriberExt, prelude::*},
-};
+use tracing_subscriber::{layer::SubscriberExt, prelude::*};
 
 #[cfg(feature = "profiling")]
 use pyroscope::PyroscopeAgent;
 
 use {eyre::Result, tracing::info, zeek_language_server::lsp::run};
 
-#[cfg(feature = "telemetry")]
 #[derive(Parser, Debug)]
 #[clap(about, version)]
 struct Args {
+    #[cfg(feature = "telemetry")]
     #[clap(short, long, default_value = "http://127.0.0.1:14268/api/traces")]
     collector_endpoint: String,
 }
@@ -39,8 +38,11 @@ async fn main() -> Result<()> {
     #[cfg(feature = "profiling")]
     agent.start();
 
+    #[allow(unused)]
+    let args = Args::parse();
+
     #[cfg(feature = "telemetry")]
-    init_logging(&Args::parse())?;
+    init_logging(&args)?;
 
     info!("starting Zeek language server");
 

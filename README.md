@@ -4,8 +4,10 @@ This project implements a
 [language server](https://microsoft.github.io/language-server-protocol/)
 for [Zeek](https://zeek.org/) script.
 
-This is pre-alpha software with lots of bugs which implements almost no useful
-features.
+This is alpha-quality software, especially regarding type resolution. While it
+already now provides useful results, not all of Zeek script is resolved; we do
+however strive to either correctly resolve symbols or not at all, i.e., if a
+result is presented it should be correct.
 
 ## Installation
 

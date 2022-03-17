@@ -1,8 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 793
 expression: decls
-
 ---
 [
     Decl {
@@ -11,7 +9,7 @@ expression: decls
         ),
         id: "f1",
         fqid: "x::f1",
-        kind: FuncDef(
+        kind: FuncDecl(
             Signature {
                 result: None,
                 args: [],
@@ -59,7 +57,7 @@ expression: decls
         ),
         id: "f2",
         fqid: "foo::f2",
-        kind: FuncDef(
+        kind: FuncDecl(
             Signature {
                 result: None,
                 args: [],
@@ -105,7 +103,7 @@ expression: decls
         module: Global,
         id: "f3",
         fqid: "f3",
-        kind: FuncDef(
+        kind: FuncDecl(
             Signature {
                 result: None,
                 args: [],

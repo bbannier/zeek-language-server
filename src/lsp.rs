@@ -6,23 +6,27 @@ use crate::{
 };
 use itertools::Itertools;
 use lspower::{
-    jsonrpc::{Error, ErrorCode, Result},
+    jsonrpc::{Error, Result},
     lsp::{
-        notification::Progress, request::WorkDoneProgressCreate, CompletionItem,
-        CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
-        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
-        FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
-        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-        HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-        InitializedParams, Location, MarkedString, MarkupContent, MessageType, OneOf,
-        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceSymbolParams,
+        notification::Progress,
+        request::{
+            GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
+            WorkDoneProgressCreate,
+        },
+        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
+        CompletionResponse, DeclarationCapability, Diagnostic, DiagnosticSeverity,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
+        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, Documentation, FileChangeType, FileEvent, FoldingRange,
+        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString,
+        MarkupContent, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server, TokenCanceller,
 };
@@ -105,9 +109,7 @@ impl Backend {
     }
 
     fn state_mut(&self) -> Result<MutexGuard<Database>> {
-        self.state
-            .lock()
-            .map_err(|_| Error::new(ErrorCode::InternalError))
+        self.state.lock().map_err(|_| Error::internal_error())
     }
 
     async fn progress_begin<T>(&self, title: T) -> Result<ProgressToken>
@@ -227,7 +229,7 @@ impl Backend {
             .await
             .map_err(|e| {
                 error!("could not read system files: {e}");
-                Error::new(ErrorCode::InternalError)
+                Error::internal_error()
             })?
             .into_iter()
             .filter_map(|f| Url::from_file_path(f.path).ok());
@@ -290,6 +292,7 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec!["$".into()]),
                     ..CompletionOptions::default()
                 }),
+                declaration_provider: Some(DeclarationCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 signature_help_provider: Some(SignatureHelpOptions {
                     trigger_characters: Some(vec!["(".into(), ",".into()]),
@@ -561,7 +564,7 @@ impl LanguageServer for Backend {
 
         let text = node.utf8_text(source.as_bytes()).map_err(|e| {
             error!("could not get source text: {}", e);
-            Error::new(ErrorCode::InternalError)
+            Error::internal_error()
         })?;
 
         let mut contents = vec![
@@ -804,7 +807,7 @@ impl LanguageServer for Backend {
         let text_at_completion = node
             .utf8_text(source.as_bytes())
             // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
-            .map_err(|_| Error::new(ErrorCode::InternalError))?
+            .map_err(|_| Error::internal_error())?
             .lines()
             .next()
             .map(str::trim);
@@ -929,23 +932,22 @@ impl LanguageServer for Backend {
             Some(t) => t,
             None => return Ok(None),
         };
-        let node = tree.root_node();
-        let node = match node.named_descendant_for_position(position) {
+        let node = match tree.root_node().named_descendant_for_position(position) {
             Some(n) => n,
             None => return Ok(None),
         };
         let source = state.source(uri.clone());
-
-        let text = node.utf8_text(source.as_bytes()).map_err(|e| {
-            error!("could not get source text: {}", e);
-            Error::new(ErrorCode::InternalError)
-        })?;
 
         let location = match node.kind() {
             "id" => state
                 .resolve(NodeLocation::from_node(uri, node))
                 .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
             "file" => {
+                let text = node.utf8_text(source.as_bytes()).map_err(|e| {
+                    error!("could not get source text: {}", e);
+                    Error::internal_error()
+                })?;
+
                 let file = PathBuf::from(text);
                 load_to_file(
                     &file,
@@ -1123,6 +1125,64 @@ impl LanguageServer for Backend {
             TextEdit::new(range, String::new()),
             TextEdit::new(Range::new(end, end), formatted),
         ]))
+    }
+
+    #[instrument]
+    async fn goto_declaration(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDeclarationResponse>> {
+        let params = params.text_document_position_params;
+        let uri = Arc::new(params.text_document.uri);
+        let position = params.position;
+
+        let state = self.state()?;
+        let tree = state.parse(uri.clone());
+        let tree = match tree.as_ref() {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let node = match tree.root_node().named_descendant_for_position(position) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        let decl = match state.resolve(NodeLocation::from_node(uri.clone(), node)) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+
+        let decl = match &decl.kind {
+            // We are done as we have found a declaration.
+            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
+                decl.as_ref().clone()
+            }
+            // If we resolved to a definition, look for the declaration.
+            DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => {
+                match state
+                    .decls(uri.clone())
+                    .iter()
+                    .chain(state.implicit_decls().iter())
+                    .chain(state.explicit_decls_recursive(uri.clone()).iter())
+                    .filter(|&d| match &d.kind {
+                        DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
+                            true
+                        }
+                        _ => false,
+                    })
+                    .find(|&d| d.id == decl.id)
+                {
+                    Some(d) => d.clone(),
+                    None => return Ok(None),
+                }
+            }
+            _ => return Ok(None),
+        };
+
+        Ok(Some(GotoDeclarationResponse::Scalar(Location::new(
+            decl.uri.as_ref().clone(),
+            decl.range,
+        ))))
     }
 }
 
@@ -1499,5 +1559,50 @@ global f: function(x: count, y: string): string;
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
         assert_debug_snapshot!(server.signature_help(params).await);
+    }
+
+    #[tokio::test]
+    async fn goto_declaration() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "module x;
+@load events.bif
+global yeah: event(f:string);
+event yeah(c:count) {}
+event zeek_init() {}",
+        );
+
+        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
+        db.add_file(uri_evts.clone(), "global zeek_init: event();");
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .goto_declaration(super::GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        Position::new(3, 8),
+                    ),
+                    partial_result_params: Default::default(),
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .goto_declaration(super::GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        Position::new(4, 8),
+                    ),
+                    partial_result_params: Default::default(),
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+        );
     }
 }

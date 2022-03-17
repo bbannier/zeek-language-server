@@ -7,7 +7,7 @@ expression: "super::decls_(root, uri, source.as_bytes())"
         module: None,
         id: "ev",
         fqid: "ev",
-        kind: EventDef(
+        kind: EventDecl(
             Signature {
                 result: None,
                 args: [
@@ -171,7 +171,7 @@ expression: "super::decls_(root, uri, source.as_bytes())"
         module: None,
         id: "fn",
         fqid: "fn",
-        kind: FuncDef(
+        kind: FuncDecl(
             Signature {
                 result: Some(
                     "string",
@@ -259,7 +259,7 @@ expression: "super::decls_(root, uri, source.as_bytes())"
         module: None,
         id: "hk",
         fqid: "hk",
-        kind: HookDef(
+        kind: HookDecl(
             Signature {
                 result: None,
                 args: [

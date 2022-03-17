@@ -658,11 +658,11 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                     // does not expose the type of these.
                     let fn_like = if let Some(typ) = typ.and_then(|n| n.utf8_text(source).ok()) {
                         if typ.starts_with("function(") {
-                            Some(DeclKind::FuncDef(signature()?))
+                            Some(DeclKind::FuncDecl(signature()?))
                         } else if typ.starts_with("hook(") {
-                            Some(DeclKind::HookDef(signature()?))
+                            Some(DeclKind::HookDecl(signature()?))
                         } else if typ.starts_with("event(") {
-                            Some(DeclKind::EventDef(signature()?))
+                            Some(DeclKind::EventDecl(signature()?))
                         } else {
                             None
                         }
@@ -735,9 +735,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
 
                     kind
                 }
-                "hook_decl" => DeclKind::HookDecl(signature()?),
-                "event_decl" => DeclKind::EventDecl(signature()?),
-                "func_decl" => DeclKind::FuncDecl(signature()?),
+                "hook_decl" => DeclKind::HookDef(signature()?),
+                "event_decl" => DeclKind::EventDef(signature()?),
+                "func_decl" => DeclKind::FuncDef(signature()?),
                 _ => {
                     return None;
                 }

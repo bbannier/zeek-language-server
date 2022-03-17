@@ -20,13 +20,14 @@ use lspower::{
         DocumentSymbolResponse, Documentation, FileChangeType, FileEvent, FoldingRange,
         FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
         GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString,
-        MarkupContent, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
-        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
+        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+        Location, MarkedString, MarkupContent, MessageType, OneOf, ParameterInformation,
+        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
+        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
+        WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server, TokenCanceller,
 };
@@ -294,6 +295,7 @@ impl LanguageServer for Backend {
                 }),
                 declaration_provider: Some(DeclarationCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
+                implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 signature_help_provider: Some(SignatureHelpOptions {
                     trigger_characters: Some(vec!["(".into(), ",".into()]),
                     ..SignatureHelpOptions::default()
@@ -1184,6 +1186,64 @@ impl LanguageServer for Backend {
             decl.range,
         ))))
     }
+
+    #[instrument]
+    async fn goto_implementation(
+        &self,
+        params: GotoImplementationParams,
+    ) -> Result<Option<GotoImplementationResponse>> {
+        let params = params.text_document_position_params;
+        let uri = Arc::new(params.text_document.uri);
+        let position = params.position;
+
+        let state = self.state()?;
+        let tree = state.parse(uri.clone());
+        let tree = match tree.as_ref() {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let node = match tree.root_node().named_descendant_for_position(position) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        let decl = match state.resolve(NodeLocation::from_node(uri.clone(), node)) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+
+        match &decl.kind {
+            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {}
+            _ => return Ok(None),
+        }
+
+        Ok(Some(GotoImplementationResponse::from(
+            state
+                .files()
+                .iter()
+                .map(|f| {
+                    state
+                        .decls(f.clone())
+                        .as_ref()
+                        .clone()
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                })
+                .flatten()
+                .filter(|d| match &d.kind {
+                    DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => true,
+                    _ => false,
+                })
+                .filter_map(|d| {
+                    if &d.id == &decl.id {
+                        Some(Location::new(d.uri.as_ref().clone(), d.range))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>(),
+        )))
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1601,6 +1661,57 @@ event zeek_init() {}",
                     ),
                     partial_result_params: Default::default(),
                     work_done_progress_params: Default::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn goto_implementation() {
+        let mut db = TestDatabase::new();
+        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
+        db.add_file(
+            uri_evts.clone(),
+            "export {
+global zeek_init: event();",
+        );
+
+        let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri_x.clone(),
+            "module x;
+@load events.bif
+export { global foo: event(); }
+event zeek_init() {}
+event zeek_init() {}
+event foo() {}
+event x::foo() {}",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .goto_implementation(super::GotoImplementationParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri_evts.as_ref().clone()),
+                        Position::new(1, 11)
+                    ),
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .goto_implementation(super::GotoImplementationParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri_x.as_ref().clone()),
+                        Position::new(2, 17)
+                    ),
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
                 })
                 .await
         );

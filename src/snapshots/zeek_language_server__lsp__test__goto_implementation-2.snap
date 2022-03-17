@@ -1,0 +1,58 @@
+---
+source: src/lsp.rs
+expression: "server.goto_implementation(super::GotoImplementationParams{text_document_position_params:\n                                                               TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri_x.as_ref().clone()),\n                                                                                               Position::new(2,\n                                                                                                             17)),\n                                                           work_done_progress_params:\n                                                               Default::default(),\n                                                           partial_result_params:\n                                                               Default::default(),}).await"
+---
+Ok(
+    Some(
+        Array(
+            [
+                Location {
+                    uri: Url {
+                        scheme: "file",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: None,
+                        port: None,
+                        path: "/x.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 5,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 5,
+                            character: 14,
+                        },
+                    },
+                },
+                Location {
+                    uri: Url {
+                        scheme: "file",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: None,
+                        port: None,
+                        path: "/x.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 6,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 6,
+                            character: 17,
+                        },
+                    },
+                },
+            ],
+        ),
+    ),
+)

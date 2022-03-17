@@ -21,10 +21,12 @@ pub enum DeclKind {
     RedefRecord(Vec<Decl>),
     Enum(Vec<Decl>),
     RedefEnum(Vec<Decl>),
-    FuncDef(Signature),
     FuncDecl(Signature),
-    Hook(Signature),
-    Event(Signature),
+    FuncDef(Signature),
+    HookDecl(Signature),
+    HookDef(Signature),
+    EventDecl(Signature),
+    EventDef(Signature),
     Variable,
     Field,
     EnumMember,
@@ -658,9 +660,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                         if typ.starts_with("function(") {
                             Some(DeclKind::FuncDef(signature()?))
                         } else if typ.starts_with("hook(") {
-                            Some(DeclKind::Hook(signature()?))
+                            Some(DeclKind::HookDef(signature()?))
                         } else if typ.starts_with("event(") {
-                            Some(DeclKind::Event(signature()?))
+                            Some(DeclKind::EventDef(signature()?))
                         } else {
                             None
                         }
@@ -733,8 +735,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
 
                     kind
                 }
-                "hook_decl" => DeclKind::Hook(signature()?),
-                "event_decl" => DeclKind::Event(signature()?),
+                "hook_decl" => DeclKind::HookDecl(signature()?),
+                "event_decl" => DeclKind::EventDecl(signature()?),
                 "func_decl" => DeclKind::FuncDecl(signature()?),
                 _ => {
                     return None;

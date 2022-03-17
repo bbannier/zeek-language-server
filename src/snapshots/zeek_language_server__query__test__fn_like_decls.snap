@@ -1,15 +1,13 @@
 ---
 source: src/query.rs
-assertion_line: 1182
 expression: "super::decls_(root, uri, source.as_bytes())"
-
 ---
 {
     Decl {
         module: None,
         id: "ev",
         fqid: "ev",
-        kind: Event(
+        kind: EventDef(
             Signature {
                 result: None,
                 args: [
@@ -261,7 +259,7 @@ expression: "super::decls_(root, uri, source.as_bytes())"
         module: None,
         id: "hk",
         fqid: "hk",
-        kind: Hook(
+        kind: HookDef(
             Signature {
                 result: None,
                 args: [

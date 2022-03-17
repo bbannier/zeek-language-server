@@ -590,8 +590,8 @@ impl LanguageServer for Backend {
                         DeclKind::Enum(_) => "enum",
                         DeclKind::Type(_) => "record",
                         DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
-                        DeclKind::Hook(_) => "hook",
-                        DeclKind::Event(_) => "event",
+                        DeclKind::HookDef(_) | DeclKind::HookDecl(_) => "hook",
+                        DeclKind::EventDef(_) | DeclKind::EventDecl(_) => "event",
                         DeclKind::Variable => "variable",
                         DeclKind::Field => "field",
                         DeclKind::EnumMember => "enum member",
@@ -1021,8 +1021,10 @@ impl LanguageServer for Backend {
         let signature = match &f.kind {
             DeclKind::FuncDecl(s)
             | DeclKind::FuncDef(s)
-            | DeclKind::Event(s)
-            | DeclKind::Hook(s) => s,
+            | DeclKind::EventDecl(s)
+            | DeclKind::EventDef(s)
+            | DeclKind::HookDecl(s)
+            | DeclKind::HookDef(s) => s,
             _ => return Ok(None),
         };
 
@@ -1134,8 +1136,8 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::Enum(_) | DeclKind::RedefEnum(_) => SymbolKind::ENUM,
         DeclKind::Type(_) | DeclKind::RedefRecord(_) => SymbolKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => SymbolKind::FUNCTION,
-        DeclKind::Hook(_) => SymbolKind::OPERATOR,
-        DeclKind::Event(_) => SymbolKind::EVENT,
+        DeclKind::HookDecl(_) | DeclKind::HookDef(_) => SymbolKind::OPERATOR,
+        DeclKind::EventDecl(_) | DeclKind::EventDef(_) => SymbolKind::EVENT,
         DeclKind::Field => SymbolKind::FIELD,
         DeclKind::EnumMember => SymbolKind::ENUM_MEMBER,
     }
@@ -1163,8 +1165,8 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::Enum(_) | DeclKind::RedefEnum(_) => CompletionItemKind::ENUM,
         DeclKind::Type(_) | DeclKind::RedefRecord(_) => CompletionItemKind::CLASS,
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
-        DeclKind::Hook(_) => CompletionItemKind::OPERATOR,
-        DeclKind::Event(_) => CompletionItemKind::EVENT,
+        DeclKind::HookDecl(_) | DeclKind::HookDef(_) => CompletionItemKind::OPERATOR,
+        DeclKind::EventDecl(_) | DeclKind::EventDef(_) => CompletionItemKind::EVENT,
         DeclKind::Field => CompletionItemKind::FIELD,
         DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
     }

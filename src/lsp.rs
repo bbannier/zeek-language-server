@@ -861,6 +861,65 @@ impl LanguageServer for Backend {
             )));
         }
 
+        // If we are completing a function/event/hook definition complete from declarations.
+        if node.kind() == "id" {
+            if let Some(kind) = source
+                .lines()
+                .nth(usize::try_from(node.range().start.line).expect("too many lines"))
+                .and_then(|line| {
+                    let re = regex::Regex::new(r"^(\w+)\s+\w*").expect("invalid regexp");
+                    Some(re.captures(line)?.get(1)?.as_str())
+                })
+            {
+                return Ok(Some(CompletionResponse::from(
+                    state
+                        .decls(uri.clone())
+                        .iter()
+                        .chain(state.implicit_decls().iter())
+                        .chain(state.explicit_decls_recursive(uri.clone()).iter())
+                        .filter(|d| match &d.kind {
+                            DeclKind::EventDecl(_) => kind == "event",
+                            DeclKind::FuncDecl(_) => kind == "function",
+                            DeclKind::HookDecl(_) => kind == "hook",
+                            _ => false,
+                        })
+                        .unique()
+                        .filter_map(|d| {
+                            let item = to_completion_item(d);
+                            let signature = match &d.kind {
+                                DeclKind::EventDecl(s)
+                                | DeclKind::FuncDecl(s)
+                                | DeclKind::HookDecl(s) => {
+                                    let args = &s.args;
+                                    Some(
+                                        args.iter()
+                                            .filter_map(|d| {
+                                                let tree = state.parse(d.uri.clone())?;
+                                                let source = state.source(d.uri.clone());
+                                                tree.root_node()
+                                                    .named_descendant_for_point_range(
+                                                        d.selection_range,
+                                                    )?
+                                                    .utf8_text(source.as_bytes())
+                                                    .map(String::from)
+                                                    .ok()
+                                            })
+                                            .join(", "),
+                                    )
+                                }
+                                _ => None,
+                            }?;
+
+                            Some(CompletionItem {
+                                label: format!("{id}({signature}) {{}}", id = item.label),
+                                ..item
+                            })
+                        })
+                        .collect::<Vec<_>>(),
+                )));
+            }
+        }
+
         // We are just completing some arbitrary identifier at this point.
         let mut items = HashSet::new();
         let mut node = node;
@@ -1493,12 +1552,72 @@ pub(crate) mod test {
                         text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
                         position: Position::new(0, 6),
                     },
-                    work_done_progress_params: WorkDoneProgressParams {
-                        work_done_token: None,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: None,
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn completion_event() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+export {
+    global evt: event(c: count, s: string);
+    global fct: function(c: count, s: string);
+    global hok: hook(c: count, s: string);
+}
+
+event e
+function f
+hook h
+",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    text_document_position: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(7, 6),
                     },
-                    partial_result_params: PartialResultParams {
-                        partial_result_token: None,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: None,
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    text_document_position: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(8, 10),
                     },
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: None,
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    text_document_position: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(9, 6),
+                    },
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
                     context: None,
                 })
                 .await

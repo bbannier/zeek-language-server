@@ -1167,6 +1167,7 @@ impl LanguageServer for Backend {
         Ok(Some(compute_folds(tree.root_node(), false)))
     }
 
+    #[instrument]
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
         let source = self.state()?.source(uri);

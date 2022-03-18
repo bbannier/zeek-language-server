@@ -1,6 +1,6 @@
-# zeek-language-server
+# Emacs setup for zeek-language-server
 
-This directory contains the configuration files needed to tie into `zeek-language-server` from emacs. These instructions use `lsp-mode`. There's the possibility it would also work with `elgot` (an `lsp-mode` replacement), but that exercise is left to the reader. `lsp-mode` comes with an astonishing amount of options for configuring the look and operation of the LSP features in emacs. This guide only presents the most basic configuration.
+This file documents the configuration needed to interface emacs with `zeek-language-server`. These instructions use `lsp-mode`. There's the possibility it would also work with `elgot` (an `lsp-mode` replacement), but that exercise is left to the reader. `lsp-mode` comes with an astonishing amount of options for configuring the look and operation of the LSP features in emacs. This guide only presents the most basic configuration.
 
 This guide assumes that you have installed `zeek-language-server` and that it is in your `PATH`.
 
@@ -21,7 +21,7 @@ It also requires the Zeek major mode from https://github.com/zeek/emacs-zeek-mod
 (load-file "/path/to/zeek-mode")
 ```
 
-A basic configuration for all of the necessary packages is below. You should be able to drop this directly into your `.emacs`, preferably near the top.
+Once the above packages are installed, add the following basic configuration for them to your `.emacs`, preferably near the top:
 
 ```
 (require 'package)
@@ -42,7 +42,7 @@ A basic configuration for all of the necessary packages is below. You should be 
 
 ## Setup
 
-1. Add the path to `zeek-config` (likely in your Zeek build directory) to your environment's `PATH` variable.
+1. If needed, add the path to `zeek-config` to your environment's `PATH` variable.
 2. Add a hook to `lsp-mode` for zeek files and register the language server.
 
 ```
@@ -58,7 +58,3 @@ A basic configuration for all of the necessary packages is below. You should be 
 ```
 
 3. Open a zeek script file in emacs. At this point you should notice two things about your emacs window. First, in the modeline it should list that it is using the zeek major-mode and that it connected to the LSP server. These are shown something like `(zeek LSP[zeek:pid])`. Second, you should have line at the top of the window that gives information about where in the Zeek file you are.
-
-## TODO
-
-- Automatically configure the path to `zeek-config`. This would be especially useful when switching between multiple clones of the Zeek repository.

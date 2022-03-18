@@ -76,3 +76,23 @@ jobs:
         with:
           name: zeek-language-server-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/zeek-language-server
+
+  pre-commit:
+    name: Run pre-commit hooks
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: actions/cache@v2
+        with:
+          path: ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - uses: actions/setup-python@v2
+      - uses: pre-commit/action@v2.0.3

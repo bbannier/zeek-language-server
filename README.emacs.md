@@ -1,6 +1,6 @@
 # Emacs setup for zeek-language-server
 
-This file documents the configuration needed to interface emacs with `zeek-language-server`. These instructions use `lsp-mode`. There's the possibility it would also work with `elgot` (an `lsp-mode` replacement), but that exercise is left to the reader. `lsp-mode` comes with an astonishing amount of options for configuring the look and operation of the LSP features in emacs. This guide only presents the most basic configuration.
+This file documents the configuration needed to interface emacs with `zeek-language-server`. These instructions use `lsp-mode`. There's the possibility it would also work with `elgot` (an `lsp-mode` replacement), but that exercise is left to the reader. `lsp-mode` comes with an astonishing amount of options for configuring the look and operation of the LSP features in emacs. This guide only presents the most basic configuration. More information about lsp-mode is available in their [documentation](https://emacs-lsp.github.io/lsp-mode/).
 
 This guide assumes that you have installed `zeek-language-server` and that it is in your `PATH`.
 

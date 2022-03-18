@@ -876,7 +876,7 @@ impl LanguageServer for Backend {
                         .decls(uri.clone())
                         .iter()
                         .chain(state.implicit_decls().iter())
-                        .chain(state.explicit_decls_recursive(uri.clone()).iter())
+                        .chain(state.explicit_decls_recursive(uri).iter())
                         .filter(|d| match &d.kind {
                             DeclKind::EventDecl(_) => kind == "event",
                             DeclKind::FuncDecl(_) => kind == "function",
@@ -1225,7 +1225,7 @@ impl LanguageServer for Backend {
                     .decls(uri.clone())
                     .iter()
                     .chain(state.implicit_decls().iter())
-                    .chain(state.explicit_decls_recursive(uri.clone()).iter())
+                    .chain(state.explicit_decls_recursive(uri).iter())
                     .filter(|&d| match &d.kind {
                         DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
                             true
@@ -1267,7 +1267,7 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let decl = match state.resolve(NodeLocation::from_node(uri.clone(), node)) {
+        let decl = match state.resolve(NodeLocation::from_node(uri, node)) {
             Some(d) => d,
             None => return Ok(None),
         };
@@ -1281,7 +1281,7 @@ impl LanguageServer for Backend {
             state
                 .files()
                 .iter()
-                .map(|f| {
+                .flat_map(|f| {
                     state
                         .decls(f.clone())
                         .as_ref()
@@ -1289,13 +1289,14 @@ impl LanguageServer for Backend {
                         .into_iter()
                         .collect::<Vec<_>>()
                 })
-                .flatten()
-                .filter(|d| match &d.kind {
-                    DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => true,
-                    _ => false,
+                .filter(|d| {
+                    matches!(
+                        &d.kind,
+                        DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
+                    )
                 })
                 .filter_map(|d| {
-                    if &d.id == &decl.id {
+                    if d.id == decl.id {
                         Some(Location::new(d.uri.as_ref().clone(), d.range))
                     } else {
                         None
@@ -1505,12 +1506,8 @@ pub(crate) mod test {
                     text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
                     position: Position::new(0, 0),
                 },
-                work_done_progress_params: WorkDoneProgressParams {
-                    work_done_token: None,
-                },
-                partial_result_params: PartialResultParams {
-                    partial_result_token: None,
-                },
+                partial_result_params: PartialResultParams::default(),
+                work_done_progress_params: WorkDoneProgressParams::default(),
                 context: None,
             })
             .await;
@@ -1766,8 +1763,8 @@ event zeek_init() {}",
                         TextDocumentIdentifier::new(uri.as_ref().clone()),
                         Position::new(3, 8),
                     ),
-                    partial_result_params: Default::default(),
-                    work_done_progress_params: Default::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );
@@ -1779,8 +1776,8 @@ event zeek_init() {}",
                         TextDocumentIdentifier::new(uri.as_ref().clone()),
                         Position::new(4, 8),
                     ),
-                    partial_result_params: Default::default(),
-                    work_done_progress_params: Default::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );
@@ -1817,8 +1814,8 @@ event x::foo() {}",
                         TextDocumentIdentifier::new(uri_evts.as_ref().clone()),
                         Position::new(1, 11)
                     ),
-                    work_done_progress_params: Default::default(),
-                    partial_result_params: Default::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );
@@ -1830,8 +1827,8 @@ event x::foo() {}",
                         TextDocumentIdentifier::new(uri_x.as_ref().clone()),
                         Position::new(2, 17)
                     ),
-                    work_done_progress_params: Default::default(),
-                    partial_result_params: Default::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );

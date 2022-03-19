@@ -158,12 +158,7 @@ impl Backend {
         }
     }
 
-    async fn progress(
-        &self,
-        token: Option<ProgressToken>,
-        message: Option<String>,
-        percentage: Option<u32>,
-    ) {
+    async fn progress(&self, token: Option<ProgressToken>, message: Option<String>) {
         let token = match token {
             Some(t) => t,
             None => return,
@@ -175,7 +170,7 @@ impl Backend {
                 value: ProgressParamsValue::WorkDone(WorkDoneProgress::Report(
                     WorkDoneProgressReport {
                         message,
-                        percentage,
+                        percentage: None,
                         ..WorkDoneProgressReport::default()
                     },
                 )),
@@ -354,7 +349,7 @@ impl LanguageServer for Backend {
             let uri = Arc::new(change.uri);
 
             #[allow(clippy::cast_possible_truncation)]
-            self.progress(progress_token.clone(), Some(uri.path().to_string()), None)
+            self.progress(progress_token.clone(), Some(uri.path().to_string()))
                 .await;
 
             match change.typ {
@@ -397,6 +392,9 @@ impl LanguageServer for Backend {
         //
         // We explicitly precompute per-file information here so we can parallelize this work.
         if let Ok(state) = self.state() {
+            self.progress(progress_token.clone(), Some("declarations".to_string()))
+                .await;
+
             let mut _preload_decls = Vec::new();
             for f in files.as_ref() {
                 let f = f.clone();
@@ -411,12 +409,8 @@ impl LanguageServer for Backend {
         }
 
         // Reload implicit declarations.
-        self.progress(
-            progress_token.clone(),
-            Some("implicit loads".to_string()),
-            None,
-        )
-        .await;
+        self.progress(progress_token.clone(), Some("implicit loads".to_string()))
+            .await;
         let _implicit = self.state().map(|s| s.implicit_decls());
 
         self.progress_end(progress_token).await;

@@ -5,9 +5,16 @@ use crate::{
     zeek, Files,
 };
 use itertools::Itertools;
-use lspower::{
+use salsa::{ParallelDatabase, Snapshot};
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt::Debug,
+    path::PathBuf,
+    sync::{Arc, Mutex, MutexGuard},
+};
+use tower_lsp::{
     jsonrpc::{Error, Result},
-    lsp::{
+    lsp_types::{
         notification::Progress,
         request::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
@@ -29,14 +36,7 @@ use lspower::{
         WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
         WorkspaceSymbolParams,
     },
-    Client, LanguageServer, LspService, Server, TokenCanceller,
-};
-use salsa::{ParallelDatabase, Snapshot};
-use std::{
-    collections::{BTreeSet, HashSet},
-    fmt::Debug,
-    path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard},
+    Client, LanguageServer, LspService, Server,
 };
 use tracing::{error, instrument, warn};
 use walkdir::WalkDir;
@@ -120,14 +120,10 @@ impl Backend {
         let token = ProgressToken::String(format!("zeek-language-server/{}", &title));
 
         if let Some(client) = &self.client {
-            let canceller = TokenCanceller::new();
             client
-                .send_custom_request::<WorkDoneProgressCreate>(
-                    WorkDoneProgressCreateParams {
-                        token: token.clone(),
-                    },
-                    canceller.token(),
-                )
+                .send_request::<WorkDoneProgressCreate>(WorkDoneProgressCreateParams {
+                    token: token.clone(),
+                })
                 .await?;
 
             let params = ProgressParams {
@@ -139,7 +135,7 @@ impl Backend {
                     },
                 )),
             };
-            client.send_custom_notification::<Progress>(params).await;
+            client.send_notification::<Progress>(params).await;
         }
 
         Ok(token)
@@ -158,7 +154,7 @@ impl Backend {
                     WorkDoneProgressEnd::default(),
                 )),
             };
-            client.send_custom_notification::<Progress>(params).await;
+            client.send_notification::<Progress>(params).await;
         }
     }
 
@@ -185,7 +181,7 @@ impl Backend {
                 )),
             };
 
-            client.send_custom_notification::<Progress>(params).await;
+            client.send_notification::<Progress>(params).await;
         }
     }
 
@@ -259,7 +255,7 @@ impl Backend {
     }
 }
 
-#[lspower::async_trait]
+#[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -571,12 +567,12 @@ impl LanguageServer for Backend {
 
         let mut contents = vec![
             #[cfg(debug_assertions)]
-            MarkedString::LanguageString(lspower::lsp::LanguageString {
+            MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
                 value: text.into(),
                 language: "zeek".into(),
             }),
             #[cfg(debug_assertions)]
-            MarkedString::LanguageString(lspower::lsp::LanguageString {
+            MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
                 value: node.to_sexp(),
                 language: "lisp".into(),
             }),
@@ -1329,7 +1325,7 @@ fn to_completion_item(d: &Decl) -> CompletionItem {
         label: d.fqid.clone(),
         kind: Some(to_completion_item_kind(&d.kind)),
         documentation: Some(Documentation::MarkupContent(MarkupContent {
-            kind: lspower::lsp::MarkupKind::Markdown,
+            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
             value: d.documentation.clone(),
         })),
         ..CompletionItem::default()
@@ -1357,14 +1353,11 @@ pub async fn run() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, messages) = LspService::new(|client| Backend {
+    let (service, socket) = LspService::new(|client| Backend {
         client: Some(client),
         state: Mutex::default(),
     });
-    Server::new(stdin, stdout)
-        .interleave(messages)
-        .serve(service)
-        .await;
+    Server::new(stdin, stdout, socket).serve(service).await;
 }
 
 #[cfg(test)]
@@ -1376,15 +1369,15 @@ pub(crate) mod test {
     };
 
     use insta::assert_debug_snapshot;
-    use lspower::{
-        lsp::{
+    use salsa::{ParallelDatabase, Snapshot};
+    use tower_lsp::{
+        lsp_types::{
             CompletionParams, CompletionResponse, HoverParams, PartialResultParams, Position,
             TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
             WorkspaceSymbolParams,
         },
         LanguageServer,
     };
-    use salsa::{ParallelDatabase, Snapshot};
 
     use crate::{ast::Ast, lsp, Files};
 

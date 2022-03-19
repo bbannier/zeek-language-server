@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use lspower::lsp::{Position, Range, Url};
 use std::{
     collections::{BTreeSet, HashSet, VecDeque},
     fmt,
@@ -7,6 +6,7 @@ use std::{
     str::Utf8Error,
     sync::Arc,
 };
+use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
 
 use crate::parse::{tree_sitter_zeek, Parse};
@@ -1012,7 +1012,7 @@ mod test {
         Files,
     };
     use insta::assert_debug_snapshot;
-    use lspower::lsp::{Position, Url};
+    use tower_lsp::lsp_types::{Position, Url};
 
     use super::Query;
 

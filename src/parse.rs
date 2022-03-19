@@ -1,6 +1,6 @@
 use crate::{query::Node, Files};
-use lspower::lsp::Url;
 use std::{ops::Deref, sync::Arc};
+use tower_lsp::lsp_types::Url;
 use tracing::instrument;
 use tree_sitter::{Language, Parser};
 
@@ -54,7 +54,7 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
 
 #[cfg(test)]
 mod test {
-    use lspower::lsp::Url;
+    use tower_lsp::lsp_types::Url;
 
     use {
         crate::{lsp::Database, parse::Parse, Files},

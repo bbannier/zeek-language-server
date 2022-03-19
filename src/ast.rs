@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use lspower::lsp::Url;
+use tower_lsp::lsp_types::Url;
 use tracing::{error, instrument};
 
 use crate::{
@@ -524,7 +524,7 @@ mod test {
     use std::{path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
-    use lspower::lsp::{Position, Url};
+    use tower_lsp::lsp_types::{Position, Url};
 
     use crate::{ast::Ast, lsp::TestDatabase, parse::Parse, query::NodeLocation, Files};
 

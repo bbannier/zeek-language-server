@@ -1,5 +1,5 @@
-use lspower::lsp::Url;
 use std::sync::Arc;
+use tower_lsp::lsp_types::Url;
 
 pub mod ast;
 pub mod lsp;

@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
     let mut agent =
         PyroscopeAgent::builder("http://localhost:4040", env!("CARGO_PKG_NAME")).build()?;
     #[cfg(feature = "profiling")]
-    agent.start();
+    agent.start()?;
 
     #[allow(unused)]
     let args = Args::parse();
@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     run().await;
 
     #[cfg(feature = "profiling")]
-    agent.stop();
+    agent.stop()?;
 
     Ok(())
 }

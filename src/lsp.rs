@@ -85,16 +85,6 @@ struct Backend {
 }
 
 impl Backend {
-    async fn info_message<M>(&self, message: M)
-    where
-        M: std::fmt::Display,
-    {
-        if let Some(client) = &self.client {
-            // Send these to the log by default.
-            client.log_message(MessageType::INFO, message).await;
-        }
-    }
-
     async fn warn_message<M>(&self, message: M)
     where
         M: std::fmt::Display,
@@ -272,6 +262,29 @@ impl LanguageServer for Backend {
             state.set_workspace_folders(Arc::new(workspace_folders));
         }
 
+        {
+            // Load system scripts.
+            match zeek::prefixes().await {
+                Ok(prefixes) => {
+                    if let Ok(mut state) = self.state_mut() {
+                        state.set_prefixes(Arc::new(prefixes));
+                    }
+                }
+                Err(e) => error!("{e}"),
+            }
+
+            // Load all visible files.
+            if let Ok(files) = self.visible_files().await {
+                self.did_change_watched_files(DidChangeWatchedFilesParams {
+                    changes: files
+                        .into_iter()
+                        .map(|f| FileEvent::new(f, FileChangeType::CREATED))
+                        .collect(),
+                })
+                .await;
+            }
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -303,29 +316,7 @@ impl LanguageServer for Backend {
     }
 
     #[instrument]
-    async fn initialized(&self, _: InitializedParams) {
-        match zeek::prefixes().await {
-            Ok(prefixes) => {
-                if let Ok(mut state) = self.state_mut() {
-                    state.set_prefixes(Arc::new(prefixes));
-                }
-            }
-            Err(e) => error!("{e}"),
-        }
-
-        // Load all visible files.
-        if let Ok(files) = self.visible_files().await {
-            self.did_change_watched_files(DidChangeWatchedFilesParams {
-                changes: files
-                    .into_iter()
-                    .map(|f| FileEvent::new(f, FileChangeType::CREATED))
-                    .collect(),
-            })
-            .await;
-        }
-
-        self.info_message("server initialized!").await;
-    }
+    async fn initialized(&self, _: InitializedParams) {}
 
     #[instrument]
     async fn shutdown(&self) -> Result<()> {

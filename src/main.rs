@@ -33,8 +33,7 @@ fn init_logging(args: &Args) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     #[cfg(feature = "profiling")]
-    let mut agent =
-        PyroscopeAgent::builder("http://localhost:4040", env!("CARGO_PKG_NAME")).build()?;
+    let agent = PyroscopeAgent::builder("http://localhost:4040", env!("CARGO_PKG_NAME")).build()?;
     #[cfg(feature = "profiling")]
     agent.start()?;
 
@@ -47,9 +46,6 @@ async fn main() -> Result<()> {
     info!("starting Zeek language server");
 
     run().await;
-
-    #[cfg(feature = "profiling")]
-    agent.stop()?;
 
     Ok(())
 }

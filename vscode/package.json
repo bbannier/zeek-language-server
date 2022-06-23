@@ -48,7 +48,7 @@
     "vsix": "vsce package -o zeek-language-server.vsix"
   },
   "dependencies": {
-    "got": "^11.8.2",
+    "got": "^11.8.5",
     "vscode-languageclient": "^7.0.0"
   },
   "devDependencies": {

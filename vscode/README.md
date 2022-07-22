@@ -1,6 +1,13 @@
-# zeek-language-server
+# Zeek language support for Visual Studio Code
 
-Provides support for zeek-language-server, a LSP server for Zeek script.
+Microsoft Visual Studio Code language extension for Zeek (Bro) Script.
+
+> Power by zeek-language-server.
+
+## Features
+
+- [x] IntelliSense
+- [x] Syntax Highlighting
 
 ## Requirements
 

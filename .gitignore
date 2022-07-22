@@ -1,1 +1,3 @@
 /target
+# skip DS Store for MacOS
+.DS_Store

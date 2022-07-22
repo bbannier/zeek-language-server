@@ -1,13 +1,16 @@
 {
   "name": "zeek-language-server",
-  "displayName": "zeek-language-server",
-  "description": "A language server for Zeek script",
+  "displayName": "Zeek",
+  "description": "Zeek language support for Visual Studio Code",
   "author": "Benjamin Bannier",
   "version": "0.8.0",
   "license": "MIT",
   "publisher": "bbannier",
   "preview": true,
   "private": true,
+  "categories": [
+    "Programming Languages"
+  ],
   "keywords": [
     "language server",
     "zeek"
@@ -38,7 +41,48 @@
           "description": "Full path to the zeek-language-server executable. If unset we will attempt to look it up in PATH."
         }
       }
-    }
+    },
+    "languages": [
+      {
+        "id": "zeek",
+        "aliases": [
+          "Zeek",
+          "Bro",
+          "bro",
+          "zeek"
+        ],
+        "extensions": [
+          ".bro",
+          ".zeek"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "sig",
+        "aliases": [
+          "Signature",
+          "signature",
+          "Sig",
+          "sig"
+        ],
+        "extensions": [
+          ".sig"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "zeek",
+        "scopeName": "source.zeek",
+        "path": "./syntaxes/zeek.json"
+      },
+      {
+        "language": "sig",
+        "scopeName": "source.sig",
+        "path": "./syntaxes/sig.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "tsc -b",

@@ -3,7 +3,6 @@
   "name": "Zeek",
   "scopeName": "source.zeek",
   "fileTypes": ["bro", "zeek"],
-  "uuid": "d27211b1-e07c-4c8d-9d7e-13daa805693c",
   "patterns": [
     {
       "begin": "(##!|##<|##|#)",

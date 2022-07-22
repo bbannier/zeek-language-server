@@ -1,7 +1,3 @@
 /target
-# VS Code extension build directories
-node_modules
-out
-*.vsix
 # skip DS Store for MacOS
 .DS_Store

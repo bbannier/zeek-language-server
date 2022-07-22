@@ -3,7 +3,6 @@
   "name": "Zeek Signature",
   "scopeName": "source.sig",
   "fileTypes": ["sig"],
-  "uuid": "d8db6740-ccd9-4e4a-9da3-8a3cf2313389",
   "patterns": [
     {
       "begin": "(##!|##<|##|#)",

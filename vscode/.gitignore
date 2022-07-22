@@ -1,0 +1,4 @@
+# VS Code extension build directories
+node_modules
+out
+*.vsix

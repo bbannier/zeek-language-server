@@ -82,6 +82,16 @@
         "scopeName": "source.sig",
         "path": "./syntaxes/sig.json"
       }
+    ],
+    "snippets": [
+      {
+        "language": "zeek",
+        "path": "./snippets/zeek.json"
+      },
+      {
+        "language": "sig",
+        "path": "./snippets/sig.json"
+      }
     ]
   },
   "scripts": {

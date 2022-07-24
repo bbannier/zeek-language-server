@@ -8,6 +8,7 @@ Microsoft Visual Studio Code language extension for Zeek (Bro) Script.
 
 - [x] IntelliSense
 - [x] Syntax Highlighting
+- [x] Snippets
 
 ## Requirements
 

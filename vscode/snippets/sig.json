@@ -1,0 +1,13 @@
+{
+  "zeek signature": {
+    "prefix": "sig",
+    "body": [
+      "signature ${1:sig_name} {",
+      "\tip-proto == ${2:tcp}",
+      "\tdst-port == ${3:port}",
+      "\tpayload /${4:regexp}/",
+      "\tenable \"${5:analyzer}\"",
+      "}"
+    ]
+  }
+}

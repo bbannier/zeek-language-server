@@ -83,7 +83,7 @@
       "name": "constant.numeric.integer.decimal.sig"
     },
     {
-      "match": "\\b(src-ip|dst-ip|src-port|dst-port|ip-proto|ip-options|payload|http|http-body|http-request|http-request-header|http-request-body|http-reply-header|http-reply-body|ftp|finger|requires-signature|requires-reverse-signature|eval|payload-size|same-ip|tcp-state|udp-state|event|enable|disable|header|file-magic|file-mime)\\b",
+      "match": "\\b(src-ip|dst-ip|src-port|dst-port|ip-proto|ip-options|payload-size|payload|http-body|http-request-header|http-request-body|http-request|http-reply-header|http-reply-body|http|ftp|finger|requires-signature|requires-reverse-signature|eval|same-ip|tcp-state|udp-state|event|enable|disable|header|file-magic|file-mime)\\b",
       "name": "storage.modifier.attribute.sig"
     },
     {

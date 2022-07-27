@@ -178,6 +178,9 @@ pub(crate) async fn format(doc: &str) -> Result<String> {
     Ok(buffer)
 }
 
+// This makes a constant `KEYWORDS` available which contains keywords of the language.
+include!(concat!(env!("OUT_DIR"), "/keywords.rs"));
+
 #[cfg(test)]
 mod test {
     use crate::zeek;

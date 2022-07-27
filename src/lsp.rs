@@ -955,6 +955,32 @@ impl LanguageServer for Backend {
                 .chain(other_decls)
                 .unique()
                 .map(to_completion_item)
+                // Also send filtered down keywords to the client.
+                .chain(zeek::KEYWORDS.iter().filter_map(|kw| {
+                    let should_include = if let Some(text) = text_at_completion {
+                        text.is_empty()
+                            || rust_fuzzy_search::fuzzy_compare(
+                                &text.to_lowercase(),
+                                &kw.to_lowercase(),
+                            ) > 0.0
+                    } else {
+                        true
+                    };
+
+                    if should_include {
+                        Some(CompletionItem {
+                            kind: Some(CompletionItemKind::KEYWORD),
+                            label: (*kw).to_string(),
+                            ..CompletionItem::default()
+                        })
+                    } else {
+                        None
+                    }
+                }))
+                .chain(std::iter::once(CompletionItem {
+                    label: text_at_completion.map_or("NOPE", |x| x).into(),
+                    ..CompletionItem::default()
+                }))
                 .collect::<Vec<_>>(),
         )))
     }
@@ -1598,6 +1624,43 @@ hook h
                 })
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn completion_keyword() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+function foo() {}
+f",
+        );
+
+        let server = serve(db);
+
+        let result = server
+            .completion(CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(2, 0),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            })
+            .await;
+
+        // Sort results for debug output diffing.
+        let result = match result {
+            Ok(Some(CompletionResponse::Array(mut r))) => {
+                r.sort_by(|a, b| a.label.cmp(&b.label));
+                r
+            }
+            _ => panic!(),
+        };
+
+        assert_debug_snapshot!(result);
     }
 
     #[tokio::test]

@@ -38,7 +38,7 @@ jobs:
           override: true
       - uses: Swatinem/rust-cache@v1
         with:
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
 
       - name: Install tree-sitter-cli
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
@@ -90,7 +90,7 @@ jobs:
           override: true
       - uses: Swatinem/rust-cache@v1
         with:
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          key: pre-commit-cargo-${{ hashFiles('Cargo.lock') }}
       - name: Install tree-sitter-cli
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
         with:

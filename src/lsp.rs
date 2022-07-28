@@ -977,10 +977,6 @@ impl LanguageServer for Backend {
                         None
                     }
                 }))
-                .chain(std::iter::once(CompletionItem {
-                    label: text_at_completion.map_or("NOPE", |x| x).into(),
-                    ..CompletionItem::default()
-                }))
                 .collect::<Vec<_>>(),
         )))
     }

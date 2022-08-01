@@ -1,0 +1,11 @@
+*
+**
+
+!node_modules/got/dist/
+!out/extension.js
+!package.json
+!snippets/*
+!syntaxes/*
+!LICENSE
+!README.md
+!language-configuration.json

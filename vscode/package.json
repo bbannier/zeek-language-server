@@ -100,7 +100,8 @@
     "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
     "build": "npm run build-base -- --sourcemap",
     "watch": "npm run build-base -- --sourcemap --watch",
-    "lint": "eslint --ext=ts ."
+    "lint": "prettier --check . && eslint --ext=ts .",
+    "fix": "prettier --write . && eslint --ext=ts . --fix"
   },
   "dependencies": {
     "got": "^12.1.2",
@@ -114,6 +115,7 @@
     "esbuild": "^0.14.54",
     "eslint": "^8.9.0",
     "mocha": "^10.0.0",
+    "prettier": "^2.7.1",
     "typescript": "^4.4.3",
     "vsce": "^2.6.7"
   }

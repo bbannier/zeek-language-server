@@ -95,11 +95,12 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "tsc -b",
-    "build": "tsc -b",
-    "watch": "tsc -b -w",
-    "lint": "eslint --ext=ts .",
-    "vsix": "vsce package -o zeek-language-server.vsix"
+    "vscode:prepublish": "npm run build-base -- --minify",
+    "vsix": "vsce package -o zeek-language-server.vsix",
+    "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "build": "npm run build-base -- --sourcemap",
+    "watch": "npm run build-base -- --sourcemap --watch",
+    "lint": "eslint --ext=ts ."
   },
   "dependencies": {
     "got": "^11.8.2",
@@ -110,6 +111,7 @@
     "@types/vscode": "^1.52.0",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
     "@typescript-eslint/parser": "^5.12.0",
+    "esbuild": "^0.14.54",
     "eslint": "^8.9.0",
     "mocha": "^9.2.1",
     "typescript": "^4.4.3",

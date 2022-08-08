@@ -38,13 +38,13 @@ In a copy of this directory:
 1. Install dependencies
 
    ```.console
-   yarn install
+   npm install
    ```
 
 2. Build the extension
 
    ```.console
-   yarn vsix
+   npm run vsix
    ```
 
 3. Install the extension

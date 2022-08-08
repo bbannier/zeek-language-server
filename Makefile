@@ -10,4 +10,4 @@ update-rs-deps:
 	@cargo b
 
 update-js-deps:
-	@(cd vscode/ && yarn upgrade)
+	@(cd vscode/ && npm upgrade)

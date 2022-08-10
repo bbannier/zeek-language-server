@@ -53,8 +53,8 @@ jobs:
       - name: Build vscode extension
         run: |
           cd vscode
-          yarn install
-          yarn vsix
+          npm install
+          npm run vsix
 
       - name: Rename artifacts
         run: |

@@ -10,7 +10,7 @@ cc = "1.0.73"
 regex = "1.5.6"
 
 [dev-dependencies]
-insta = "1.14.1"
+insta = "1.17.1"
 tempfile = "3.3.0"
 
 [features]
@@ -19,7 +19,7 @@ telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tra
 profiling = ["pyroscope"]
 
 [dependencies]
-clap = { version = "3.1.18", features = ["derive"] }
+clap = { version = "3.2.16", features = ["derive"] }
 eyre = "0.6.8"
 futures = "0.3.21"
 itertools = "0.10.3"

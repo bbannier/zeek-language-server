@@ -20,9 +20,7 @@ import {
 } from "vscode-languageclient/node";
 import { promisify } from "util";
 
-const TAG = "v0.10.0";
-const BASE_URL =
-  "https://github.com/bbannier/zeek-language-server/releases/download";
+const BASE_URL = "https://github.com/bbannier/zeek-language-server";
 
 const PLATFORMS = {
   linux: "x86_64-unknown-linux-gnu",
@@ -33,27 +31,22 @@ const exists = promisify(fs.exists);
 const pipeline = promisify(stream.pipeline);
 
 export const getServerDestination = async (
-  context: ExtensionContext,
-  tag: string
+  context: ExtensionContext
 ): Promise<string> => {
   const { globalStorageUri } = context;
-  const uri = Uri.joinPath(
-    globalStorageUri,
-    "server",
-    `zeek-language-server-${tag}`
-  );
+  const uri = Uri.joinPath(globalStorageUri, "server", `zeek-language-server`);
 
   const { fsPath } = uri;
   await fs.promises.mkdir(path.dirname(fsPath), { recursive: true });
   return fsPath;
 };
 
-const getServerUrl = async (tag: string): Promise<string> => {
+const getServerUrl = async (): Promise<string> => {
   const platform = process.platform;
   const variant = PLATFORMS[platform];
 
   if (variant) {
-    return `${BASE_URL}/${tag}/zeek-language-server-${variant}`;
+    return `${BASE_URL}/releases/latest/download/zeek-language-server-${variant}`;
   } else {
     log.error(`Unsupported platform ${platform}`);
     return Promise.reject();
@@ -61,13 +54,12 @@ const getServerUrl = async (tag: string): Promise<string> => {
 };
 
 const getServerOrDownload = async (
-  context: ExtensionContext,
-  tag: string
+  context: ExtensionContext
 ): Promise<string> => {
   // FIXME(bbannier): check whether executable is somewhere in PATH.
-  const dest = await getServerDestination(context, tag);
+  const dest = await getServerDestination(context);
   if (!(await exists(dest))) {
-    const url = await getServerUrl(tag);
+    const url = await getServerUrl();
     log.info(`Downloading ${url} to ${dest}`);
     const tempDest = path.join(
       path.dirname(dest),
@@ -138,7 +130,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const userDefinedServerPath = config.get<string>("path");
   const serverPath =
     userDefinedServerPath == ""
-      ? await getServerOrDownload(context, TAG)
+      ? await getServerOrDownload(context)
       : userDefinedServerPath;
 
   const serverExecutable: Executable = {

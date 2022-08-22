@@ -33,7 +33,6 @@
   "contributes": {
     "configuration": {
       "type": "object",
-      "title": "Path to zeek-language-server",
       "properties": {
         "zeekLanguageServer.path": {
           "type": "string",

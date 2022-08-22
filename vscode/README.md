@@ -2,8 +2,6 @@
 
 Microsoft Visual Studio Code language extension for Zeek (Bro) Script.
 
-> Power by zeek-language-server.
-
 ## Features
 
 - [x] IntelliSense

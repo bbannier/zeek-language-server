@@ -49,7 +49,9 @@ class ZeekLanguageServer {
     const variant = PLATFORMS[process.platform];
     needCheckingPaths.push(`zeek-language-server-${variant}`);
 
-    const configPath = workspace.getConfiguration("zeekLanguageServer").get<string>("path");
+    const configPath = workspace
+      .getConfiguration("zeekLanguageServer")
+      .get<string>("path");
     if (configPath) {
       needCheckingPaths.push(configPath);
     }
@@ -108,10 +110,8 @@ class ZeekLanguageServer {
       `.tmp${crypto.randomBytes(5).toString("hex")}`
     );
 
-    if (await exists(dest))
-      await fs.promises.rm(dest);
-    else
-      await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+    if (await exists(dest)) await fs.promises.rm(dest);
+    else await fs.promises.mkdir(path.dirname(dest), { recursive: true });
 
     const params = {
       title: "Downloading zeek-language-server binary",

@@ -11,6 +11,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import * as stream from "stream";
+import * as child_process from "child_process";
 
 import {
   Executable,
@@ -20,7 +21,8 @@ import {
 } from "vscode-languageclient/node";
 import { promisify } from "util";
 
-const BASE_URL = "https://github.com/bbannier/zeek-language-server";
+const BASE_URL =
+  "https://github.com/bbannier/zeek-language-server/releases/download";
 
 const PLATFORMS = {
   linux: "x86_64-unknown-linux-gnu",
@@ -29,42 +31,87 @@ const PLATFORMS = {
 
 const exists = promisify(fs.exists);
 const pipeline = promisify(stream.pipeline);
+const execFile = promisify(child_process.execFile);
 
-export const getServerDestination = async (
-  context: ExtensionContext
-): Promise<string> => {
-  const { globalStorageUri } = context;
-  const uri = Uri.joinPath(globalStorageUri, "server", `zeek-language-server`);
+class ZeekLanguageServer {
+  private readonly context: ExtensionContext;
+  private readonly version: string;
 
-  const { fsPath } = uri;
-  await fs.promises.mkdir(path.dirname(fsPath), { recursive: true });
-  return fsPath;
-};
-
-const getServerUrl = async (): Promise<string> => {
-  const platform = process.platform;
-  const variant = PLATFORMS[platform];
-
-  if (variant) {
-    return `${BASE_URL}/releases/latest/download/zeek-language-server-${variant}`;
-  } else {
-    log.error(`Unsupported platform ${platform}`);
-    return Promise.reject();
+  constructor(context: ExtensionContext) {
+    this.context = context;
+    this.version = context.extension.packageJSON["version"];
   }
-};
 
-const getServerOrDownload = async (
-  context: ExtensionContext
-): Promise<string> => {
-  // FIXME(bbannier): check whether executable is somewhere in PATH.
-  const dest = await getServerDestination(context);
-  if (!(await exists(dest))) {
-    const url = await getServerUrl();
+  public async getPath(): Promise<string> {
+    let pathFound: string;
+    const needCheckingPaths: string[] = ["zeek-language-server"];
+
+    const variant = PLATFORMS[process.platform];
+    needCheckingPaths.push(`zeek-language-server-${variant}`);
+
+    const configPath = workspace
+      .getConfiguration("zeekLanguageServer")
+      .get<string>("path");
+    if (configPath) {
+      needCheckingPaths.push(configPath);
+    }
+
+    const defaultPath = Uri.joinPath(
+      this.context.globalStorageUri,
+      "server",
+      "zeek-language-server"
+    ).fsPath;
+    needCheckingPaths.push(defaultPath);
+
+    for (const path of needCheckingPaths) {
+      if (await this.check(path)) {
+        pathFound = path;
+        break;
+      }
+    }
+
+    if (!pathFound) {
+      await this.download(defaultPath);
+      pathFound = defaultPath;
+    }
+
+    log.info(`Found ${pathFound}.`);
+    return pathFound;
+  }
+
+  private async check(file: string): Promise<boolean> {
+    const expectOut = `zeek-language-server ${this.version}`;
+
+    try {
+      const { stdout } = await execFile(file, ["--version"]);
+      return stdout.startsWith(expectOut);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private async getDownloadUrl(): Promise<string> {
+    const platform = process.platform;
+    const variant = PLATFORMS[platform];
+
+    if (variant) {
+      return `${BASE_URL}/v${this.version}/zeek-language-server-${variant}`;
+    } else {
+      log.error(`Unsupported platform ${platform}`);
+      return Promise.reject();
+    }
+  }
+
+  private async download(dest: string) {
+    const url = await this.getDownloadUrl();
     log.info(`Downloading ${url} to ${dest}`);
     const tempDest = path.join(
       path.dirname(dest),
       `.tmp${crypto.randomBytes(5).toString("hex")}`
     );
+
+    if (await exists(dest)) await fs.promises.rm(dest);
+    else await fs.promises.mkdir(path.dirname(dest), { recursive: true });
 
     const params = {
       title: "Downloading zeek-language-server binary",
@@ -92,9 +139,7 @@ const getServerOrDownload = async (
 
     await fs.promises.rename(tempDest, dest);
   }
-
-  return dest;
-};
+}
 
 const log = new (class {
   private readonly output = window.createOutputChannel("zeek-language-server");
@@ -126,15 +171,10 @@ const log = new (class {
 let CLIENT: LanguageClient;
 
 export async function activate(context: ExtensionContext): Promise<void> {
-  const config = workspace.getConfiguration("zeekLanguageServer");
-  const userDefinedServerPath = config.get<string>("path");
-  const serverPath =
-    userDefinedServerPath == ""
-      ? await getServerOrDownload(context)
-      : userDefinedServerPath;
+  const server = new ZeekLanguageServer(context);
 
   const serverExecutable: Executable = {
-    command: serverPath,
+    command: await server.getPath(),
   };
 
   const serverOptions: ServerOptions = {
@@ -152,6 +192,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     serverOptions,
     clientOptions
   );
+
+  log.info("Starting Zeek Language Server...");
   CLIENT.start();
 }
 

@@ -6,6 +6,8 @@ import {
   Uri,
   workspace,
   window,
+  commands,
+  env,
 } from "vscode";
 import * as fs from "fs";
 import * as path from "path";
@@ -19,7 +21,9 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+
 import { promisify } from "util";
+import { Utils } from "vscode-uri";
 
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
@@ -168,9 +172,60 @@ const log = new (class {
   }
 })();
 
+/** Publish the currently open document to try.zeek.org and open the result. */
+async function tryZeek(): Promise<void> {
+  const document = window.activeTextEditor.document;
+  const name = Utils.basename(document.uri);
+  const content = document.getText();
+
+  log.info(`Creating try.zeek.org content for ${document.uri.fsPath}`);
+
+  interface Source {
+    name: string;
+    content: string;
+  }
+  interface Query {
+    sources: Source[];
+    version: string;
+    pcap: string;
+  }
+
+  // try.zeek.org expects a file `main.zeek`. Add a dummy file loading
+  // the main content unless the file is already called `main.zeek`.
+  const sources: Source[] = [{ name, content }];
+  if (name != "main.zeek") {
+    sources.push({ name: "main.zeek", content: `@load ${name}` });
+  }
+
+  const query: Query = {
+    sources,
+    version: "5.0.0",
+    pcap: "",
+  };
+
+  const body = JSON.stringify(query);
+
+  const res = await got.post("https://try.zeek.org/run", {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body,
+  });
+
+  const { job } = JSON.parse(res.body);
+  log.info(`Got try.zeek.org post ${job}`);
+
+  env.openExternal(Uri.parse(`https://try.zeek.org/#/tryzeek/saved/${job}`));
+}
+
 let CLIENT: LanguageClient;
 
 export async function activate(context: ExtensionContext): Promise<void> {
+  // Register commands.
+  context.subscriptions.push(commands.registerCommand("zeek.tryZeek", tryZeek));
+
+  // Start the server.
   const server = new ZeekLanguageServer(context);
 
   const serverExecutable: Executable = {

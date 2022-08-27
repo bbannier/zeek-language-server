@@ -4,18 +4,27 @@ Microsoft Visual Studio Code language extension for Zeek (Bro) Script.
 
 ## Features
 
-- [x] IntelliSense
+- [x] IntelliSense (requires
+      [zeek-language-server](https://github.com/bbannier/zeek-language-server))
+- [x] Formatting (requires
+      [zeek-format](https://github.com/bbannier/zeek-language-server))
 - [x] Syntax Highlighting
 - [x] Snippets
+- [x] Command to publish open file to <https://try.zeek.org>
 
 ## Requirements
 
-This extension currently provides binaries for x86_64 Darwin and Linux
-platforms.[^other] A VSIX file is [published on
-Github](https://github.com/bbannier/zeek-language-server/releases/).
+This extension needs `zeek-language-server` for IntelliSense features to work.
+The extension can download server binaries for x86_64 Darwin and Linux
+platforms if none is found in the system. If no binaries are provided for your
+platform you can try to [build the language server
+yourself](https://github.com/bbannier/zeek-language-server#building-from-source).
 
-A [Zeek](https://zeek.org) installation is required, and `zeek-config` needs to
-be in `PATH`.
+For IntelliSense a [Zeek](https://zeek.org) installation is required, and
+`zeek-config` needs to be in `PATH`.
+
+Formatting requires [`zeek-format`](https://github.com/zeek/zeekscript)
+somewhere in `PATH`.
 
 ## Configuration
 
@@ -24,37 +33,3 @@ All configuration settings are under `zeekLanguageServer.*`.
 
 - `zeekLanguageServer.path`: if set used to launch the language server
   executable; if unset the executable is looked up in `PATH`.
-
-## Building from source
-
-This extension needs `zeek-language-server` to work. See [its
-documentation](https://github.com/bbannier/zeek-language-server) on
-how to install it.
-
-In a copy of this directory:
-
-1. Install dependencies
-
-   ```.console
-   npm install
-   ```
-
-2. Build the extension
-
-   ```.console
-   npm run vsix
-   ```
-
-3. Install the extension
-
-   ```.console
-   code --install-extension zeek-language-server.vsix
-   ```
-
-[^other]:
-    The underlying [language server
-    binary](https://github.com/bbannier/zeek-language-server) might be buildable
-    on other platforms, but needs to be provided out of band. If such a binary
-    exists elsewhere one currently needs to point `zeekLanguageServer.path` to
-    it as otherwise the extension will automatically attempt to download the
-    upstream binary (which will fail on unsupported platforms).

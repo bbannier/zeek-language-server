@@ -30,6 +30,7 @@
     "onLanguage:zeek"
   ],
   "main": "./out/extension",
+  "icon": "images/icon.png",
   "contributes": {
     "commands": [
       {
@@ -68,7 +69,11 @@
           ".bro",
           ".zeek"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "images/filetype-light.png",
+          "dark": "images/filetype-dark.png"
+        }
       },
       {
         "id": "sig",
@@ -81,7 +86,11 @@
         "extensions": [
           ".sig"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "images/filetype-light.png",
+          "dark": "images/filetype-dark.png"
+        }
       }
     ],
     "grammars": [

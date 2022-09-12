@@ -1,6 +1,7 @@
 import { inspect } from "util";
 import got from "got";
 import {
+  ConfigurationTarget,
   ExtensionContext,
   ProgressLocation,
   Uri,
@@ -221,9 +222,42 @@ async function tryZeek(): Promise<void> {
 
 let CLIENT: LanguageClient;
 
+async function checkDependencies(): Promise<void> {
+  // Check for `zeek-format`.
+  if (
+    workspace
+      .getConfiguration("zeekLanguageServer")
+      .get<boolean>("checkZeekFormat")
+  ) {
+    try {
+      await execFile("zeek-format", ["--version"]);
+    } catch (error) {
+      const installZeekFormat = "Install zeek-format";
+      const doNotCheck = "Do not check again";
+      const selected = await window.showInformationMessage(
+        "Formatting support not available",
+        installZeekFormat,
+        doNotCheck
+      );
+      if (selected == installZeekFormat)
+        env.openExternal(Uri.parse("https://github.com/zeek/zeekscript"));
+      else if (selected == doNotCheck)
+        await workspace
+          .getConfiguration()
+          .update(
+            "zeekLanguageServer.checkZeekFormat",
+            false,
+            ConfigurationTarget.Global
+          );
+    }
+  }
+}
+
 export async function activate(context: ExtensionContext): Promise<void> {
   // Register commands.
   context.subscriptions.push(commands.registerCommand("zeek.tryZeek", tryZeek));
+
+  await checkDependencies();
 
   // Start the server.
   const server = new ZeekLanguageServer(context);

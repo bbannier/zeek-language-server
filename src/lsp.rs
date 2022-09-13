@@ -7,7 +7,7 @@ use crate::{
 use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::BTreeSet,
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
@@ -902,7 +902,7 @@ impl LanguageServer for Backend {
         }
 
         // We are just completing some arbitrary identifier at this point.
-        let mut items = HashSet::new();
+        let mut items = BTreeSet::new();
         let mut node = node;
 
         let current_module = root

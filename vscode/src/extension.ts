@@ -130,8 +130,12 @@ class ZeekLanguageServer {
         let lastPercent = 0;
 
         const stream = got.stream(url).on("downloadProgress", (progress) => {
+          if (!progress.total) {
+            return;
+          }
+
           const message = `${(progress.percent * 100).toFixed(0)}%`;
-          const increment = progress.percent - lastPercent;
+          const increment = (progress.percent - lastPercent) * 100;
           progressHandle.report({ message, increment });
           lastPercent = progress.percent;
         });

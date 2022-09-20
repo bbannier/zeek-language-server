@@ -266,6 +266,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
     command: await server.getPath(),
   };
 
+  const env = {
+    PATH: workspace
+      .getConfiguration("zeekLanguageServer")
+      .get<string>("zeekPath"),
+  };
+  if (env.PATH) {
+    serverExecutable.options = { env };
+  }
+
   const serverOptions: ServerOptions = {
     run: serverExecutable,
     debug: serverExecutable,

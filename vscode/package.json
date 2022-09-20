@@ -49,6 +49,11 @@
     "configuration": {
       "type": "object",
       "properties": {
+        "zeekLanguageServer.zeekPath": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the zeek executable. If unset we will attempt to look it up in PATH."
+        },
         "zeekLanguageServer.path": {
           "type": "string",
           "default": "",

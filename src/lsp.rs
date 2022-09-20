@@ -1180,9 +1180,12 @@ impl LanguageServer for Backend {
         let end = Position::new(num_lines, end);
         let range = Range::new(Position::new(0, 0), end);
 
-        let formatted = zeek::format(&source)
-            .await
-            .map_err(|_| Error::internal_error())?;
+        let formatted = if let Ok(f) = zeek::format(&source).await {
+            f
+        } else {
+            // Swallow errors from zeek-format, we likely already emitted a diagnostic.
+            return Ok(None);
+        };
 
         // The edit consists of removing the original source range, and inserting the new text
         // after that (edits cannot overlap).
@@ -1379,9 +1382,9 @@ pub(crate) mod test {
     use salsa::{ParallelDatabase, Snapshot};
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, HoverParams, PartialResultParams, Position,
-            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
-            WorkspaceSymbolParams,
+            CompletionParams, CompletionResponse, FormattingOptions, HoverParams,
+            PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+            WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -1868,6 +1871,43 @@ event x::foo() {}",
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
+        );
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn formatting() {
+        let mut db = TestDatabase::new();
+        let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
+        db.add_file(uri_ok.clone(), "event zeek_init(){}");
+
+        let uri_invalid = Arc::new(Url::from_file_path("/invalid.zeek").unwrap());
+        db.add_file(uri_invalid.clone(), "event ssl");
+
+        let server = serve(db);
+
+        assert!(server
+            .formatting(super::DocumentFormattingParams {
+                text_document: TextDocumentIdentifier {
+                    uri: uri_ok.as_ref().clone(),
+                },
+                options: FormattingOptions::default(),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .await
+            .is_ok());
+
+        assert_eq!(
+            server
+                .formatting(super::DocumentFormattingParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: uri_invalid.as_ref().clone(),
+                    },
+                    options: FormattingOptions::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await,
+            Ok(None)
         );
     }
 }

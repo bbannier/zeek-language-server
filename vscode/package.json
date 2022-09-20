@@ -49,6 +49,11 @@
     "configuration": {
       "type": "object",
       "properties": {
+        "zeekLanguageServer.zeekBinaryDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Directory containing Zeek executables. If unset we will attempt to find them in PATH."
+        },
         "zeekLanguageServer.path": {
           "type": "string",
           "default": "",

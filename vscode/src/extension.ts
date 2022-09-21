@@ -264,10 +264,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
   await checkDependencies();
 
   // Start the server.
-  const server = new ZeekLanguageServer(context);
-
   const serverExecutable: Executable = {
-    command: await server.getPath(),
+    command:
+      process.env.__ZEEK_LSP_SERVER_DEBUG ??
+      (await new ZeekLanguageServer(context).getPath()),
   };
 
   const env = {

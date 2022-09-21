@@ -1,0 +1,60 @@
+// See https://go.microsoft.com/fwlink/?LinkId=733558
+// for the documentation about the tasks.json format
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install Extension Dependencies",
+      "group": "build",
+      "type": "npm",
+      "script": "install",
+      "path": "vscode/",
+      "problemMatcher": {
+        "base": "$tsc",
+        "fileLocation": ["relative", "${workspaceFolder}/vscode/"]
+      }
+    },
+    {
+      "label": "Build Extension in Background",
+      "dependsOn": ["Install Extension Dependencies"],
+      "group": "build",
+      "type": "npm",
+      "script": "watch",
+      "path": "vscode/",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "fileLocation": ["relative", "${workspaceFolder}/vscode/"]
+      },
+      "isBackground": true
+    },
+    {
+      "label": "Build Extension",
+      "dependsOn": ["Install Extension Dependencies"],
+      "group": "build",
+      "type": "npm",
+      "script": "build",
+      "path": "vscode/",
+      "problemMatcher": {
+        "base": "$tsc",
+        "fileLocation": ["relative", "${workspaceFolder}/vscode/"]
+      }
+    },
+    {
+      "label": "Build Server",
+      "group": "build",
+      "type": "shell",
+      "command": "cargo build --package zeek-language-server",
+      "problemMatcher": "$rustc",
+      "options": {
+        "env": {
+          "PATH": "${env:HOME}/.cargo/bin:${env:PATH}"
+        }
+      }
+    },
+    {
+      "label": "Build Server and Extension",
+      "dependsOn": ["Build Server", "Build Extension"],
+      "problemMatcher": "$rustc"
+    }
+  ]
+}

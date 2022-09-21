@@ -52,7 +52,7 @@
         "zeekLanguageServer.zeekBinaryDirectory": {
           "type": "string",
           "default": "",
-          "description": "Full path to the zeek executable. If unset we will attempt to look it up in PATH."
+          "description": "Directory containing Zeek executables. If unset we will attempt to find them in PATH."
         },
         "zeekLanguageServer.path": {
           "type": "string",

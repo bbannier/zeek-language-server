@@ -269,7 +269,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const env = {
     PATH: workspace
       .getConfiguration("zeekLanguageServer")
-      .get<string>("zeekPath"),
+      .get<string>("zeekBinaryDirectory"),
   };
   if (env.PATH) {
     serverExecutable.options = { env };

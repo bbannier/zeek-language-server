@@ -49,7 +49,7 @@
     "configuration": {
       "type": "object",
       "properties": {
-        "zeekLanguageServer.zeekPath": {
+        "zeekLanguageServer.zeekBinaryDirectory": {
           "type": "string",
           "default": "",
           "description": "Full path to the zeek executable. If unset we will attempt to look it up in PATH."

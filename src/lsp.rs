@@ -1232,11 +1232,11 @@ impl LanguageServer for Backend {
                     .iter()
                     .chain(state.implicit_decls().iter())
                     .chain(state.explicit_decls_recursive(uri).iter())
-                    .filter(|&d| match &d.kind {
-                        DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
-                            true
-                        }
-                        _ => false,
+                    .filter(|&d| {
+                        matches!(
+                            &d.kind,
+                            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
+                        )
                     })
                     .find(|&d| d.id == decl.id)
                 {

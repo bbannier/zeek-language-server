@@ -7,6 +7,7 @@ pub mod parse;
 pub mod query;
 pub mod zeek;
 
+#[allow(clippy::trait_duplication_in_bounds)]
 #[salsa::query_group(FilesStorage)]
 pub trait Files: salsa::Database {
     #[salsa::input]

@@ -28,7 +28,6 @@
     },
     {
       // Used to attach LLDB to a running LSP server.
-      // Require the CodeLLDB Extension.
       // NOTE: Might require root permissions. For this run:
       //
       // `echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope`

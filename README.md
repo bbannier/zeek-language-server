@@ -54,3 +54,8 @@ cargo install --git https://github.com/bbannier/zeek-language-server.git
 This installs a binary `zeek-language-server` which provides the full server.
 
 [rustup]: https://rustup.rs
+
+## Debugging
+
+See [these instructions](./DEBUGGING.md) for VS Code setup and the list of
+features (some of which are VS Code specific).

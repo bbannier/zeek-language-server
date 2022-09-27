@@ -47,13 +47,12 @@ class ZeekLanguageServer {
     this.version = context.extension.packageJSON["version"];
   }
 
+  /** Finds the server binary. */
   public async getPath(): Promise<string> {
     let pathFound: string;
-    const needCheckingPaths: string[] = ["zeek-language-server"];
+    const needCheckingPaths: string[] = [];
 
-    const variant = PLATFORMS[process.platform];
-    needCheckingPaths.push(`zeek-language-server-${variant}`);
-
+    // Check configured path.
     const configPath = workspace
       .getConfiguration("zeekLanguageServer")
       .get<string>("path");
@@ -61,6 +60,10 @@ class ZeekLanguageServer {
       needCheckingPaths.push(configPath);
     }
 
+    // Check in PATH.
+    needCheckingPaths.push("zeek-language-server");
+
+    // Check for already downloaded binary.
     const defaultPath = Uri.joinPath(
       this.context.globalStorageUri,
       "server",

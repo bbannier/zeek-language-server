@@ -8,6 +8,13 @@ use pyroscope::PyroscopeAgent;
 
 use {eyre::Result, tracing::info, zeek_language_server::lsp::run};
 
+#[cfg(target_env = "musl")]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[derive(Parser, Debug)]
 #[clap(about, version)]
 struct Args {

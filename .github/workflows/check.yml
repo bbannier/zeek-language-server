@@ -51,8 +51,8 @@ jobs:
       - name: Install Zeek
         run: |
           if [[ ${{ matrix.name }} == *linux* ]]; then \
-            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_20.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
-            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_20.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
+            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_18.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
+            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_18.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
             sudo apt-get update; \
             sudo apt-get install -y zeek; \
             sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
@@ -81,7 +81,7 @@ jobs:
 
   pre-commit:
     name: Run pre-commit hooks
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
         with:

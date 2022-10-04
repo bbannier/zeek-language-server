@@ -15,7 +15,7 @@ jobs:
             - mac-x86-64
           include:
             - name: linux-x86-64-musl
-              os: ubuntu-latest
+              os: ubuntu:18.04
               target: x86_64-unknown-linux-musl
             - name: mac-x86-64
               os: macos-11

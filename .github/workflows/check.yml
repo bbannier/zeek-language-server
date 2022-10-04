@@ -28,8 +28,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-        with:
-          submodules: recursive
+        # NOTE: This is unsupported with the Git version on ubuntu:18.04,
+        # perform manual submodule update.
+        # with:
+        #   submodules: recursive
+      - name: Update submodules
+        run: git submodule update --init --recursive --depth 1
+
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
         with:
           toolchain: stable

@@ -27,13 +27,15 @@ jobs:
     container: ${{ matrix.container }}
 
     steps:
+      - name: Install git
+        if: contains(matrix.os, "linux")
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git
+
       - uses: actions/checkout@v2
-        # NOTE: This is unsupported with the Git version on ubuntu:18.04,
-        # perform manual submodule update.
-        # with:
-        #   submodules: recursive
-      - name: Update submodules
-        run: git submodule update --init --recursive --depth 1
+        with:
+          submodules: recursive
 
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
         with:

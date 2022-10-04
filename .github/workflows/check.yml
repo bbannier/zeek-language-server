@@ -28,10 +28,11 @@ jobs:
 
     steps:
       - name: Install git
-        if: contains(matrix.os, 'linux')
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git
+          if [[ ${{ matrix.name }} == *linux* ]]; then \
+            apt-get update; \
+            apt-get install -y --no-install-recommends git; \
+          fi
 
       - uses: actions/checkout@v2
         with:

@@ -29,8 +29,7 @@ jobs:
     steps:
       - name: Install Git
         run: |
-          PLATFORM=${{ matrix.name }}
-          if "${PLATFORM#*$word}" != "$PLATFORM"; then
+          if echo ${{ matrix.name }} | grep -q linux; then
               sudo apt-get update; \
               sudo apt-get install -y --no-install-recommends git; \
           fi

@@ -18,7 +18,7 @@ jobs:
           - mac-x86-64
         include:
           - name: linux-x86-64-gnu
-            os: ubuntu-20.04
+            os: ubuntu-18.04
             target: x86_64-unknown-linux-gnu
           - name: mac-x86-64
             os: macos-latest
@@ -47,26 +47,27 @@ jobs:
           command: install
           args: tree-sitter-cli
 
-      - name: Install Zeek
-        run: |
-          if [[ ${{ matrix.name }} == *linux* ]]; then \
-            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_20.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
-            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_20.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
-            sudo apt-get update; \
-            sudo apt-get install -y zeek; \
-            sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
-          elif [[ ${{ matrix.name }} == *mac* ]]; then \
-            brew install zeek; \
-          fi
-      - name: Test
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
-        with:
-          command: test
-      - name: Test all features
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
-        with:
-          command: test
-          args: --all-features
+#       - name: Install Zeek
+#         run: |
+#           if [[ ${{ matrix.name }} == *linux* ]]; then \
+#             echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_20.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
+#             curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_20.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
+#             sudo apt-get update; \
+#             sudo apt-get install -y zeek; \
+#             sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
+#           elif [[ ${{ matrix.name }} == *mac* ]]; then \
+#             brew install zeek; \
+#           fi
+#       - name: Test
+#         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+#         with:
+#           command: test
+#       - name: Test all features
+#         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+#         with:
+#           command: test
+#           args: --all-features
+
       - name: Build
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
         with:

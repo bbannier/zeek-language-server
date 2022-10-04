@@ -18,9 +18,8 @@ jobs:
           - mac-x86-64
         include:
           - name: linux-x86-64-gnu
-            os: ubuntu-18.04
+            os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
-            container: ubuntu:14.04
           - name: mac-x86-64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -51,8 +50,8 @@ jobs:
       - name: Install Zeek
         run: |
           if [[ ${{ matrix.name }} == *linux* ]]; then \
-            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_18.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
-            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_18.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
+            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_20.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
+            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_20.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
             sudo apt-get update; \
             sudo apt-get install -y zeek; \
             sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \

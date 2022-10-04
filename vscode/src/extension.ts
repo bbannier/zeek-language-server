@@ -30,7 +30,7 @@ const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
 
 const PLATFORMS = {
-  linux: "x86_64-unknown-linux-musl",
+  linux: "x86_64-unknown-linux-gnu",
   darwin: "x86_64-apple-darwin",
 };
 

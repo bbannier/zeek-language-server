@@ -6,6 +6,10 @@ on:
       - 'v*'
       - 'prerelease'
 
+env:
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -D warnings -C target-feature=+crt-static
+
 jobs:
   build:
     strategy:
@@ -46,8 +50,6 @@ jobs:
 
       - name: Build binaries
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
-        env:
-          RUSTFLAGS: -C target-feature=+crt-static
         with:
           command: build
           args: --release --locked --target ${{ matrix.target }}

@@ -7,7 +7,7 @@ on:
 
 env:
   CARGO_INCREMENTAL: 0
-  RUSTFLAGS: -D warnings -C target-feature=+crt-static
+  RUSTFLAGS: -D warnings
 
 jobs:
   build:
@@ -62,6 +62,8 @@ jobs:
           command: test
       - name: Test all features
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
         with:
           command: test
           args: --all-features

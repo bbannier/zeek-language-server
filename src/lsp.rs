@@ -10,7 +10,7 @@ use std::{
     collections::BTreeSet,
     fmt::Debug,
     path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex},
 };
 use tower_lsp::{
     jsonrpc::{Error, Result},
@@ -95,12 +95,24 @@ impl Backend {
         }
     }
 
-    fn state(&self) -> Result<Snapshot<Database>> {
-        self.state_mut().map(|d| d.snapshot())
+    fn with_state<F, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce(Snapshot<Database>) -> R,
+    {
+        let db = self
+            .state
+            .lock()
+            .map_err(|_| Error::internal_error())?
+            .snapshot();
+        Ok(f(db))
     }
 
-    fn state_mut(&self) -> Result<MutexGuard<Database>> {
-        self.state.lock().map_err(|_| Error::internal_error())
+    fn with_state_mut<F, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce(&mut Database) -> R,
+    {
+        let mut db = self.state.lock().map_err(|_| Error::internal_error())?;
+        Ok(f(&mut db))
     }
 
     async fn progress_begin<T>(&self, title: T) -> Result<ProgressToken>
@@ -171,32 +183,31 @@ impl Backend {
     }
 
     async fn file_changed(&self, uri: Arc<Url>) -> Result<()> {
-        let state = self.state()?;
-
-        state.file_changed(uri.clone());
-
         if let Some(client) = &self.client {
-            let tree = match state.parse(uri.clone()) {
-                Some(t) => t,
-                None => return Ok(()),
-            };
+            let diags = self.with_state(|state| {
+                state.file_changed(uri.clone());
 
-            let diags = tree
-                .root_node()
-                .errors()
-                .into_iter()
-                .map(|err| {
-                    Diagnostic::new(
-                        err.range(),
-                        Some(DiagnosticSeverity::WARNING),
-                        None,
-                        None,
-                        err.error(),
-                        None,
-                        None,
-                    )
-                })
-                .collect();
+                let tree = match state.parse(uri.clone()) {
+                    Some(t) => t,
+                    None => return Vec::new(),
+                };
+
+                tree.root_node()
+                    .errors()
+                    .into_iter()
+                    .map(|err| {
+                        Diagnostic::new(
+                            err.range(),
+                            Some(DiagnosticSeverity::WARNING),
+                            None,
+                            None,
+                            err.error(),
+                            None,
+                            None,
+                        )
+                    })
+                    .collect()
+            })?;
 
             client
                 .publish_diagnostics(uri.as_ref().clone(), diags, None)
@@ -216,7 +227,7 @@ impl Backend {
             .into_iter()
             .filter_map(|f| Url::from_file_path(f.path).ok());
 
-        let workspace_folders = self.state()?.workspace_folders();
+        let workspace_folders = self.with_state(|s| s.workspace_folders())?;
 
         let workspace_files = workspace_folders
             .iter()
@@ -256,33 +267,20 @@ impl LanguageServer for Backend {
             .workspace_folders
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
-        if let Ok(mut state) = self.state_mut() {
+        self.with_state_mut(move |state| {
             state.set_files(Arc::new(BTreeSet::new()));
             state.set_prefixes(Arc::new(Vec::new()));
             state.set_workspace_folders(Arc::new(workspace_folders));
-        }
+        })?;
 
-        {
-            // Load system scripts.
-            match zeek::prefixes().await {
-                Ok(prefixes) => {
-                    if let Ok(mut state) = self.state_mut() {
-                        state.set_prefixes(Arc::new(prefixes));
-                    }
-                }
-                Err(e) => error!("{e}"),
+        // Set system prefixes.
+        match zeek::prefixes().await {
+            Ok(prefixes) => {
+                self.with_state_mut(move |state| {
+                    state.set_prefixes(Arc::new(prefixes));
+                })?;
             }
-
-            // Load all visible files.
-            if let Ok(files) = self.visible_files().await {
-                self.did_change_watched_files(DidChangeWatchedFilesParams {
-                    changes: files
-                        .into_iter()
-                        .map(|f| FileEvent::new(f, FileChangeType::CREATED))
-                        .collect(),
-                })
-                .await;
-            }
+            Err(e) => error!("{e}"),
         }
 
         Ok(InitializeResult {
@@ -316,7 +314,18 @@ impl LanguageServer for Backend {
     }
 
     #[instrument]
-    async fn initialized(&self, _: InitializedParams) {}
+    async fn initialized(&self, _: InitializedParams) {
+        // Load all currently visible files. These are likely only files in system prefixes.
+        if let Ok(files) = self.visible_files().await {
+            let update = self.did_change_watched_files(DidChangeWatchedFilesParams {
+                changes: files
+                    .into_iter()
+                    .map(|f| FileEvent::new(f, FileChangeType::CREATED))
+                    .collect(),
+            });
+            update.await;
+        }
+    }
 
     #[instrument]
     async fn shutdown(&self) -> Result<()> {
@@ -328,12 +337,9 @@ impl LanguageServer for Backend {
         let progress_token = self.progress_begin("Indexing").await.ok();
 
         // Create new list of files and update individual sources.
-        let mut files = match self.state() {
-            Ok(s) => s.files().as_ref().clone(),
-            Err(e) => {
-                error!("could not get current state: {e}");
-                return;
-            }
+        let mut files = match self.with_state(|s| s.files().as_ref().clone()) {
+            Ok(xs) => xs,
+            Err(_) => return,
         };
 
         for change in params.changes {
@@ -365,44 +371,47 @@ impl LanguageServer for Backend {
                 }
             };
 
-            if let Ok(mut state) = self.state_mut() {
+            let _set_source = self.with_state_mut(move |state| {
                 state.set_source(uri.clone(), Arc::new(source));
-            };
+            });
         }
 
         let files = Arc::new(files);
 
         // Commit new file list.
-        if let Ok(mut state) = self.state_mut() {
+        let _set_files = self.with_state_mut(|state| {
             state.set_files(files.clone());
-        }
+        });
 
         // Preload expensive information. Ultimately we want to be able to load implicit
         // declarations quickly since they are on the critical part of getting the user to useful
         // completions right after server startup.
         //
         // We explicitly precompute per-file information here so we can parallelize this work.
-        if let Ok(state) = self.state() {
-            self.progress(progress_token.clone(), Some("declarations".to_string()))
-                .await;
+        self.progress(progress_token.clone(), Some("declarations".to_string()))
+            .await;
 
-            let mut _preload_decls = Vec::new();
-            for f in files.as_ref() {
-                let f = f.clone();
-                let db = state.snapshot();
-                _preload_decls.push(tokio::spawn(async move {
-                    let _x = db.decls(f.clone());
-                    let _x = db.loads(f.clone());
-                    let _x = db.loaded_files(f.clone());
-                }));
-            }
-            futures::future::join_all(_preload_decls).await;
+        if let Ok(preloaded_decls) = self.with_state(|state| {
+            files
+                .iter()
+                .map(|f| {
+                    let f = f.clone();
+                    let db = state.snapshot();
+                    tokio::spawn(async move {
+                        let _x = db.decls(f.clone());
+                        let _x = db.loads(f.clone());
+                        let _x = db.loaded_files(f.clone());
+                    })
+                })
+                .collect::<Vec<_>>()
+        }) {
+            futures::future::join_all(preloaded_decls).await;
         }
 
         // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
-        let _implicit = self.state().map(|s| s.implicit_decls());
+        let _implicit = self.with_state(|s| s.implicit_decls());
 
         self.progress_end(progress_token).await;
     }
@@ -413,7 +422,7 @@ impl LanguageServer for Backend {
         let source = params.text_document.text;
         let uri = Arc::new(uri);
 
-        if let Ok(mut state) = self.state_mut() {
+        let _set_files = self.with_state_mut(|state| {
             state.set_source(uri.clone(), Arc::new(source));
 
             let mut files = state.files();
@@ -422,7 +431,7 @@ impl LanguageServer for Backend {
                 files.insert(uri.clone());
                 state.set_files(Arc::new(files.clone()));
             }
-        }
+        });
 
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
@@ -444,9 +453,9 @@ impl LanguageServer for Backend {
 
         let source = changes.text.to_string();
 
-        if let Ok(mut state) = self.state_mut() {
+        let _set_source = self.with_state_mut(|state| {
             state.set_source(uri.clone(), Arc::new(source));
-        }
+        });
 
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
@@ -455,11 +464,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        let state = match self.state() {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-
         let uri = params.text_document.uri;
 
         let file = match uri.to_file_path() {
@@ -470,10 +474,14 @@ impl LanguageServer for Backend {
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
-        let workspace_folder = state
-            .workspace_folders()
-            .get(0)
-            .and_then(|f| f.to_file_path().ok());
+        let workspace_folder = self
+            .with_state(|s| {
+                s.workspace_folders()
+                    .get(0)
+                    .and_then(|f| f.to_file_path().ok())
+            })
+            .ok()
+            .flatten();
 
         let file_dir = match file.parent() {
             Some(p) => p,
@@ -529,93 +537,93 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state()?;
+        self.with_state(move |state| {
+            let source = state.source(uri.clone());
 
-        let source = state.source(uri.clone());
+            let tree = state.parse(uri.clone());
+            let tree = match tree.as_ref() {
+                Some(t) => t,
+                None => return Ok(None),
+            };
 
-        let tree = state.parse(uri.clone());
-        let tree = match tree.as_ref() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+            let node = tree.root_node();
+            let node = match node.named_descendant_for_position(params.position) {
+                Some(n) => n,
+                None => return Ok(None),
+            };
 
-        let node = tree.root_node();
-        let node = match node.named_descendant_for_position(params.position) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
+            let text = node.utf8_text(source.as_bytes()).map_err(|e| {
+                error!("could not get source text: {}", e);
+                Error::internal_error()
+            })?;
 
-        let text = node.utf8_text(source.as_bytes()).map_err(|e| {
-            error!("could not get source text: {}", e);
-            Error::internal_error()
-        })?;
+            let mut contents = vec![
+                #[cfg(debug_assertions)]
+                MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
+                    value: text.into(),
+                    language: "zeek".into(),
+                }),
+                #[cfg(debug_assertions)]
+                MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
+                    value: node.to_sexp(),
+                    language: "lisp".into(),
+                }),
+            ];
 
-        let mut contents = vec![
-            #[cfg(debug_assertions)]
-            MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
-                value: text.into(),
-                language: "zeek".into(),
-            }),
-            #[cfg(debug_assertions)]
-            MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
-                value: node.to_sexp(),
-                language: "lisp".into(),
-            }),
-        ];
+            match node.kind() {
+                "id" => {
+                    if let Some(decl) = &state.resolve(NodeLocation::from_node(uri, node)) {
+                        let kind = match decl.kind {
+                            DeclKind::Global => "global",
+                            DeclKind::Option => "option",
+                            DeclKind::Const => "constant",
+                            DeclKind::Redef => "redef",
+                            DeclKind::RedefEnum(_) => "redef enum",
+                            DeclKind::RedefRecord(_) => "redef record",
+                            DeclKind::Enum(_) => "enum",
+                            DeclKind::Type(_) => "record",
+                            DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
+                            DeclKind::HookDef(_) | DeclKind::HookDecl(_) => "hook",
+                            DeclKind::EventDef(_) | DeclKind::EventDecl(_) => "event",
+                            DeclKind::Variable => "variable",
+                            DeclKind::Field => "field",
+                            DeclKind::EnumMember => "enum member",
+                            DeclKind::LoopIndex(_, _) => "loop index",
+                        };
+                        contents.push(MarkedString::String(format!(
+                            "### {kind} `{id}`",
+                            id = decl.id
+                        )));
 
-        match node.kind() {
-            "id" => {
-                if let Some(decl) = &state.resolve(NodeLocation::from_node(uri, node)) {
-                    let kind = match decl.kind {
-                        DeclKind::Global => "global",
-                        DeclKind::Option => "option",
-                        DeclKind::Const => "constant",
-                        DeclKind::Redef => "redef",
-                        DeclKind::RedefEnum(_) => "redef enum",
-                        DeclKind::RedefRecord(_) => "redef record",
-                        DeclKind::Enum(_) => "enum",
-                        DeclKind::Type(_) => "record",
-                        DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
-                        DeclKind::HookDef(_) | DeclKind::HookDecl(_) => "hook",
-                        DeclKind::EventDef(_) | DeclKind::EventDecl(_) => "event",
-                        DeclKind::Variable => "variable",
-                        DeclKind::Field => "field",
-                        DeclKind::EnumMember => "enum member",
-                        DeclKind::LoopIndex(_, _) => "loop index",
-                    };
-                    contents.push(MarkedString::String(format!(
-                        "### {kind} `{id}`",
-                        id = decl.id
-                    )));
+                        if let Some(typ) = state.typ(decl.clone()) {
+                            contents.push(MarkedString::String(format!("Type: `{}`", typ.id)));
+                        }
 
-                    if let Some(typ) = state.typ(decl.clone()) {
-                        contents.push(MarkedString::String(format!("Type: `{}`", typ.id)));
+                        contents.push(MarkedString::String(decl.documentation.clone()));
                     }
-
-                    contents.push(MarkedString::String(decl.documentation.clone()));
                 }
-            }
-            "file" => {
-                let file = PathBuf::from(text);
-                let uri = load_to_file(
-                    &file,
-                    uri.as_ref(),
-                    state.files().as_ref(),
-                    state.prefixes().as_ref(),
-                );
-                if let Some(uri) = uri {
-                    contents.push(MarkedString::String(format!("`{}`", uri.path())));
+                "file" => {
+                    let file = PathBuf::from(text);
+                    let uri = load_to_file(
+                        &file,
+                        uri.as_ref(),
+                        state.files().as_ref(),
+                        state.prefixes().as_ref(),
+                    );
+                    if let Some(uri) = uri {
+                        contents.push(MarkedString::String(format!("`{}`", uri.path())));
+                    }
                 }
+                _ => {}
             }
-            _ => {}
-        }
 
-        let hover = Hover {
-            contents: HoverContents::Array(contents),
-            range: Some(node.range()),
-        };
+            let hover = Hover {
+                contents: HoverContents::Array(contents),
+                range: Some(node.range()),
+            };
 
-        Ok(Some(hover))
+            Ok(Some(hover))
+        })?
     }
 
     #[instrument]
@@ -623,8 +631,6 @@ impl LanguageServer for Backend {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let state = self.state()?;
-
         let uri = Arc::new(params.text_document.uri);
 
         let symbol = |d: &Decl| -> DocumentSymbol {
@@ -661,43 +667,45 @@ impl LanguageServer for Backend {
             }
         };
 
-        // Even though a valid source file can only contain a single module, one can still make
-        // declarations in other modules. Sort declarations by module so users get a clean view.
-        // Then show declarations under their module, or at the top-level if they aren't exported
-        // into a module.
-        let decls = state.decls(uri);
-        let mut decls = decls
-            .iter()
-            // Filter out top-level enum members since they are also exposed inside their enum here.
-            .filter(|d| d.kind != DeclKind::EnumMember)
-            .collect::<Vec<_>>();
-        decls.sort_by_key(|d| format!("{}", d.module));
-        let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
-            decls.into_iter().partition(|d| d.module != ModuleId::None);
+        let modules = self.with_state(move |state| {
+            // Even though a valid source file can only contain a single module, one can still make
+            // declarations in other modules. Sort declarations by module so users get a clean view.
+            // Then show declarations under their module, or at the top-level if they aren't exported
+            // into a module.
+            let decls = state.decls(uri);
+            let mut decls = decls
+                .iter()
+                // Filter out top-level enum members since they are also exposed inside their enum here.
+                .filter(|d| d.kind != DeclKind::EnumMember)
+                .collect::<Vec<_>>();
+            decls.sort_by_key(|d| format!("{}", d.module));
+            let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
+                decls.into_iter().partition(|d| d.module != ModuleId::None);
 
-        let modules = decls_w_mod
-            .into_iter()
-            .group_by(|d| &d.module)
-            .into_iter()
-            .map(|(m, decls)| {
-                #[allow(deprecated)]
-                DocumentSymbol {
-                    name: format!("{}", m),
-                    kind: SymbolKind::NAMESPACE,
-                    children: Some(decls.map(symbol).collect()),
+            decls_w_mod
+                .into_iter()
+                .group_by(|d| &d.module)
+                .into_iter()
+                .map(|(m, decls)| {
+                    #[allow(deprecated)]
+                    DocumentSymbol {
+                        name: format!("{}", m),
+                        kind: SymbolKind::NAMESPACE,
+                        children: Some(decls.map(symbol).collect()),
 
-                    // FIXME(bbannier): Weird ranges.
-                    range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-                    selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                        // FIXME(bbannier): Weird ranges.
+                        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                        selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
 
-                    deprecated: None,
+                        deprecated: None,
 
-                    detail: None,
-                    tags: None,
-                }
-            })
-            .chain(decls_wo_mod.into_iter().map(symbol))
-            .collect();
+                        detail: None,
+                        tags: None,
+                    }
+                })
+                .chain(decls_wo_mod.into_iter().map(symbol))
+                .collect()
+        })?;
 
         Ok(Some(DocumentSymbolResponse::Nested(modules)))
     }
@@ -707,35 +715,40 @@ impl LanguageServer for Backend {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<SymbolInformation>>> {
-        let state = self.state()?;
-
         let query = params.query.to_lowercase();
 
-        let files = state.files();
-        let symbols = files.iter().flat_map(|uri| {
-            state
-                .decls(uri.clone())
+        let symbols = self.with_state(|state| {
+            let files = state.files();
+            files
                 .iter()
-                .filter(|d| rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase()) > 0.0)
-                .map(|d| {
-                    let url: &Url = &**uri;
+                .flat_map(|uri| {
+                    state
+                        .decls(uri.clone())
+                        .iter()
+                        .filter(|d| {
+                            rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase()) > 0.0
+                        })
+                        .map(|d| {
+                            let url: &Url = uri;
 
-                    #[allow(deprecated)]
-                    SymbolInformation {
-                        name: d.fqid.clone(),
-                        kind: to_symbol_kind(&d.kind),
+                            #[allow(deprecated)]
+                            SymbolInformation {
+                                name: d.fqid.clone(),
+                                kind: to_symbol_kind(&d.kind),
 
-                        location: Location::new(url.clone(), d.range),
-                        container_name: Some(format!("{}", &d.module)),
+                                location: Location::new(url.clone(), d.range),
+                                container_name: Some(format!("{}", &d.module)),
 
-                        tags: None,
-                        deprecated: None,
-                    }
+                                tags: None,
+                                deprecated: None,
+                            }
+                        })
+                        .collect::<Vec<_>>()
                 })
-                .collect::<Vec<_>>()
-        });
+                .collect()
+        })?;
 
-        Ok(Some(symbols.collect()))
+        Ok(Some(symbols))
     }
 
     #[instrument]
@@ -743,203 +756,202 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        let state = self.state()?;
+        self.with_state(move |state| {
+            let source = state.source(uri.clone());
 
-        let source = state.source(uri.clone());
+            let tree = match state.parse(uri.clone()) {
+                Some(t) => t,
+                None => return Ok(None),
+            };
 
-        let tree = match state.parse(uri.clone()) {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+            // Get the node directly under the cursor as a starting point.
+            let root = tree.root_node();
+            let mut node = match root.descendant_for_position(position) {
+                Some(n) => n,
+                None => return Ok(None),
+            };
 
-        // Get the node directly under the cursor as a starting point.
-        let root = tree.root_node();
-        let mut node = match root.descendant_for_position(position) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
+            // If the node has no interesting text try to find an earlier node with text.
+            while node
+                .utf8_text(source.as_bytes())
+                .ok()
+                // The grammar might expose newlines as AST nodes. Such nodes should be ignored for completion.
+                .map(str::trim)
+                // The grammar might expose `$` or `?$` in a node. Strip it away. This also takes care of
+                // explicit nodes for just the field access or check.
+                .map(|s| s.replace(['$', '?'], ""))
+                .map_or(0, |s| s.len())
+                == 0
+            {
+                // If we are completing at the end of a line the end of the node will be on the next
+                // line. Instead search the next node _before the_start_ of the current node.
+                let start = node.range().start.character;
+                if start == 0 {
+                    break;
+                }
 
-        // If the node has no interesting text try to find an earlier node with text.
-        while node
-            .utf8_text(source.as_bytes())
-            .ok()
-            // The grammar might expose newlines as AST nodes. Such nodes should be ignored for completion.
-            .map(str::trim)
-            // The grammar might expose `$` or `?$` in a node. Strip it away. This also takes care of
-            // explicit nodes for just the field access or check.
-            .map(|s| s.replace(&['$', '?'], ""))
-            .map_or(0, |s| s.len())
-            == 0
-        {
-            // If we are completing at the end of a line the end of the node will be on the next
-            // line. Instead search the next node _before the_start_ of the current node.
-            let start = node.range().start.character;
-            if start == 0 {
-                break;
+                node = match root.descendant_for_position(Position {
+                    character: start - 1,
+                    ..position
+                }) {
+                    Some(n) => n,
+                    None => break,
+                };
             }
 
-            node = match root.descendant_for_position(Position {
-                character: start - 1,
-                ..position
-            }) {
-                Some(n) => n,
-                None => break,
-            };
-        }
+            let text_at_completion = node
+                .utf8_text(source.as_bytes())
+                // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
+                .map_err(|_| Error::internal_error())?
+                .lines()
+                .next()
+                .map(str::trim);
 
-        let text_at_completion = node
-            .utf8_text(source.as_bytes())
-            // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
-            .map_err(|_| Error::internal_error())?
-            .lines()
-            .next()
-            .map(str::trim);
+            // If we are completing after `$` try to return all fields for client-side filtering.
+            // TODO(bbannier): if `$` wasn't a trigger char, also check the input text.
+            // TODO(bbannier): we should also handle `$` in record initializations.
+            if params
+                .context
+                .and_then(|ctx| ctx.trigger_character)
+                .map_or(false, |c| c == "$")
+            {
+                if let Some(r) = state.resolve(NodeLocation::from_node(uri.clone(), node)) {
+                    let decl = state.typ(r);
 
-        // If we are completing after `$` try to return all fields for client-side filtering.
-        // TODO(bbannier): if `$` wasn't a trigger char, also check the input text.
-        // TODO(bbannier): we should also handle `$` in record initializations.
-        if params
-            .context
-            .and_then(|ctx| ctx.trigger_character)
-            .map_or(false, |c| c == "$")
-        {
-            if let Some(r) = state.resolve(NodeLocation::from_node(uri.clone(), node)) {
-                let decl = state.typ(r);
-
-                // Compute completion.
-                if let Some(decl) = decl {
-                    if let DeclKind::Type(fields) = &decl.kind {
-                        return Ok(Some(CompletionResponse::from(
-                            fields
-                                .iter()
-                                .map(to_completion_item)
-                                .filter_map(|item| {
-                                    // By default we use FQIDs for completion labels. Since for
-                                    // record fields this would be e.g., `mod::rec::field` where we
-                                    // want just `field`, rework them slightly.
-                                    let label = item.label.split("::").last()?.to_string();
-                                    Some(CompletionItem { label, ..item })
-                                })
-                                .collect::<Vec<_>>(),
-                        )));
+                    // Compute completion.
+                    if let Some(decl) = decl {
+                        if let DeclKind::Type(fields) = &decl.kind {
+                            return Ok(Some(CompletionResponse::from(
+                                fields
+                                    .iter()
+                                    .map(to_completion_item)
+                                    .filter_map(|item| {
+                                        // By default we use FQIDs for completion labels. Since for
+                                        // record fields this would be e.g., `mod::rec::field` where we
+                                        // want just `field`, rework them slightly.
+                                        let label = item.label.split("::").last()?.to_string();
+                                        Some(CompletionItem { label, ..item })
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )));
+                        }
                     }
                 }
             }
-        }
 
-        // If we are completing a file return valid load patterns.
-        if node.kind() == "file" {
-            return Ok(Some(CompletionResponse::from(
-                state
-                    .possible_loads(uri)
-                    .iter()
-                    .map(|load| CompletionItem {
-                        label: load.clone(),
-                        kind: Some(CompletionItemKind::FILE),
-                        ..CompletionItem::default()
-                    })
-                    .collect::<Vec<_>>(),
-            )));
-        }
-
-        // If we are completing a function/event/hook definition complete from declarations.
-        if node.kind() == "id" {
-            if let Some(kind) = source
-                .lines()
-                .nth(usize::try_from(node.range().start.line).expect("too many lines"))
-                .and_then(|line| {
-                    let re = regex::Regex::new(r"^(\w+)\s+\w*").expect("invalid regexp");
-                    Some(re.captures(line)?.get(1)?.as_str())
-                })
-            {
+            // If we are completing a file return valid load patterns.
+            if node.kind() == "file" {
                 return Ok(Some(CompletionResponse::from(
                     state
-                        .decls(uri.clone())
+                        .possible_loads(uri)
                         .iter()
-                        .chain(state.implicit_decls().iter())
-                        .chain(state.explicit_decls_recursive(uri).iter())
-                        .filter(|d| match &d.kind {
-                            DeclKind::EventDecl(_) => kind == "event",
-                            DeclKind::FuncDecl(_) => kind == "function",
-                            DeclKind::HookDecl(_) => kind == "hook",
-                            _ => false,
-                        })
-                        .unique()
-                        .filter_map(|d| {
-                            let item = to_completion_item(d);
-                            let signature = match &d.kind {
-                                DeclKind::EventDecl(s)
-                                | DeclKind::FuncDecl(s)
-                                | DeclKind::HookDecl(s) => {
-                                    let args = &s.args;
-                                    Some(
-                                        args.iter()
-                                            .filter_map(|d| {
-                                                let tree = state.parse(d.uri.clone())?;
-                                                let source = state.source(d.uri.clone());
-                                                tree.root_node()
-                                                    .named_descendant_for_point_range(
-                                                        d.selection_range,
-                                                    )?
-                                                    .utf8_text(source.as_bytes())
-                                                    .map(String::from)
-                                                    .ok()
-                                            })
-                                            .join(", "),
-                                    )
-                                }
-                                _ => None,
-                            }?;
-
-                            Some(CompletionItem {
-                                label: format!("{id}({signature}) {{}}", id = item.label),
-                                ..item
-                            })
+                        .map(|load| CompletionItem {
+                            label: load.clone(),
+                            kind: Some(CompletionItemKind::FILE),
+                            ..CompletionItem::default()
                         })
                         .collect::<Vec<_>>(),
                 )));
             }
-        }
 
-        // We are just completing some arbitrary identifier at this point.
-        let mut items = BTreeSet::new();
-        let mut node = node;
+            // If we are completing a function/event/hook definition complete from declarations.
+            if node.kind() == "id" {
+                if let Some(kind) = source
+                    .lines()
+                    .nth(usize::try_from(node.range().start.line).expect("too many lines"))
+                    .and_then(|line| {
+                        let re = regex::Regex::new(r"^(\w+)\s+\w*").expect("invalid regexp");
+                        Some(re.captures(line)?.get(1)?.as_str())
+                    })
+                {
+                    return Ok(Some(CompletionResponse::from(
+                        state
+                            .decls(uri.clone())
+                            .iter()
+                            .chain(state.implicit_decls().iter())
+                            .chain(state.explicit_decls_recursive(uri).iter())
+                            .filter(|d| match &d.kind {
+                                DeclKind::EventDecl(_) => kind == "event",
+                                DeclKind::FuncDecl(_) => kind == "function",
+                                DeclKind::HookDecl(_) => kind == "hook",
+                                _ => false,
+                            })
+                            .unique()
+                            .filter_map(|d| {
+                                let item = to_completion_item(d);
+                                let signature = match &d.kind {
+                                    DeclKind::EventDecl(s)
+                                    | DeclKind::FuncDecl(s)
+                                    | DeclKind::HookDecl(s) => {
+                                        let args = &s.args;
+                                        Some(
+                                            args.iter()
+                                                .filter_map(|d| {
+                                                    let tree = state.parse(d.uri.clone())?;
+                                                    let source = state.source(d.uri.clone());
+                                                    tree.root_node()
+                                                        .named_descendant_for_point_range(
+                                                            d.selection_range,
+                                                        )?
+                                                        .utf8_text(source.as_bytes())
+                                                        .map(String::from)
+                                                        .ok()
+                                                })
+                                                .join(", "),
+                                        )
+                                    }
+                                    _ => None,
+                                }?;
 
-        let current_module = root
-            .named_child("module_decl")
-            .and_then(|m| m.named_child("id"))
-            .and_then(|id| id.utf8_text(source.as_bytes()).ok());
-
-        loop {
-            for d in query::decls_(node, uri.clone(), source.as_bytes()) {
-                // Slightly fudge the ID we use for local declarations by removing the current
-                // module from the FQID.
-                let fqid = match current_module {
-                    Some(mid) => {
-                        let id = d.fqid.as_str();
-                        id.strip_prefix(&format!("{mid}::")).unwrap_or(id)
-                    }
-                    None => &d.fqid,
+                                Some(CompletionItem {
+                                    label: format!("{id}({signature}) {{}}", id = item.label),
+                                    ..item
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    )));
                 }
-                .into();
-                items.insert(Decl { fqid, ..d });
             }
 
-            node = match node.parent() {
-                Some(n) => n,
-                None => break,
-            };
-        }
+            // We are just completing some arbitrary identifier at this point.
+            let mut items = BTreeSet::new();
+            let mut node = node;
 
-        let loaded_decls = state.explicit_decls_recursive(uri);
-        let implicit_decls = state.implicit_decls();
+            let current_module = root
+                .named_child("module_decl")
+                .and_then(|m| m.named_child("id"))
+                .and_then(|id| id.utf8_text(source.as_bytes()).ok());
 
-        let other_decls = loaded_decls
-            .iter()
-            .chain(implicit_decls.iter())
-            .filter(|i| {
-                // Filter out redefs since they only add noise.
-                !ast::is_redef(i) &&
+            loop {
+                for d in query::decls_(node, uri.clone(), source.as_bytes()) {
+                    // Slightly fudge the ID we use for local declarations by removing the current
+                    // module from the FQID.
+                    let fqid = match current_module {
+                        Some(mid) => {
+                            let id = d.fqid.as_str();
+                            id.strip_prefix(&format!("{mid}::")).unwrap_or(id)
+                        }
+                        None => &d.fqid,
+                    }
+                    .into();
+                    items.insert(Decl { fqid, ..d });
+                }
+
+                node = match node.parent() {
+                    Some(n) => n,
+                    None => break,
+                };
+            }
+
+            let loaded_decls = state.explicit_decls_recursive(uri);
+            let implicit_decls = state.implicit_decls();
+
+            let other_decls = loaded_decls
+                .iter()
+                .chain(implicit_decls.iter())
+                .filter(|i| {
+                    // Filter out redefs since they only add noise.
+                    !ast::is_redef(i) &&
                 // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
                 if let Some(text) = text_at_completion {
                     rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &i.fqid.to_lowercase())
@@ -947,38 +959,39 @@ impl LanguageServer for Backend {
                 } else {
                     true
                 }
-            });
+                });
 
-        Ok(Some(CompletionResponse::from(
-            items
-                .iter()
-                .chain(other_decls)
-                .unique()
-                .map(to_completion_item)
-                // Also send filtered down keywords to the client.
-                .chain(zeek::KEYWORDS.iter().filter_map(|kw| {
-                    let should_include = if let Some(text) = text_at_completion {
-                        text.is_empty()
-                            || rust_fuzzy_search::fuzzy_compare(
-                                &text.to_lowercase(),
-                                &kw.to_lowercase(),
-                            ) > 0.0
-                    } else {
-                        true
-                    };
+            Ok(Some(CompletionResponse::from(
+                items
+                    .iter()
+                    .chain(other_decls)
+                    .unique()
+                    .map(to_completion_item)
+                    // Also send filtered down keywords to the client.
+                    .chain(zeek::KEYWORDS.iter().filter_map(|kw| {
+                        let should_include = if let Some(text) = text_at_completion {
+                            text.is_empty()
+                                || rust_fuzzy_search::fuzzy_compare(
+                                    &text.to_lowercase(),
+                                    &kw.to_lowercase(),
+                                ) > 0.0
+                        } else {
+                            true
+                        };
 
-                    if should_include {
-                        Some(CompletionItem {
-                            kind: Some(CompletionItemKind::KEYWORD),
-                            label: (*kw).to_string(),
-                            ..CompletionItem::default()
-                        })
-                    } else {
-                        None
-                    }
-                }))
-                .collect::<Vec<_>>(),
-        )))
+                        if should_include {
+                            Some(CompletionItem {
+                                kind: Some(CompletionItemKind::KEYWORD),
+                                label: (*kw).to_string(),
+                                ..CompletionItem::default()
+                            })
+                        } else {
+                            None
+                        }
+                    }))
+                    .collect::<Vec<_>>(),
+            )))
+        })?
     }
 
     #[instrument]
@@ -990,39 +1003,37 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state()?;
-        let tree = state.parse(uri.clone());
-        let tree = match tree.as_ref() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-        let node = match tree.root_node().named_descendant_for_position(position) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
-        let source = state.source(uri.clone());
+        let location = self.with_state(|state| {
+            let tree = state.parse(uri.clone());
+            let tree = tree.as_ref()?;
+            let node = tree.root_node().named_descendant_for_position(position)?;
+            let source = state.source(uri.clone());
 
-        let location = match node.kind() {
-            "id" => state
-                .resolve(NodeLocation::from_node(uri, node))
-                .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
-            "file" => {
-                let text = node.utf8_text(source.as_bytes()).map_err(|e| {
-                    error!("could not get source text: {}", e);
-                    Error::internal_error()
-                })?;
+            match node.kind() {
+                "id" => state
+                    .resolve(NodeLocation::from_node(uri, node))
+                    .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
+                "file" => {
+                    let text = node
+                        .utf8_text(source.as_bytes())
+                        .map_err(|e| {
+                            error!("could not get source text: {}", e);
+                            Error::internal_error()
+                        })
+                        .ok()?;
 
-                let file = PathBuf::from(text);
-                load_to_file(
-                    &file,
-                    uri.as_ref(),
-                    state.files().as_ref(),
-                    state.prefixes().as_ref(),
-                )
-                .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
+                    let file = PathBuf::from(text);
+                    load_to_file(
+                        &file,
+                        uri.as_ref(),
+                        state.files().as_ref(),
+                        state.prefixes().as_ref(),
+                    )
+                    .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
+                }
+                _ => None,
             }
-            _ => None,
-        };
+        })?;
 
         Ok(location.map(GotoDefinitionResponse::Scalar))
     }
@@ -1032,111 +1043,113 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position_params.text_document.uri);
         let position = params.text_document_position_params.position;
 
-        let state = self.state()?;
-        let source = state.source(uri.clone());
-        let tree = match state.parse(uri.clone()) {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+        self.with_state(move |state| {
+            let source = state.source(uri.clone());
+            let tree = match state.parse(uri.clone()) {
+                Some(t) => t,
+                None => return Ok(None),
+            };
 
-        // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-        let line = match source.lines().nth(position.line as usize) {
-            Some(l) => l,
-            None => return Ok(None),
-        };
-        #[allow(clippy::cast_possible_truncation)]
-        let line = if (line.len() + 1) as u32 > position.character {
-            &line[..position.character as usize]
-        } else {
-            return Ok(None);
-        };
+            // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
+            let line = match source.lines().nth(position.line as usize) {
+                Some(l) => l,
+                None => return Ok(None),
+            };
+            #[allow(clippy::cast_possible_truncation)]
+            let line = if (line.len() + 1) as u32 > position.character {
+                &line[..position.character as usize]
+            } else {
+                return Ok(None);
+            };
 
-        // Search backward in the line for '('. The identifier before that could be a function name.
-        let node = match line
-            .chars()
-            .rev()
-            .enumerate()
-            .filter(|(_, c)| !char::is_whitespace(*c))
-            .skip_while(|(_, c)| c != &'(')
-            .nth(1)
-            .and_then(|(i, _)| {
-                #[allow(clippy::cast_possible_truncation)]
-                let character = (line.len() - i - 1) as u32;
-                tree.root_node().named_descendant_for_position(Position {
-                    character,
-                    ..position
-                })
-            }) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
+            // Search backward in the line for '('. The identifier before that could be a function name.
+            let node = match line
+                .chars()
+                .rev()
+                .enumerate()
+                .filter(|(_, c)| !char::is_whitespace(*c))
+                .skip_while(|(_, c)| c != &'(')
+                .nth(1)
+                .and_then(|(i, _)| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let character = (line.len() - i - 1) as u32;
+                    tree.root_node().named_descendant_for_position(Position {
+                        character,
+                        ..position
+                    })
+                }) {
+                Some(n) => n,
+                None => return Ok(None),
+            };
 
-        #[allow(clippy::cast_possible_truncation)]
-        let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
+            #[allow(clippy::cast_possible_truncation)]
+            let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
 
-        let id = match node.utf8_text(source.as_bytes()) {
-            Ok(id) => id,
-            Err(_) => return Ok(None),
-        };
+            let id = match node.utf8_text(source.as_bytes()) {
+                Ok(id) => id,
+                Err(_) => return Ok(None),
+            };
 
-        let f = match state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node)) {
-            Some(f) => f,
-            _ => return Ok(None),
-        };
+            let f = match state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node))
+            {
+                Some(f) => f,
+                _ => return Ok(None),
+            };
 
-        let signature = match &f.kind {
-            DeclKind::FuncDecl(s)
-            | DeclKind::FuncDef(s)
-            | DeclKind::EventDecl(s)
-            | DeclKind::EventDef(s)
-            | DeclKind::HookDecl(s)
-            | DeclKind::HookDef(s) => s,
-            _ => return Ok(None),
-        };
+            let signature = match &f.kind {
+                DeclKind::FuncDecl(s)
+                | DeclKind::FuncDef(s)
+                | DeclKind::EventDecl(s)
+                | DeclKind::EventDef(s)
+                | DeclKind::HookDecl(s)
+                | DeclKind::HookDef(s) => s,
+                _ => return Ok(None),
+            };
 
-        // Recompute `tree` and `source` in the context of the function declaration.
-        let tree = match state.parse(f.uri.clone()) {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-        let source = state.source(f.uri.clone());
+            // Recompute `tree` and `source` in the context of the function declaration.
+            let tree = match state.parse(f.uri.clone()) {
+                Some(t) => t,
+                None => return Ok(None),
+            };
+            let source = state.source(f.uri.clone());
 
-        let label = format!(
-            "{}({})",
-            f.id,
-            signature
-                .args
-                .iter()
-                .filter_map(|a| {
-                    tree.root_node()
-                        .named_descendant_for_point_range(a.selection_range)?
-                        .utf8_text(source.as_bytes())
-                        .ok()
-                })
-                .join(", ")
-        );
+            let label = format!(
+                "{}({})",
+                f.id,
+                signature
+                    .args
+                    .iter()
+                    .filter_map(|a| {
+                        tree.root_node()
+                            .named_descendant_for_point_range(a.selection_range)?
+                            .utf8_text(source.as_bytes())
+                            .ok()
+                    })
+                    .join(", ")
+            );
 
-        let parameters = Some(
-            signature
-                .args
-                .iter()
-                .map(|a| ParameterInformation {
-                    label: ParameterLabel::Simple(a.id.clone()),
+            let parameters = Some(
+                signature
+                    .args
+                    .iter()
+                    .map(|a| ParameterInformation {
+                        label: ParameterLabel::Simple(a.id.clone()),
+                        documentation: None,
+                    })
+                    .collect(),
+            );
+
+            Ok(Some(SignatureHelp {
+                signatures: vec![SignatureInformation {
+                    label,
                     documentation: None,
-                })
-                .collect(),
-        );
-
-        Ok(Some(SignatureHelp {
-            signatures: vec![SignatureInformation {
-                label,
-                documentation: None,
-                parameters,
+                    parameters,
+                    active_parameter,
+                }],
+                active_signature: None,
                 active_parameter,
-            }],
-            active_signature: None,
-            active_parameter,
-        }))
+            }))
+        })?
     }
 
     #[instrument]
@@ -1162,18 +1175,21 @@ impl LanguageServer for Backend {
             folds
         }
 
-        let tree = match self.state()?.parse(Arc::new(params.text_document.uri)) {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+        let tree = self.with_state(|state| state.parse(Arc::new(params.text_document.uri)))?;
 
-        Ok(Some(compute_folds(tree.root_node(), false)))
+        Ok(tree.map(|t| compute_folds(t.root_node(), false)))
     }
 
     #[instrument]
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
-        let source = self.state()?.source(uri);
+
+        let source = self.with_state(|state| Some(state.source(uri)))?;
+
+        let source = match source {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
         let num_lines = u32::try_from(source.lines().count()).expect("too many lines");
         let end = u32::try_from(source.lines().last().map_or(0, str::len)).expect("line too long");
@@ -1204,30 +1220,20 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state()?;
-        let tree = state.parse(uri.clone());
-        let tree = match tree.as_ref() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-        let node = match tree.root_node().named_descendant_for_position(position) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
+        let decl = self.with_state(|state| {
+            let tree = state.parse(uri.clone());
+            let tree = tree.as_ref()?;
+            let node = tree.root_node().named_descendant_for_position(position)?;
 
-        let decl = match state.resolve(NodeLocation::from_node(uri.clone(), node)) {
-            Some(d) => d,
-            None => return Ok(None),
-        };
+            let decl = state.resolve(NodeLocation::from_node(uri.clone(), node))?;
 
-        let decl = match &decl.kind {
-            // We are done as we have found a declaration.
-            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
-                decl.as_ref().clone()
-            }
-            // If we resolved to a definition, look for the declaration.
-            DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => {
-                match state
+            match &decl.kind {
+                // We are done as we have found a declaration.
+                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
+                    Some(decl.as_ref().clone())
+                }
+                // If we resolved to a definition, look for the declaration.
+                DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
                     .decls(uri.clone())
                     .iter()
                     .chain(state.implicit_decls().iter())
@@ -1239,18 +1245,14 @@ impl LanguageServer for Backend {
                         )
                     })
                     .find(|&d| d.id == decl.id)
-                {
-                    Some(d) => d.clone(),
-                    None => return Ok(None),
-                }
+                    .map(Clone::clone),
+                _ => None,
             }
-            _ => return Ok(None),
-        };
+        })?;
 
-        Ok(Some(GotoDeclarationResponse::Scalar(Location::new(
-            decl.uri.as_ref().clone(),
-            decl.range,
-        ))))
+        Ok(decl.map(|d| {
+            GotoDeclarationResponse::Scalar(Location::new(d.uri.as_ref().clone(), d.range))
+        }))
     }
 
     #[instrument]
@@ -1262,54 +1264,48 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state()?;
-        let tree = state.parse(uri.clone());
-        let tree = match tree.as_ref() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-        let node = match tree.root_node().named_descendant_for_position(position) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
+        let response = self.with_state(|state| {
+            let tree = state.parse(uri.clone());
+            let tree = tree.as_ref()?;
+            let node = tree.root_node().named_descendant_for_position(position)?;
 
-        let decl = match state.resolve(NodeLocation::from_node(uri, node)) {
-            Some(d) => d,
-            None => return Ok(None),
-        };
+            let decl = state.resolve(NodeLocation::from_node(uri, node))?;
 
-        match &decl.kind {
-            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {}
-            _ => return Ok(None),
-        }
+            match &decl.kind {
+                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {}
+                _ => return None,
+            }
 
-        Ok(Some(GotoImplementationResponse::from(
-            state
-                .files()
-                .iter()
-                .flat_map(|f| {
-                    state
-                        .decls(f.clone())
-                        .as_ref()
-                        .clone()
-                        .into_iter()
-                        .collect::<Vec<_>>()
-                })
-                .filter(|d| {
-                    matches!(
-                        &d.kind,
-                        DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
-                    )
-                })
-                .filter_map(|d| {
-                    if d.id == decl.id {
-                        Some(Location::new(d.uri.as_ref().clone(), d.range))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>(),
-        )))
+            Some(
+                state
+                    .files()
+                    .iter()
+                    .flat_map(|f| {
+                        state
+                            .decls(f.clone())
+                            .as_ref()
+                            .clone()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|d| {
+                        matches!(
+                            &d.kind,
+                            DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
+                        )
+                    })
+                    .filter_map(|d| {
+                        if d.id == decl.id {
+                            Some(Location::new(d.uri.as_ref().clone(), d.range))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })?;
+
+        Ok(response.map(GotoImplementationResponse::from))
     }
 }
 

@@ -38,7 +38,7 @@ use tower_lsp::{
     },
     Client, LanguageServer, LspService, Server,
 };
-use tracing::{error, instrument, warn};
+use tracing::{error, instrument, trace_span, warn};
 use walkdir::WalkDir;
 
 #[cfg(test)]
@@ -342,38 +342,42 @@ impl LanguageServer for Backend {
             Err(_) => return,
         };
 
-        for change in params.changes {
-            let uri = Arc::new(change.uri);
+        {
+            let span = trace_span!("updating");
+            let _enter = span.enter();
+            for change in params.changes {
+                let uri = Arc::new(change.uri);
 
-            #[allow(clippy::cast_possible_truncation)]
-            self.progress(progress_token.clone(), Some(uri.path().to_string()))
-                .await;
+                #[allow(clippy::cast_possible_truncation)]
+                self.progress(progress_token.clone(), Some(uri.path().to_string()))
+                    .await;
 
-            match change.typ {
-                FileChangeType::DELETED => {
-                    files.remove(uri.as_ref());
-                    continue;
+                match change.typ {
+                    FileChangeType::DELETED => {
+                        files.remove(uri.as_ref());
+                        continue;
+                    }
+                    FileChangeType::CREATED => {
+                        files.insert(uri.clone());
+                    }
+                    _ => {}
                 }
-                FileChangeType::CREATED => {
-                    files.insert(uri.clone());
-                }
-                _ => {}
+
+                // At this point we are working with CREATED or CHANGED events.
+
+                // TODO(bbannier): Parallelize file reading.
+                let source = match std::fs::read_to_string(uri.path()) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!("failed to read '{}': {}", &uri, e);
+                        continue;
+                    }
+                };
+
+                let _set_source = self.with_state_mut(move |state| {
+                    state.set_source(uri.clone(), Arc::new(source));
+                });
             }
-
-            // At this point we are working with CREATED or CHANGED events.
-
-            // TODO(bbannier): Parallelize file reading.
-            let source = match std::fs::read_to_string(uri.path()) {
-                Ok(s) => s,
-                Err(e) => {
-                    warn!("failed to read '{}': {}", &uri, e);
-                    continue;
-                }
-            };
-
-            let _set_source = self.with_state_mut(move |state| {
-                state.set_source(uri.clone(), Arc::new(source));
-            });
         }
 
         let files = Arc::new(files);
@@ -392,6 +396,9 @@ impl LanguageServer for Backend {
             .await;
 
         if let Ok(preloaded_decls) = self.with_state(|state| {
+            let span = trace_span!("preloading");
+            let _enter = span.enter();
+
             files
                 .iter()
                 .map(|f| {

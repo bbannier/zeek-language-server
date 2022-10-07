@@ -358,7 +358,7 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
                 Err(_) => continue,
             };
 
-            if !path.ends_with(&essential_input) {
+            if !path.ends_with(essential_input) {
                 continue;
             }
 

@@ -261,6 +261,13 @@ async function checkDependencies(): Promise<void> {
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
+  // Do not attempt to start server on unsupported platforms.
+  const platform = process.platform;
+  if (!PLATFORMS[platform]) {
+    log.info(`IntelliSense is unsupported on platform ${platform}`);
+    return;
+  }
+
   // Register commands.
   context.subscriptions.push(commands.registerCommand("zeek.tryZeek", tryZeek));
 

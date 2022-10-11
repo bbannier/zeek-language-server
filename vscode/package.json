@@ -9,7 +9,8 @@
   "preview": true,
   "private": true,
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Snippets"
   ],
   "keywords": [
     "language server",

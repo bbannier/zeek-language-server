@@ -6,8 +6,7 @@ Microsoft Visual Studio Code language extension for Zeek (Bro) Script.
 
 - [x] IntelliSense (requires
       [zeek-language-server](https://github.com/bbannier/zeek-language-server))
-- [x] Formatting (requires
-      [zeek-format](https://github.com/bbannier/zeek-language-server))
+- [x] Formatting (requires [zeek-format](https://github.com/zeek/zeekscript))
 - [x] Syntax Highlighting
 - [x] Snippets
 - [x] Command to publish open file to <https://try.zeek.org>

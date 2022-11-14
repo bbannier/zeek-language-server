@@ -18,9 +18,10 @@ struct Args {
 
 #[cfg(feature = "telemetry")]
 fn init_logging(args: &Args) -> Result<()> {
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_collector_endpoint(&args.collector_endpoint)
+    let tracer = opentelemetry_jaeger::new_collector_pipeline()
+        .with_endpoint(&args.collector_endpoint)
         .with_service_name(env!("CARGO_BIN_NAME"))
+        .with_reqwest()
         .install_batch(opentelemetry::runtime::Tokio)?;
 
     tracing_subscriber::registry()

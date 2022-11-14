@@ -67,7 +67,7 @@ class ZeekLanguageServer {
     const defaultPath = Uri.joinPath(
       this.context.globalStorageUri,
       "server",
-      "zeek-language-server"
+      "zeek-language-server",
     ).fsPath;
     needCheckingPaths.push(defaultPath);
 
@@ -115,7 +115,7 @@ class ZeekLanguageServer {
     log.info(`Downloading ${url} to ${dest}`);
     const tempDest = path.join(
       path.dirname(dest),
-      `.tmp${crypto.randomBytes(5).toString("hex")}`
+      `.tmp${crypto.randomBytes(5).toString("hex")}`,
     );
 
     if (await exists(dest)) await fs.promises.rm(dest);
@@ -146,7 +146,7 @@ class ZeekLanguageServer {
         cancellationHandle.onCancellationRequested(stream.destroy.bind(stream));
 
         await pipeline(stream, fs.createWriteStream(tempDest, { mode: 0o755 }));
-      }
+      },
     );
 
     await fs.promises.rename(tempDest, dest);
@@ -244,7 +244,7 @@ async function checkDependencies(): Promise<void> {
       const selected = await window.showInformationMessage(
         "Formatting support not available",
         installZeekFormat,
-        doNotCheck
+        doNotCheck,
       );
       if (selected == installZeekFormat)
         env.openExternal(Uri.parse("https://github.com/zeek/zeekscript"));
@@ -254,7 +254,7 @@ async function checkDependencies(): Promise<void> {
           .update(
             "zeekLanguageServer.checkZeekFormat",
             false,
-            ConfigurationTarget.Global
+            ConfigurationTarget.Global,
           );
     }
   }
@@ -302,7 +302,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     "zeek-language-server",
     "Zeek Language Server",
     serverOptions,
-    clientOptions
+    clientOptions,
   );
 
   log.info("Starting Zeek Language Server...");

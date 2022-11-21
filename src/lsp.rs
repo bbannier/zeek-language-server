@@ -256,7 +256,7 @@ impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         // Check prerequistes.
-        if let Err(e) = zeek::prefixes().await {
+        if let Err(e) = zeek::prefixes(None).await {
             self.warn_message(format!(
                 "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
             ))
@@ -274,7 +274,7 @@ impl LanguageServer for Backend {
         })?;
 
         // Set system prefixes.
-        match zeek::prefixes().await {
+        match zeek::prefixes(None).await {
             Ok(prefixes) => {
                 self.with_state_mut(move |state| {
                     state.set_prefixes(Arc::new(prefixes));

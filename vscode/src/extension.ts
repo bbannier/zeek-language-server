@@ -280,12 +280,26 @@ export async function activate(context: ExtensionContext): Promise<void> {
     command: await server.getPath(),
   };
 
-  const env = {
-    PATH: workspace
-      .getConfiguration("zeekLanguageServer")
-      .get<string>("zeekBinaryDirectory"),
-  };
-  if (env.PATH) {
+  const env = {};
+  const configuration = workspace.getConfiguration("zeekLanguageServer");
+
+  const cfg_path = configuration.get<string>("zeekBinaryDirectory");
+  const path = process.env["PATH"];
+  if (cfg_path) {
+    env["PATH"] = `${cfg_path}:${path}`;
+  } else {
+    env["PATH"] = path;
+  }
+
+  const zeekpath = configuration.get<string>("ZEEKPATH");
+  if (zeekpath) {
+    env["ZEEKPATH"] = zeekpath;
+  } else {
+    env["ZEEKPATH"] = process.env["ZEEKPATH"];
+  }
+
+  if (Object.keys(env).length > 0) {
+    log.info(env);
     serverExecutable.options = { env };
   }
 

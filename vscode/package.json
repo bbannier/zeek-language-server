@@ -64,6 +64,11 @@
           "type": "boolean",
           "default": true,
           "description": "Check for zeek-format on startup"
+        },
+        "zeekLanguageServer.ZEEKPATH": {
+          "type": "string",
+          "default": "",
+          "description": "Colon-separated list of alternative Zeek prefixes to use. By default prefixes are determined from the output of zeek-config."
         }
       }
     },

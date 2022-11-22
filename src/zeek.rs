@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Stdio,
@@ -73,7 +74,19 @@ pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
         ]
     };
 
-    Ok(xs)
+    // Minimize the list of prefixes so each prefix is seen at most once. Order still matters.
+    let mut ys = Vec::new();
+    let mut seen = BTreeSet::new();
+    for x in xs {
+        if seen.contains(&x) {
+            continue;
+        }
+
+        seen.insert(x.clone());
+        ys.push(x);
+    }
+
+    Ok(ys)
 }
 
 #[derive(Debug)]
@@ -275,6 +288,15 @@ mod test {
         assert_eq!(
             zeek::prefixes(Some(".".into())).await.unwrap(),
             vec![std::env::current_dir().unwrap()]
+        );
+
+        assert_eq!(
+            zeek::prefixes(Some("/A:/B:/A:/C".into())).await.unwrap(),
+            vec![
+                PathBuf::from("/A"),
+                PathBuf::from("/B"),
+                PathBuf::from("/C")
+            ]
         );
     }
 }

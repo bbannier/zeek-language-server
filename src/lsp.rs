@@ -440,6 +440,10 @@ impl LanguageServer for Backend {
             }
         });
 
+        // Reload implicit declarations since their result depends on the list of known files and
+        // is on the critical path for e.g., completion.
+        let _implicit = self.with_state(|s| s.implicit_decls());
+
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
         }

@@ -1,0 +1,49 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_node(uri, node))"
+---
+Some(
+    Decl {
+        module: String(
+            "x",
+        ),
+        id: "y",
+        fqid: "x::y",
+        kind: Global,
+        is_export: Some(
+            true,
+        ),
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 16,
+            },
+            end: Position {
+                line: 3,
+                character: 28,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 23,
+            },
+            end: Position {
+                line: 3,
+                character: 24,
+            },
+        },
+        documentation: "```zeek\nglobal y: X;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

@@ -12,6 +12,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+use tokio::sync::RwLock;
 use tower_lsp::{
     jsonrpc::{Error, Result},
     lsp_types::{
@@ -20,21 +21,21 @@ use tower_lsp::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
             WorkDoneProgressCreate,
         },
-        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-        CompletionResponse, DeclarationCapability, Diagnostic, DiagnosticSeverity,
-        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams,
-        DocumentSymbolResponse, Documentation, FileChangeType, FileEvent, FoldingRange,
-        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        Location, MarkedString, MarkupContent, MessageType, OneOf, ParameterInformation,
-        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
-        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
-        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-        TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress, WorkDoneProgressBegin,
-        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
-        WorkspaceSymbolParams,
+        ClientCapabilities, CompletionItem, CompletionItemKind, CompletionOptions,
+        CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
+        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+        FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString,
+        MarkupContent, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server,
 };
@@ -81,6 +82,7 @@ impl Debug for Database {
 #[derive(Debug)]
 struct Backend {
     client: Option<Client>,
+    client_capabilities: RwLock<Option<ClientCapabilities>>,
     state: Mutex<Database>,
 }
 
@@ -255,6 +257,9 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let mut caps = self.client_capabilities.write().await;
+        *caps = Some(params.capabilities);
+
         // Check prerequistes.
         if let Err(e) = zeek::prefixes().await {
             self.warn_message(format!(
@@ -1368,6 +1373,7 @@ pub async fn run() {
 
     let (service, socket) = LspService::new(|client| Backend {
         client: Some(client),
+        client_capabilities: RwLock::new(None),
         state: Mutex::default(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
@@ -1383,6 +1389,7 @@ pub(crate) mod test {
 
     use insta::assert_debug_snapshot;
     use salsa::{ParallelDatabase, Snapshot};
+    use tokio::sync::RwLock;
     use tower_lsp::{
         lsp_types::{
             CompletionParams, CompletionResponse, FormattingOptions, HoverParams,
@@ -1435,6 +1442,7 @@ pub(crate) mod test {
         Backend {
             client: None,
             state: Mutex::new(database.0),
+            client_capabilities: RwLock::new(None),
         }
     }
 

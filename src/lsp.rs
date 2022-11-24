@@ -334,57 +334,46 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        let progress_token = self.progress_begin("Indexing").await.ok();
+        let _update_files = self.with_state_mut(|s| {
+            // Create new list of files and update individual sources.
+            let mut files = s.files().as_ref().clone();
 
-        // Create new list of files and update individual sources.
-        let mut files = match self.with_state(|s| s.files().as_ref().clone()) {
-            Ok(xs) => xs,
-            Err(_) => return,
-        };
+            {
+                let span = trace_span!("updating");
+                let _enter = span.enter();
+                for change in params.changes {
+                    let uri = Arc::new(change.uri);
 
-        {
-            let span = trace_span!("updating");
-            let _enter = span.enter();
-            for change in params.changes {
-                let uri = Arc::new(change.uri);
-
-                #[allow(clippy::cast_possible_truncation)]
-                self.progress(progress_token.clone(), Some(uri.path().to_string()))
-                    .await;
-
-                match change.typ {
-                    FileChangeType::DELETED => {
-                        files.remove(uri.as_ref());
-                        continue;
+                    match change.typ {
+                        FileChangeType::DELETED => {
+                            files.remove(uri.as_ref());
+                            continue;
+                        }
+                        FileChangeType::CREATED => {
+                            files.insert(uri.clone());
+                        }
+                        _ => {}
                     }
-                    FileChangeType::CREATED => {
-                        files.insert(uri.clone());
-                    }
-                    _ => {}
+
+                    // At this point we are working with CREATED or CHANGED events.
+
+                    // TODO(bbannier): Parallelize file reading.
+                    let source = match std::fs::read_to_string(uri.path()) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            warn!("failed to read '{}': {}", &uri, e);
+                            continue;
+                        }
+                    };
+
+                    s.set_source(uri.clone(), Arc::new(source));
                 }
-
-                // At this point we are working with CREATED or CHANGED events.
-
-                // TODO(bbannier): Parallelize file reading.
-                let source = match std::fs::read_to_string(uri.path()) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        warn!("failed to read '{}': {}", &uri, e);
-                        continue;
-                    }
-                };
-
-                let _set_source = self.with_state_mut(move |state| {
-                    state.set_source(uri.clone(), Arc::new(source));
-                });
             }
-        }
 
-        let files = Arc::new(files);
+            let files = Arc::new(files);
 
-        // Commit new file list.
-        let _set_files = self.with_state_mut(|state| {
-            state.set_files(files.clone());
+            // Commit new file list.
+            s.set_files(files);
         });
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -392,8 +381,15 @@ impl LanguageServer for Backend {
         // completions right after server startup.
         //
         // We explicitly precompute per-file information here so we can parallelize this work.
+
+        let progress_token = self.progress_begin("Indexing").await.ok();
+
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
+        let files = match self.with_state(|s| s.files().as_ref().clone()) {
+            Ok(xs) => xs,
+            Err(_) => return,
+        };
 
         if let Ok(preloaded_decls) = self.with_state(|state| {
             let span = trace_span!("preloading");

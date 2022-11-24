@@ -35,6 +35,9 @@ pub trait Ast: Files + Parse + Query {
     fn explicit_decls_recursive(&self, url: Arc<Url>) -> Arc<BTreeSet<Decl>>;
 
     #[must_use]
+    fn implicit_loads(&self) -> Arc<Vec<Arc<Url>>>;
+
+    #[must_use]
     fn implicit_decls(&self) -> Arc<Vec<Decl>>;
 
     #[must_use]
@@ -345,8 +348,8 @@ fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> 
 }
 
 #[instrument(skip(db))]
-fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
-    let mut decls = HashSet::new();
+fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
+    let mut loads = Vec::new();
 
     // These loops looks horrible, but is okay since this function will be cached most of the time
     // (unless global state changes).
@@ -377,8 +380,19 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
             continue;
         };
 
+        loads.push(implicit_load);
+    }
+
+    Arc::new(loads)
+}
+
+#[instrument(skip(db))]
+fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
+    let mut decls = HashSet::new();
+
+    for implicit_load in db.implicit_loads().as_ref() {
         decls.extend(
-            db.explicit_decls_recursive(implicit_load)
+            db.explicit_decls_recursive(implicit_load.clone())
                 .as_ref()
                 .iter()
                 .cloned(),

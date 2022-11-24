@@ -19,8 +19,9 @@ platforms if none is found in the system. If no binaries are provided for your
 platform you can try to [build the language server
 yourself](https://github.com/bbannier/zeek-language-server#building-from-source).
 
-For IntelliSense a [Zeek](https://zeek.org) installation is required, and
-`zeek-config` needs to be in `PATH`.
+For IntelliSense a [Zeek](https://zeek.org) installation is required;
+`zeek-config` should to be in `PATH`, or alternatively set `ZEEKPATH` to the
+prefixes containing the system Zeek scripts.
 
 Formatting requires [`zeek-format`](https://github.com/zeek/zeekscript)
 somewhere in `PATH`.

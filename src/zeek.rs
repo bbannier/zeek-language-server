@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Stdio,
@@ -6,6 +7,7 @@ use std::{
 };
 
 use eyre::{eyre, Result};
+use path_clean::PathClean;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use walkdir::WalkDir;
 
@@ -47,15 +49,44 @@ async fn dir(dir: ZeekDir) -> Result<PathBuf> {
 
 /// Get all prefixes understood by Zeek.
 ///
+/// # Arguments
+///
+/// * `zeekpath` - value of `ZEEKPATH` to use; if unset read from the environment
+///
 /// # Errors
 ///
 /// Will return `Err` if Zeek cannot be queried.
-pub async fn prefixes() -> Result<Vec<PathBuf>> {
-    Ok(vec![
-        dir(ZeekDir::Script).await?,
-        dir(ZeekDir::Plugin).await?,
-        dir(ZeekDir::Site).await?,
-    ])
+pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
+    let zeekpath = zeekpath.or_else(|| std::env::var("ZEEKPATH").ok());
+    let xs = if let Some(path) = zeekpath {
+        let cwd = std::env::current_dir()?;
+        path.split(':')
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .map(|p| if p.is_absolute() { p } else { cwd.join(p) })
+            .map(|p| p.clean())
+            .collect::<Vec<_>>()
+    } else {
+        vec![
+            dir(ZeekDir::Script).await?,
+            dir(ZeekDir::Plugin).await?,
+            dir(ZeekDir::Site).await?,
+        ]
+    };
+
+    // Minimize the list of prefixes so each prefix is seen at most once. Order still matters.
+    let mut ys = Vec::new();
+    let mut seen = BTreeSet::new();
+    for x in xs {
+        if seen.contains(&x) {
+            continue;
+        }
+
+        seen.insert(x.clone());
+        ys.push(x);
+    }
+
+    Ok(ys)
 }
 
 #[derive(Debug)]
@@ -115,7 +146,7 @@ impl SystemFile {
 }
 
 pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
-    Ok(prefixes()
+    Ok(prefixes(None)
         .await?
         .into_iter()
         .flat_map(|dir| {
@@ -184,7 +215,7 @@ include!(concat!(env!("OUT_DIR"), "/keywords.rs"));
 #[cfg(test)]
 mod test {
     use crate::zeek;
-    use std::io::Write;
+    use std::{io::Write, path::PathBuf};
 
     #[tokio::test]
     async fn script_dir() {
@@ -228,6 +259,44 @@ mod test {
                 .await
                 .unwrap(),
             String::from("global foo: event(c: count, s: string);\n")
+        );
+    }
+
+    #[tokio::test]
+    async fn prefixes_from_env() {
+        assert!(zeek::prefixes(Some("".into())).await.unwrap().is_empty());
+
+        assert!(zeek::prefixes(Some(":".into())).await.unwrap().is_empty());
+
+        assert!(zeek::prefixes(Some("::".into())).await.unwrap().is_empty());
+
+        assert_eq!(
+            zeek::prefixes(Some("/A".into())).await.unwrap(),
+            vec![PathBuf::from("/A")]
+        );
+
+        assert_eq!(
+            zeek::prefixes(Some("/A:/B".into())).await.unwrap(),
+            vec![PathBuf::from("/A"), PathBuf::from("/B")]
+        );
+
+        assert_eq!(
+            zeek::prefixes(Some("/A::/B".into())).await.unwrap(),
+            vec![PathBuf::from("/A"), PathBuf::from("/B")]
+        );
+
+        assert_eq!(
+            zeek::prefixes(Some(".".into())).await.unwrap(),
+            vec![std::env::current_dir().unwrap()]
+        );
+
+        assert_eq!(
+            zeek::prefixes(Some("/A:/B:/A:/C".into())).await.unwrap(),
+            vec![
+                PathBuf::from("/A"),
+                PathBuf::from("/B"),
+                PathBuf::from("/C")
+            ]
         );
     }
 }

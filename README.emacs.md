@@ -58,7 +58,8 @@ them to your `.emacs`, preferably near the top:
 ## Setup
 
 1. If needed, add the path to `zeek-config` to your environment's `PATH`
-   variable.
+   variable. Alternatively, set `ZEEKPATH` to the prefixes containing the
+   system Zeek scripts.
 2. Add a hook to `lsp-mode` for zeek files and register the language server.
 
    ```elisp

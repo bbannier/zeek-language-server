@@ -25,6 +25,7 @@ futures = "0.3.25"
 itertools = "0.10.5"
 opentelemetry = { version = "0.18.0", features = ["trace", "rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.17.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
+path-clean = "0.1.0"
 pyroscope = { version = "0.5.3", optional = true }
 regex = "1.7.0"
 rust-fuzzy-search = "0.1.1"

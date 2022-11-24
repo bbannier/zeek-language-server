@@ -256,7 +256,7 @@ impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         // Check prerequistes.
-        if let Err(e) = zeek::prefixes().await {
+        if let Err(e) = zeek::prefixes(None).await {
             self.warn_message(format!(
                 "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
             ))
@@ -274,7 +274,7 @@ impl LanguageServer for Backend {
         })?;
 
         // Set system prefixes.
-        match zeek::prefixes().await {
+        match zeek::prefixes(None).await {
             Ok(prefixes) => {
                 self.with_state_mut(move |state| {
                     state.set_prefixes(Arc::new(prefixes));
@@ -439,6 +439,10 @@ impl LanguageServer for Backend {
                 state.set_files(Arc::new(files.clone()));
             }
         });
+
+        // Reload implicit declarations since their result depends on the list of known files and
+        // is on the critical path for e.g., completion.
+        let _implicit = self.with_state(|s| s.implicit_decls());
 
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");

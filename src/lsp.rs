@@ -12,6 +12,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+use tokio::sync::RwLock;
 use tower_lsp::{
     jsonrpc::{Error, Result},
     lsp_types::{
@@ -20,21 +21,21 @@ use tower_lsp::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
             WorkDoneProgressCreate,
         },
-        CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-        CompletionResponse, DeclarationCapability, Diagnostic, DiagnosticSeverity,
-        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams,
-        DocumentSymbolResponse, Documentation, FileChangeType, FileEvent, FoldingRange,
-        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        Location, MarkedString, MarkupContent, MessageType, OneOf, ParameterInformation,
-        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
-        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
-        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-        TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress, WorkDoneProgressBegin,
-        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
-        WorkspaceSymbolParams,
+        ClientCapabilities, CompletionItem, CompletionItemKind, CompletionOptions,
+        CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
+        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+        FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString,
+        MarkupContent, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     Client, LanguageServer, LspService, Server,
 };
@@ -81,6 +82,7 @@ impl Debug for Database {
 #[derive(Debug)]
 struct Backend {
     client: Option<Client>,
+    client_capabilities: RwLock<Option<ClientCapabilities>>,
     state: Mutex<Database>,
 }
 
@@ -115,10 +117,25 @@ impl Backend {
         Ok(f(&mut db))
     }
 
-    async fn progress_begin<T>(&self, title: T) -> Result<ProgressToken>
+    async fn progress_begin<T>(&self, title: T) -> Option<ProgressToken>
     where
         T: Into<String> + std::fmt::Display,
     {
+        {
+            // Short circuit progress report if client doesn't support it.
+            if !self
+                .client_capabilities
+                .read()
+                .await
+                .as_ref()
+                .and_then(|c| c.window.as_ref())
+                .and_then(|w| w.work_done_progress)
+                .unwrap_or(false)
+            {
+                return None;
+            }
+        }
+
         let token = ProgressToken::String(format!("zeek-language-server/{}", &title));
 
         if let Some(client) = &self.client {
@@ -126,7 +143,8 @@ impl Backend {
                 .send_request::<WorkDoneProgressCreate>(WorkDoneProgressCreateParams {
                     token: token.clone(),
                 })
-                .await?;
+                .await
+                .ok()?;
 
             let params = ProgressParams {
                 token: token.clone(),
@@ -140,7 +158,7 @@ impl Backend {
             client.send_notification::<Progress>(params).await;
         }
 
-        Ok(token)
+        Some(token)
     }
 
     async fn progress_end(&self, token: Option<ProgressToken>) {
@@ -255,6 +273,12 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        // Update stored capabilities.
+        {
+            let mut caps = self.client_capabilities.write().await;
+            *caps = Some(params.capabilities);
+        }
+
         // Check prerequistes.
         if let Err(e) = zeek::prefixes(None).await {
             self.warn_message(format!(
@@ -382,7 +406,7 @@ impl LanguageServer for Backend {
         //
         // We explicitly precompute per-file information here so we can parallelize this work.
 
-        let progress_token = self.progress_begin("Indexing").await.ok();
+        let progress_token = self.progress_begin("Indexing").await;
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
@@ -1368,6 +1392,7 @@ pub async fn run() {
 
     let (service, socket) = LspService::new(|client| Backend {
         client: Some(client),
+        client_capabilities: RwLock::new(None),
         state: Mutex::default(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
@@ -1383,6 +1408,7 @@ pub(crate) mod test {
 
     use insta::assert_debug_snapshot;
     use salsa::{ParallelDatabase, Snapshot};
+    use tokio::sync::RwLock;
     use tower_lsp::{
         lsp_types::{
             CompletionParams, CompletionResponse, FormattingOptions, HoverParams,
@@ -1435,6 +1461,7 @@ pub(crate) mod test {
         Backend {
             client: None,
             state: Mutex::new(database.0),
+            client_capabilities: RwLock::new(None),
         }
     }
 

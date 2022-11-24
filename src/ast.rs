@@ -284,8 +284,28 @@ fn resolve(db: &dyn Ast, node: NodeLocation) -> Option<Arc<Decl>> {
 
     // Try to find a decl with name of the given node up the tree.
     let id = node.utf8_text(source.as_bytes()).ok()?.to_string();
+    let location = NodeLocation::from_node(uri, node);
 
-    db.resolve_id(Arc::new(id), NodeLocation::from_node(uri, node))
+    if let Some(r) = db.resolve_id(Arc::new(id.clone()), location.clone()) {
+        return Some(r);
+    }
+
+    // If we arrive here and the identifier does not contain `::` it could also refer to a
+    // declaration in the same module, but defined in a different file. Try to find it by
+    // searching for it by its fully-qualified name.
+    if !id.contains("::") {
+        if let Some(module) = tree
+            .root_node()
+            .named_child("module_decl")
+            .and_then(|d| d.named_child("id"))
+            .and_then(|id| id.utf8_text(source.as_bytes()).ok())
+        {
+            if let Some(r) = db.resolve_id(Arc::new(format!("{module}::{id}")), location) {
+                return Some(r);
+            }
+        }
+    }
+    None
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -738,6 +758,39 @@ x::x;",
             .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
+    }
+
+    #[test]
+    fn resolve_same_module_elsewhere() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+
+        db.add_file(
+            Arc::new(Url::from_file_path("/x.zeek").unwrap()),
+            "module x;
+            export {
+                type X: record { f: count &optional; };
+                global y: X;
+            }",
+        );
+
+        db.add_file(
+            uri.clone(),
+            "module x;
+@load ./x
+y;",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+
+        let node = tree.root_node();
+        let node = node
+            .named_descendant_for_position(Position::new(2, 0))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("y"));
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
     }
 

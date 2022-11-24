@@ -117,10 +117,25 @@ impl Backend {
         Ok(f(&mut db))
     }
 
-    async fn progress_begin<T>(&self, title: T) -> Result<ProgressToken>
+    async fn progress_begin<T>(&self, title: T) -> Option<ProgressToken>
     where
         T: Into<String> + std::fmt::Display,
     {
+        {
+            // Short circuit progress report if client doesn't support it.
+            if !self
+                .client_capabilities
+                .read()
+                .await
+                .as_ref()
+                .and_then(|c| c.window.as_ref())
+                .and_then(|w| w.work_done_progress)
+                .unwrap_or(false)
+            {
+                return None;
+            }
+        }
+
         let token = ProgressToken::String(format!("zeek-language-server/{}", &title));
 
         if let Some(client) = &self.client {
@@ -128,7 +143,8 @@ impl Backend {
                 .send_request::<WorkDoneProgressCreate>(WorkDoneProgressCreateParams {
                     token: token.clone(),
                 })
-                .await?;
+                .await
+                .ok()?;
 
             let params = ProgressParams {
                 token: token.clone(),
@@ -142,7 +158,7 @@ impl Backend {
             client.send_notification::<Progress>(params).await;
         }
 
-        Ok(token)
+        Some(token)
     }
 
     async fn progress_end(&self, token: Option<ProgressToken>) {
@@ -257,8 +273,11 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        let mut caps = self.client_capabilities.write().await;
-        *caps = Some(params.capabilities);
+        // Update stored capabilities.
+        {
+            let mut caps = self.client_capabilities.write().await;
+            *caps = Some(params.capabilities);
+        }
 
         // Check prerequistes.
         if let Err(e) = zeek::prefixes().await {
@@ -339,7 +358,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        let progress_token = self.progress_begin("Indexing").await.ok();
+        let progress_token = self.progress_begin("Indexing").await;
 
         // Create new list of files and update individual sources.
         let mut files = match self.with_state(|s| s.files().as_ref().clone()) {

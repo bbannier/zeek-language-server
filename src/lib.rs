@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{ClientCapabilities, Url};
 
 pub mod ast;
 pub mod lsp;
@@ -12,4 +12,10 @@ pub mod zeek;
 pub trait Files: salsa::Database {
     #[salsa::input]
     fn source(&self, uri: Arc<Url>) -> Arc<String>;
+}
+
+#[salsa::query_group(ClientStorage)]
+pub trait Client: salsa::Database {
+    #[salsa::input]
+    fn capabilities(&self) -> Arc<ClientCapabilities>;
 }

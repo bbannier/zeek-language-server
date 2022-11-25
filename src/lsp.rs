@@ -832,12 +832,23 @@ impl LanguageServer for Backend {
                 .map(str::trim);
 
             // If we are completing after `$` try to return all fields for client-side filtering.
-            // TODO(bbannier): if `$` wasn't a trigger char, also check the input text.
             // TODO(bbannier): we should also handle `$` in record initializations.
             if params
                 .context
                 .and_then(|ctx| ctx.trigger_character)
-                .map_or(false, |c| c == "$")
+                .map_or_else(
+                    // If the client didn't send a trigger character instead look for a trigger in
+                    // the next node (next since above we explicitly ignore nodes with `$`).
+                    || {
+                        root.descendant_for_position(Position {
+                            character: node.range().end.character,
+                            line: node.range().end.line,
+                        })
+                        .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
+                        .map_or(false, |text| text == "$")
+                    },
+                    |c| c == "$",
+                )
             {
                 if let Some(r) = state.resolve(NodeLocation::from_node(uri.clone(), node)) {
                     let decl = state.typ(r);
@@ -1402,9 +1413,9 @@ pub(crate) mod test {
     use salsa::{ParallelDatabase, Snapshot};
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, FormattingOptions, HoverParams,
-            PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-            WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
+            FormattingOptions, HoverParams, PartialResultParams, Position, TextDocumentIdentifier,
+            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -1545,6 +1556,53 @@ pub(crate) mod test {
         };
 
         assert_debug_snapshot!(result);
+    }
+
+    #[tokio::test]
+    async fn completion_field() {
+        let mut db = TestDatabase::new();
+
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "type X: record { abc: count; };
+            global foo: X;
+            foo$
+            ",
+        );
+
+        let server = serve(db);
+
+        let params = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                position: Position::new(2, 16),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        };
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    context: None,
+                    ..params.clone()
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    context: Some(CompletionContext {
+                        trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+                        trigger_character: Some("$".into()),
+                    },),
+                    ..params
+                })
+                .await
+        );
     }
 
     #[tokio::test]

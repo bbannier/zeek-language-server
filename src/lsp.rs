@@ -836,20 +836,28 @@ impl LanguageServer for Backend {
             if params
                 .context
                 .and_then(|ctx| ctx.trigger_character)
-                .map_or_else(
-                    // If the client didn't send a trigger character instead look for a trigger in
-                    // the next node (next since above we explicitly ignore nodes with `$`).
-                    || {
-                        root.descendant_for_position(Position {
-                            character: node.range().end.character,
-                            line: node.range().end.line,
-                        })
-                        .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
-                        .map_or(false, |text| text == "$")
-                    },
-                    |c| c == "$",
-                )
+                .map_or(false, |c| c == "$")
+                || root
+                    .descendant_for_position(Position::new(
+                        node.range().end.line,
+                        node.range().end.character,
+                    ))
+                    .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
+                    .map_or(false, |text| text == "$")
+                || node.parent().map_or(false, |p| p.kind() == "field_access")
             {
+                // If we are completing with something after the `$` (e.g., `foo$a`), instead
+                // obtain the stem (`foo`) for resolving and then filter any possible fields with
+                // the given text (`a`).
+                let stem = node
+                    .parent()
+                    .filter(|p| p.kind() == "field_access")
+                    .and_then(|p| p.named_child("expr"));
+                let preselection = stem.and_then(|_| node.utf8_text(source.as_bytes()).ok());
+
+                // If we have a stem, perform any resolving with it; else use the original node.
+                let node = stem.unwrap_or(node);
+
                 if let Some(r) = state.resolve(NodeLocation::from_node(uri.clone(), node)) {
                     let decl = state.typ(r);
 
@@ -859,6 +867,10 @@ impl LanguageServer for Backend {
                             return Ok(Some(CompletionResponse::from(
                                 fields
                                     .iter()
+                                    .filter(|decl| {
+                                        // If we have a preselection, narrow down fields to report.
+                                        preselection.map_or(true, |pre| decl.id.starts_with(pre))
+                                    })
                                     .map(to_completion_item)
                                     .filter_map(|item| {
                                         // By default we use FQIDs for completion labels. Since for
@@ -1600,6 +1612,43 @@ pub(crate) mod test {
                         trigger_character: Some("$".into()),
                     },),
                     ..params
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn completion_field_partial() {
+        let mut db = TestDatabase::new();
+
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "type X: record { abc: count; };
+            global foo: X;
+            foo$a
+            ",
+        );
+
+        let server = serve(db);
+
+        // Completion on partial field name.
+        let position = Position::new(2, 17);
+        let params = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        };
+
+        assert_debug_snapshot!(
+            server
+                .completion(CompletionParams {
+                    context: None,
+                    ..params.clone()
                 })
                 .await
         );

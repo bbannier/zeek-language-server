@@ -1,6 +1,6 @@
 ---
-source: src/lsp.rs
-expression: "server.completion(CompletionParams{text_document_position:\n                                       TextDocumentPositionParams{text_document:\n                                                                      TextDocumentIdentifier::new(uri.as_ref().clone()),\n                                                                  position:\n                                                                      Position::new(7,\n                                                                                    6),},\n                                   work_done_progress_params:\n                                       WorkDoneProgressParams::default(),\n                                   partial_result_params:\n                                       PartialResultParams::default(),\n                                   context: None,}).await"
+source: src/complete.rs
+expression: "server.completion(CompletionParams {\n            text_document_position: TextDocumentPositionParams {\n                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n                position: Position::new(7, 6),\n            },\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n            context: None,\n        }).await"
 ---
 Ok(
     Some(

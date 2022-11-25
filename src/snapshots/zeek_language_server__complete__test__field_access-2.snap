@@ -1,5 +1,5 @@
 ---
-source: src/lsp.rs
+source: src/complete.rs
 expression: "server.completion(CompletionParams {\n            context: Some(CompletionContext {\n                    trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,\n                    trigger_character: Some(\"$\".into()),\n                }),\n            ..params\n        }).await"
 ---
 Ok(

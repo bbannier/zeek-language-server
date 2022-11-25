@@ -1,5 +1,5 @@
 ---
-source: src/lsp.rs
+source: src/complete.rs
 expression: "server.completion(CompletionParams { context: None, ..params.clone() }).await"
 ---
 Ok(

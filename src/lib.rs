@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::{ClientCapabilities, Url};
 
 pub mod ast;
+pub mod complete;
 pub mod lsp;
 pub mod parse;
 pub mod query;

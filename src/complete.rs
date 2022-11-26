@@ -316,19 +316,16 @@ mod test {
     use std::sync::Arc;
 
     use insta::assert_debug_snapshot;
-    use tower_lsp::{
-        lsp_types::{
-            CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
-            PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-            WorkDoneProgressParams,
-        },
-        LanguageServer,
+    use tower_lsp::lsp_types::{
+        CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
+        PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+        WorkDoneProgressParams,
     };
 
-    use crate::lsp::test::{serve, TestDatabase};
+    use crate::{complete::complete, lsp::test::TestDatabase};
 
-    #[tokio::test]
-    async fn field_access() {
+    #[test]
+    fn field_access() {
         let mut db = TestDatabase::new();
 
         let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
@@ -349,8 +346,6 @@ mod test {
             ",
         );
 
-        let server = serve(db);
-
         let uri = uri1;
         {
             let params = CompletionParams {
@@ -363,26 +358,24 @@ mod test {
                 context: None,
             };
 
-            assert_debug_snapshot!(
-                server
-                    .completion(CompletionParams {
-                        context: None,
-                        ..params.clone()
-                    })
-                    .await
-            );
+            assert_debug_snapshot!(complete(
+                &db.0,
+                CompletionParams {
+                    context: None,
+                    ..params.clone()
+                }
+            ));
 
-            assert_debug_snapshot!(
-                server
-                    .completion(CompletionParams {
-                        context: Some(CompletionContext {
-                            trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
-                            trigger_character: Some("$".into()),
-                        },),
-                        ..params
-                    })
-                    .await
-            );
+            assert_debug_snapshot!(complete(
+                &db.0,
+                CompletionParams {
+                    context: Some(CompletionContext {
+                        trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+                        trigger_character: Some("$".into()),
+                    },),
+                    ..params
+                }
+            ));
         }
 
         let uri = uri2;
@@ -397,31 +390,29 @@ mod test {
                 context: None,
             };
 
-            assert_debug_snapshot!(
-                server
-                    .completion(CompletionParams {
-                        context: None,
-                        ..params.clone()
-                    })
-                    .await
-            );
+            assert_debug_snapshot!(complete(
+                &db.0,
+                CompletionParams {
+                    context: None,
+                    ..params.clone()
+                }
+            ));
 
-            assert_debug_snapshot!(
-                server
-                    .completion(CompletionParams {
-                        context: Some(CompletionContext {
-                            trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
-                            trigger_character: Some("$".into()),
-                        },),
-                        ..params
-                    })
-                    .await
-            );
+            assert_debug_snapshot!(complete(
+                &db.0,
+                CompletionParams {
+                    context: Some(CompletionContext {
+                        trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+                        trigger_character: Some("$".into()),
+                    },),
+                    ..params
+                }
+            ));
         }
     }
 
-    #[tokio::test]
-    async fn field_access_partial() {
+    #[test]
+    fn field_access_partial() {
         let mut db = TestDatabase::new();
 
         let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
@@ -442,8 +433,6 @@ mod test {
             ",
         );
 
-        let server = serve(db);
-
         {
             let uri = uri1.clone();
             let position = Position::new(2, 17);
@@ -456,14 +445,13 @@ mod test {
                 partial_result_params: PartialResultParams::default(),
                 context: None,
             };
-            assert_debug_snapshot!(
-                server
-                    .completion(CompletionParams {
-                        context: None,
-                        ..params.clone()
-                    })
-                    .await
-            );
+            assert_debug_snapshot!(complete(
+                &db.0,
+                CompletionParams {
+                    context: None,
+                    ..params.clone()
+                }
+            ));
         }
 
         {
@@ -478,19 +466,18 @@ mod test {
                 partial_result_params: PartialResultParams::default(),
                 context: None,
             };
-            assert_debug_snapshot!(
-                server
-                    .completion(CompletionParams {
-                        context: None,
-                        ..params.clone()
-                    })
-                    .await
-            );
+            assert_debug_snapshot!(complete(
+                &db.0,
+                CompletionParams {
+                    context: None,
+                    ..params.clone()
+                }
+            ));
         }
     }
 
-    #[tokio::test]
-    async fn load() {
+    #[test]
+    fn load() {
         let mut db = TestDatabase::new();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
@@ -506,25 +493,22 @@ mod test {
         let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
         db.add_file(uri.clone(), "@load f");
 
-        let server = serve(db);
-
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    text_document_position: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                        position: Position::new(0, 6),
-                    },
-                    work_done_progress_params: WorkDoneProgressParams::default(),
-                    partial_result_params: PartialResultParams::default(),
-                    context: None,
-                })
-                .await
-        );
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(0, 6),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        ));
     }
 
-    #[tokio::test]
-    async fn event() {
+    #[test]
+    fn event() {
         let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
@@ -542,53 +526,48 @@ hook h
 ",
         );
 
-        let server = serve(db);
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(7, 6),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        ));
 
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    text_document_position: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                        position: Position::new(7, 6),
-                    },
-                    work_done_progress_params: WorkDoneProgressParams::default(),
-                    partial_result_params: PartialResultParams::default(),
-                    context: None,
-                })
-                .await
-        );
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(8, 10),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        ));
 
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    text_document_position: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                        position: Position::new(8, 10),
-                    },
-                    work_done_progress_params: WorkDoneProgressParams::default(),
-                    partial_result_params: PartialResultParams::default(),
-                    context: None,
-                })
-                .await
-        );
-
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    text_document_position: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                        position: Position::new(9, 6),
-                    },
-                    work_done_progress_params: WorkDoneProgressParams::default(),
-                    partial_result_params: PartialResultParams::default(),
-                    context: None,
-                })
-                .await
-        );
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(9, 6),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        ));
     }
 
-    #[tokio::test]
-    async fn keyword() {
+    #[test]
+    fn keyword() {
         let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
@@ -598,10 +577,9 @@ function foo() {}
 f",
         );
 
-        let server = serve(db);
-
-        let result = server
-            .completion(CompletionParams {
+        let result = complete(
+            &db.0,
+            CompletionParams {
                 text_document_position: TextDocumentPositionParams {
                     text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
                     position: Position::new(2, 0),
@@ -609,8 +587,8 @@ f",
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
-            })
-            .await;
+            },
+        );
 
         // Sort results for debug output diffing.
         let result = match result {

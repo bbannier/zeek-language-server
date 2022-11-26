@@ -83,15 +83,17 @@ pub(crate) fn complete(
                 node.range().end.character,
             ))
             .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
-            .map_or(false, |text| text == "$")
-        || node.parent().map_or(false, |p| p.kind() == "field_access")
+            .map_or(false, |text| text.ends_with('$'))
+        || node.parent().map_or(false, |p| {
+            p.kind() == "field_access" || p.kind() == "field_check"
+        })
     {
         // If we are completing with something after the `$` (e.g., `foo$a`), instead
         // obtain the stem (`foo`) for resolving and then filter any possible fields with
         // the given text (`a`).
         let stem = node
             .parent()
-            .filter(|p| p.kind() == "field_access")
+            .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
             .and_then(|p| p.named_child("expr"));
         let preselection = stem.and_then(|_| node.utf8_text(source.as_bytes()).ok());
 
@@ -329,84 +331,162 @@ mod test {
     async fn field_access() {
         let mut db = TestDatabase::new();
 
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            uri1.clone(),
             "type X: record { abc: count; };
             global foo: X;
             foo$
             ",
         );
 
+        let uri2 = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        db.add_file(
+            uri2.clone(),
+            "type X: record { abc: count; };
+            global foo: X;
+            foo?$
+            ",
+        );
+
         let server = serve(db);
 
-        let params = CompletionParams {
-            text_document_position: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                position: Position::new(2, 16),
-            },
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
-            context: None,
-        };
+        let uri = uri1;
+        {
+            let params = CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(2, 16),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            };
 
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    context: None,
-                    ..params.clone()
-                })
-                .await
-        );
+            assert_debug_snapshot!(
+                server
+                    .completion(CompletionParams {
+                        context: None,
+                        ..params.clone()
+                    })
+                    .await
+            );
 
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    context: Some(CompletionContext {
-                        trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
-                        trigger_character: Some("$".into()),
-                    },),
-                    ..params
-                })
-                .await
-        );
+            assert_debug_snapshot!(
+                server
+                    .completion(CompletionParams {
+                        context: Some(CompletionContext {
+                            trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+                            trigger_character: Some("$".into()),
+                        },),
+                        ..params
+                    })
+                    .await
+            );
+        }
+
+        let uri = uri2;
+        {
+            let params = CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position: Position::new(2, 17),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            };
+
+            assert_debug_snapshot!(
+                server
+                    .completion(CompletionParams {
+                        context: None,
+                        ..params.clone()
+                    })
+                    .await
+            );
+
+            assert_debug_snapshot!(
+                server
+                    .completion(CompletionParams {
+                        context: Some(CompletionContext {
+                            trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+                            trigger_character: Some("$".into()),
+                        },),
+                        ..params
+                    })
+                    .await
+            );
+        }
     }
 
     #[tokio::test]
     async fn field_access_partial() {
         let mut db = TestDatabase::new();
 
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            uri1.clone(),
             "type X: record { abc: count; };
             global foo: X;
             foo$a
             ",
         );
 
+        let uri2 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri2.clone(),
+            "type X: record { abc: count; };
+            global foo: X;
+            foo?$a
+            ",
+        );
+
         let server = serve(db);
 
-        // Completion on partial field name.
-        let position = Position::new(2, 17);
-        let params = CompletionParams {
-            text_document_position: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                position,
-            },
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
-            context: None,
-        };
+        {
+            let uri = uri1.clone();
+            let position = Position::new(2, 17);
+            let params = CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position,
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            };
+            assert_debug_snapshot!(
+                server
+                    .completion(CompletionParams {
+                        context: None,
+                        ..params.clone()
+                    })
+                    .await
+            );
+        }
 
-        assert_debug_snapshot!(
-            server
-                .completion(CompletionParams {
-                    context: None,
-                    ..params.clone()
-                })
-                .await
-        );
+        {
+            let uri = uri2.clone();
+            let position = Position::new(2, 17);
+            let params = CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    position,
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            };
+            assert_debug_snapshot!(
+                server
+                    .completion(CompletionParams {
+                        context: None,
+                        ..params.clone()
+                    })
+                    .await
+            );
+        }
     }
 
     #[tokio::test]

@@ -1,0 +1,40 @@
+---
+source: src/complete.rs
+expression: "server.completion(CompletionParams {\n            context: Some(CompletionContext {\n                    trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,\n                    trigger_character: Some(\"$\".into()),\n                }),\n            ..params\n        }).await"
+---
+Ok(
+    Some(
+        Array(
+            [
+                CompletionItem {
+                    label: "abc",
+                    kind: Some(
+                        Field,
+                    ),
+                    detail: None,
+                    documentation: Some(
+                        MarkupContent(
+                            MarkupContent {
+                                kind: Markdown,
+                                value: "```zeek\n# In X\nabc: count;\n```",
+                            },
+                        ),
+                    ),
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: None,
+                    filter_text: None,
+                    insert_text: None,
+                    insert_text_format: None,
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                },
+            ],
+        ),
+    ),
+)

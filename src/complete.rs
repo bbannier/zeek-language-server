@@ -114,10 +114,10 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         }
     ).or_else(||
         // We are just completing some arbitrary identifier at this point.
-        complete_any(state, root, node, uri)
+        Some(complete_any(state, root, node, uri))
     )
     .map(|items| items.into_iter().filter(|i|
-            text.map(|t| rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0).unwrap_or(true)
+            text.map_or(true, |t| rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0)
             ).collect::<Vec<_>>())
     .map(CompletionResponse::from)
 }
@@ -207,7 +207,7 @@ fn complete_any(
     root: Node,
     mut node: Node,
     uri: Arc<Url>,
-) -> Option<Vec<CompletionItem>> {
+) -> Vec<CompletionItem> {
     let source = state.source(uri.clone());
 
     let mut items = BTreeSet::new();
@@ -251,36 +251,32 @@ fn complete_any(
             !ast::is_redef(i)
         });
 
-    Some(
-        items
-            .iter()
-            .chain(other_decls)
-            .unique()
-            .map(to_completion_item)
-            // Also send filtered down keywords to the client.
-            .chain(zeek::KEYWORDS.iter().filter_map(|kw| {
-                let should_include = if let Some(text) = text_at_completion {
-                    text.is_empty()
-                        || rust_fuzzy_search::fuzzy_compare(
-                            &text.to_lowercase(),
-                            &kw.to_lowercase(),
-                        ) > 0.0
-                } else {
-                    true
-                };
+    items
+        .iter()
+        .chain(other_decls)
+        .unique()
+        .map(to_completion_item)
+        // Also send filtered down keywords to the client.
+        .chain(zeek::KEYWORDS.iter().filter_map(|kw| {
+            let should_include = if let Some(text) = text_at_completion {
+                text.is_empty()
+                    || rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &kw.to_lowercase())
+                        > 0.0
+            } else {
+                true
+            };
 
-                if should_include {
-                    Some(CompletionItem {
-                        kind: Some(CompletionItemKind::KEYWORD),
-                        label: (*kw).to_string(),
-                        ..CompletionItem::default()
-                    })
-                } else {
-                    None
-                }
-            }))
-            .collect::<Vec<_>>(),
-    )
+            if should_include {
+                Some(CompletionItem {
+                    kind: Some(CompletionItemKind::KEYWORD),
+                    label: (*kw).to_string(),
+                    ..CompletionItem::default()
+                })
+            } else {
+                None
+            }
+        }))
+        .collect::<Vec<_>>()
 }
 
 fn to_completion_item(d: &Decl) -> CompletionItem {
@@ -313,6 +309,10 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
 }
 
 fn completion_text<'a>(node: Node, source: &'a str) -> Option<&'a str> {
+    if node.kind() == "source_file" {
+        return None;
+    }
+
     node.utf8_text(source.as_bytes())
         .ok()?
         // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.

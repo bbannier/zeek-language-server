@@ -32,6 +32,8 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         None => return None,
     };
 
+    let text = completion_text(node, &source);
+
     // If the node has no interesting text try to find an earlier node with text.
     while node
         .utf8_text(source.as_bytes())
@@ -60,70 +62,73 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         };
     }
 
-    // If we are completing after `$` try to return all fields for client-side filtering.
-    // TODO(bbannier): we should also handle `$` in record initializations.
-    if params
-        .context
-        .and_then(|ctx| ctx.trigger_character)
-        .map_or(false, |c| c == "$")
-        || root
-            .descendant_for_position(Position::new(
-                node.range().end.line,
-                node.range().end.character,
-            ))
-            .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
-            .map_or(false, |text| text.ends_with('$'))
-        || node.parent().map_or(false, |p| {
-            p.kind() == "field_access" || p.kind() == "field_check"
-        })
-    {
-        return complete_field(state, node, uri);
-    }
-
-    // If we are completing a file return valid load patterns.
-    if node.kind() == "file" {
-        return Some(CompletionResponse::from(
-            state
-                .possible_loads(uri)
+    None.or_else(|| {
+        // If we are completing after `$` try to return all fields for client-side filtering.
+        // TODO(bbannier): we should also handle `$` in record initializations.
+        if params
+            .context
+            .and_then(|ctx| ctx.trigger_character)
+            .map_or(false, |c| c == "$")
+            || root
+                .descendant_for_position(Position::new(
+                    node.range().end.line,
+                    node.range().end.character,
+                ))
+                .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
+                .map_or(false, |text| text.ends_with('$'))
+            || node.parent().map_or(false, |p| {
+                p.kind() == "field_access" || p.kind() == "field_check"
+            })
+        {
+            complete_field(state, node, uri.clone())
+        } else {
+            None
+        }
+    }).or_else(||
+        // If we are completing a file return valid load patterns.
+        if node.kind() == "file" {
+            return Some(state
+                .possible_loads(uri.clone())
                 .iter()
                 .map(|load| CompletionItem {
                     label: load.clone(),
                     kind: Some(CompletionItemKind::FILE),
                     ..CompletionItem::default()
                 })
-                .collect::<Vec<_>>(),
-        ));
-    }
-
-    // If we are completing a function/event/hook definition complete from declarations.
-    if node.kind() == "id" {
-        if let Some(kind) = source
-            .lines()
-            .nth(usize::try_from(node.range().start.line).expect("too many lines"))
-            .and_then(|line| {
-                let re = regex::Regex::new(r"^(\w+)\s+\w*").expect("invalid regexp");
-                Some(re.captures(line)?.get(1)?.as_str())
-            })
-        {
-            return Some(complete_from_decls(state, uri, kind));
+                .collect::<Vec<_>>());
+        } else {
+            None
         }
-    }
-
-    // We are just completing some arbitrary identifier at this point.
-    complete_any(state, root, node, uri)
+    ).or_else(||
+        // If we are completing a function/event/hook definition complete from declarations.
+        if node.kind() == "id" {
+            source
+                .lines()
+                .nth(usize::try_from(node.range().start.line).expect("too many lines"))
+                .and_then(|line| {
+                    let re = regex::Regex::new(r"^(\w+)\s+\w*").expect("invalid regexp");
+                    Some(re.captures(line)?.get(1)?.as_str())
+                }).map(|kind| complete_from_decls(state, uri.clone(), kind))
+        } else {
+            None
+        }
+    ).or_else(||
+        // We are just completing some arbitrary identifier at this point.
+        complete_any(state, root, node, uri)
+    )
+    .map(|items| items.into_iter().filter(|i|
+            text.map(|t| rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0).unwrap_or(true)
+            ).collect::<Vec<_>>())
+    .map(CompletionResponse::from)
 }
 
-fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<CompletionResponse> {
-    let source = state.source(uri.clone());
-
+fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<Vec<CompletionItem>> {
     // If we are completing with something after the `$` (e.g., `foo$a`), instead
-    // obtain the stem (`foo`) for resolving and then filter any possible fields with
-    // the given text (`a`).
+    // obtain the stem (`foo`) for resolving.
     let stem = node
         .parent()
         .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
         .and_then(|p| p.named_child("expr"));
-    let preselection = stem.and_then(|_| node.utf8_text(source.as_bytes()).ok());
 
     // If we have a stem, perform any resolving with it; else use the original node.
     let node = stem.unwrap_or(node);
@@ -134,13 +139,9 @@ fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<Complet
         // Compute completion.
         if let Some(decl) = decl {
             if let DeclKind::Type(fields) = &decl.kind {
-                return Some(CompletionResponse::from(
+                return Some(
                     fields
                         .iter()
-                        .filter(|decl| {
-                            // If we have a preselection, narrow down fields to report.
-                            preselection.map_or(true, |pre| decl.id.starts_with(pre))
-                        })
                         .map(to_completion_item)
                         .filter_map(|item| {
                             // By default we use FQIDs for completion labels. Since for
@@ -150,7 +151,7 @@ fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<Complet
                             Some(CompletionItem { label, ..item })
                         })
                         .collect::<Vec<_>>(),
-                ));
+                );
             }
         }
     }
@@ -158,49 +159,47 @@ fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<Complet
     None
 }
 
-fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> CompletionResponse {
-    return CompletionResponse::from(
-        state
-            .decls(uri.clone())
-            .iter()
-            .chain(state.implicit_decls().iter())
-            .chain(state.explicit_decls_recursive(uri).iter())
-            .filter(|d| match &d.kind {
-                DeclKind::EventDecl(_) => kind == "event",
-                DeclKind::FuncDecl(_) => kind == "function",
-                DeclKind::HookDecl(_) => kind == "hook",
-                _ => false,
-            })
-            .unique()
-            .filter_map(|d| {
-                let item = to_completion_item(d);
-                let signature = match &d.kind {
-                    DeclKind::EventDecl(s) | DeclKind::FuncDecl(s) | DeclKind::HookDecl(s) => {
-                        let args = &s.args;
-                        Some(
-                            args.iter()
-                                .filter_map(|d| {
-                                    let tree = state.parse(d.uri.clone())?;
-                                    let source = state.source(d.uri.clone());
-                                    tree.root_node()
-                                        .named_descendant_for_point_range(d.selection_range)?
-                                        .utf8_text(source.as_bytes())
-                                        .map(String::from)
-                                        .ok()
-                                })
-                                .join(", "),
-                        )
-                    }
-                    _ => None,
-                }?;
+fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<CompletionItem> {
+    state
+        .decls(uri.clone())
+        .iter()
+        .chain(state.implicit_decls().iter())
+        .chain(state.explicit_decls_recursive(uri).iter())
+        .filter(|d| match &d.kind {
+            DeclKind::EventDecl(_) => kind == "event",
+            DeclKind::FuncDecl(_) => kind == "function",
+            DeclKind::HookDecl(_) => kind == "hook",
+            _ => false,
+        })
+        .unique()
+        .filter_map(|d| {
+            let item = to_completion_item(d);
+            let signature = match &d.kind {
+                DeclKind::EventDecl(s) | DeclKind::FuncDecl(s) | DeclKind::HookDecl(s) => {
+                    let args = &s.args;
+                    Some(
+                        args.iter()
+                            .filter_map(|d| {
+                                let tree = state.parse(d.uri.clone())?;
+                                let source = state.source(d.uri.clone());
+                                tree.root_node()
+                                    .named_descendant_for_point_range(d.selection_range)?
+                                    .utf8_text(source.as_bytes())
+                                    .map(String::from)
+                                    .ok()
+                            })
+                            .join(", "),
+                    )
+                }
+                _ => None,
+            }?;
 
-                Some(CompletionItem {
-                    label: format!("{id}({signature}) {{}}", id = item.label),
-                    ..item
-                })
+            Some(CompletionItem {
+                label: format!("{id}({signature}) {{}}", id = item.label),
+                ..item
             })
-            .collect::<Vec<_>>(),
-    );
+        })
+        .collect::<Vec<_>>()
 }
 
 fn complete_any(
@@ -208,7 +207,7 @@ fn complete_any(
     root: Node,
     mut node: Node,
     uri: Arc<Url>,
-) -> Option<CompletionResponse> {
+) -> Option<Vec<CompletionItem>> {
     let source = state.source(uri.clone());
 
     let mut items = BTreeSet::new();
@@ -218,13 +217,7 @@ fn complete_any(
         .and_then(|m| m.named_child("id"))
         .and_then(|id| id.utf8_text(source.as_bytes()).ok());
 
-    let text_at_completion = node
-        .utf8_text(source.as_bytes())
-        .ok()?
-        // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
-        .lines()
-        .next()
-        .map(str::trim);
+    let text_at_completion = completion_text(node, &source);
 
     loop {
         for d in query::decls_(node, uri.clone(), source.as_bytes()) {
@@ -251,21 +244,14 @@ fn complete_any(
     let implicit_decls = state.implicit_decls();
 
     let other_decls = loaded_decls
-            .iter()
-            .chain(implicit_decls.iter())
-            .filter(|i| {
-                // Filter out redefs since they only add noise.
-                !ast::is_redef(i) &&
-                    // Only return external decls which somehow match the text to complete to keep the response sent to the client small.
-                    if let Some(text) = text_at_completion {
-                        rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &i.fqid.to_lowercase())
-                            > 0.0
-                    } else {
-                        true
-                    }
-            });
+        .iter()
+        .chain(implicit_decls.iter())
+        .filter(|i| {
+            // Filter out redefs since they only add noise.
+            !ast::is_redef(i)
+        });
 
-    Some(CompletionResponse::from(
+    Some(
         items
             .iter()
             .chain(other_decls)
@@ -294,7 +280,7 @@ fn complete_any(
                 }
             }))
             .collect::<Vec<_>>(),
-    ))
+    )
 }
 
 fn to_completion_item(d: &Decl) -> CompletionItem {
@@ -324,6 +310,16 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::Field => CompletionItemKind::FIELD,
         DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
     }
+}
+
+fn completion_text<'a>(node: Node, source: &'a str) -> Option<&'a str> {
+    node.utf8_text(source.as_bytes())
+        .ok()?
+        // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
+        .lines()
+        .next()
+        .map(str::trim)
+        .and_then(|t| if t.is_empty() { None } else { Some(t) })
 }
 
 #[cfg(test)]

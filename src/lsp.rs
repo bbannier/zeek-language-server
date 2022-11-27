@@ -1251,7 +1251,9 @@ pub(crate) mod test {
              @load b
              global X = 3;
              global mod_x::Z = 3;
-             global GLOBAL::Y = 3;",
+             global GLOBAL::Y = 3;
+             
+             ",
         );
 
         let server = serve(db);
@@ -1260,7 +1262,7 @@ pub(crate) mod test {
             .completion(CompletionParams {
                 text_document_position: TextDocumentPositionParams {
                     text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                    position: Position::new(0, 0),
+                    position: Position::new(6, 14),
                 },
                 partial_result_params: PartialResultParams::default(),
                 work_done_progress_params: WorkDoneProgressParams::default(),

@@ -4,21 +4,17 @@ use crate::{
     ast::{self, Ast},
     lsp::Database,
     parse::Parse,
-    query::{self, Decl, DeclKind, NodeLocation, Query},
+    query::{self, Decl, DeclKind, Node, NodeLocation, Query},
     zeek, Files,
 };
-use eyre::Result;
+
 use itertools::Itertools;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, Documentation,
-    MarkupContent, Position,
+    MarkupContent, Position, Url,
 };
 
-#[allow(clippy::too_many_lines)]
-pub(crate) fn complete(
-    state: &Database,
-    params: CompletionParams,
-) -> Result<Option<CompletionResponse>> {
+pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<CompletionResponse> {
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
@@ -26,14 +22,14 @@ pub(crate) fn complete(
 
     let tree = match state.parse(uri.clone()) {
         Some(t) => t,
-        None => return Ok(None),
+        None => return None,
     };
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
     let mut node = match root.descendant_for_position(position) {
         Some(n) => n,
-        None => return Ok(None),
+        None => return None,
     };
 
     // If the node has no interesting text try to find an earlier node with text.
@@ -64,13 +60,6 @@ pub(crate) fn complete(
         };
     }
 
-    let text_at_completion = node
-        .utf8_text(source.as_bytes())?
-        // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
-        .lines()
-        .next()
-        .map(str::trim);
-
     // If we are completing after `$` try to return all fields for client-side filtering.
     // TODO(bbannier): we should also handle `$` in record initializations.
     if params
@@ -88,49 +77,12 @@ pub(crate) fn complete(
             p.kind() == "field_access" || p.kind() == "field_check"
         })
     {
-        // If we are completing with something after the `$` (e.g., `foo$a`), instead
-        // obtain the stem (`foo`) for resolving and then filter any possible fields with
-        // the given text (`a`).
-        let stem = node
-            .parent()
-            .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
-            .and_then(|p| p.named_child("expr"));
-        let preselection = stem.and_then(|_| node.utf8_text(source.as_bytes()).ok());
-
-        // If we have a stem, perform any resolving with it; else use the original node.
-        let node = stem.unwrap_or(node);
-
-        if let Some(r) = state.resolve(NodeLocation::from_node(uri.clone(), node)) {
-            let decl = state.typ(r);
-
-            // Compute completion.
-            if let Some(decl) = decl {
-                if let DeclKind::Type(fields) = &decl.kind {
-                    return Ok(Some(CompletionResponse::from(
-                        fields
-                            .iter()
-                            .filter(|decl| {
-                                // If we have a preselection, narrow down fields to report.
-                                preselection.map_or(true, |pre| decl.id.starts_with(pre))
-                            })
-                            .map(to_completion_item)
-                            .filter_map(|item| {
-                                // By default we use FQIDs for completion labels. Since for
-                                // record fields this would be e.g., `mod::rec::field` where we
-                                // want just `field`, rework them slightly.
-                                let label = item.label.split("::").last()?.to_string();
-                                Some(CompletionItem { label, ..item })
-                            })
-                            .collect::<Vec<_>>(),
-                    )));
-                }
-            }
-        }
+        return complete_field(state, node, uri);
     }
 
     // If we are completing a file return valid load patterns.
     if node.kind() == "file" {
-        return Ok(Some(CompletionResponse::from(
+        return Some(CompletionResponse::from(
             state
                 .possible_loads(uri)
                 .iter()
@@ -140,7 +92,7 @@ pub(crate) fn complete(
                     ..CompletionItem::default()
                 })
                 .collect::<Vec<_>>(),
-        )));
+        ));
     }
 
     // If we are completing a function/event/hook definition complete from declarations.
@@ -153,63 +105,126 @@ pub(crate) fn complete(
                 Some(re.captures(line)?.get(1)?.as_str())
             })
         {
-            return Ok(Some(CompletionResponse::from(
-                state
-                    .decls(uri.clone())
-                    .iter()
-                    .chain(state.implicit_decls().iter())
-                    .chain(state.explicit_decls_recursive(uri).iter())
-                    .filter(|d| match &d.kind {
-                        DeclKind::EventDecl(_) => kind == "event",
-                        DeclKind::FuncDecl(_) => kind == "function",
-                        DeclKind::HookDecl(_) => kind == "hook",
-                        _ => false,
-                    })
-                    .unique()
-                    .filter_map(|d| {
-                        let item = to_completion_item(d);
-                        let signature = match &d.kind {
-                            DeclKind::EventDecl(s)
-                            | DeclKind::FuncDecl(s)
-                            | DeclKind::HookDecl(s) => {
-                                let args = &s.args;
-                                Some(
-                                    args.iter()
-                                        .filter_map(|d| {
-                                            let tree = state.parse(d.uri.clone())?;
-                                            let source = state.source(d.uri.clone());
-                                            tree.root_node()
-                                                .named_descendant_for_point_range(
-                                                    d.selection_range,
-                                                )?
-                                                .utf8_text(source.as_bytes())
-                                                .map(String::from)
-                                                .ok()
-                                        })
-                                        .join(", "),
-                                )
-                            }
-                            _ => None,
-                        }?;
-
-                        Some(CompletionItem {
-                            label: format!("{id}({signature}) {{}}", id = item.label),
-                            ..item
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-            )));
+            return Some(complete_from_decls(state, uri, kind));
         }
     }
 
     // We are just completing some arbitrary identifier at this point.
+    complete_any(state, root, node, uri)
+}
+
+fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<CompletionResponse> {
+    let source = state.source(uri.clone());
+
+    // If we are completing with something after the `$` (e.g., `foo$a`), instead
+    // obtain the stem (`foo`) for resolving and then filter any possible fields with
+    // the given text (`a`).
+    let stem = node
+        .parent()
+        .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
+        .and_then(|p| p.named_child("expr"));
+    let preselection = stem.and_then(|_| node.utf8_text(source.as_bytes()).ok());
+
+    // If we have a stem, perform any resolving with it; else use the original node.
+    let node = stem.unwrap_or(node);
+
+    if let Some(r) = state.resolve(NodeLocation::from_node(uri, node)) {
+        let decl = state.typ(r);
+
+        // Compute completion.
+        if let Some(decl) = decl {
+            if let DeclKind::Type(fields) = &decl.kind {
+                return Some(CompletionResponse::from(
+                    fields
+                        .iter()
+                        .filter(|decl| {
+                            // If we have a preselection, narrow down fields to report.
+                            preselection.map_or(true, |pre| decl.id.starts_with(pre))
+                        })
+                        .map(to_completion_item)
+                        .filter_map(|item| {
+                            // By default we use FQIDs for completion labels. Since for
+                            // record fields this would be e.g., `mod::rec::field` where we
+                            // want just `field`, rework them slightly.
+                            let label = item.label.split("::").last()?.to_string();
+                            Some(CompletionItem { label, ..item })
+                        })
+                        .collect::<Vec<_>>(),
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> CompletionResponse {
+    return CompletionResponse::from(
+        state
+            .decls(uri.clone())
+            .iter()
+            .chain(state.implicit_decls().iter())
+            .chain(state.explicit_decls_recursive(uri).iter())
+            .filter(|d| match &d.kind {
+                DeclKind::EventDecl(_) => kind == "event",
+                DeclKind::FuncDecl(_) => kind == "function",
+                DeclKind::HookDecl(_) => kind == "hook",
+                _ => false,
+            })
+            .unique()
+            .filter_map(|d| {
+                let item = to_completion_item(d);
+                let signature = match &d.kind {
+                    DeclKind::EventDecl(s) | DeclKind::FuncDecl(s) | DeclKind::HookDecl(s) => {
+                        let args = &s.args;
+                        Some(
+                            args.iter()
+                                .filter_map(|d| {
+                                    let tree = state.parse(d.uri.clone())?;
+                                    let source = state.source(d.uri.clone());
+                                    tree.root_node()
+                                        .named_descendant_for_point_range(d.selection_range)?
+                                        .utf8_text(source.as_bytes())
+                                        .map(String::from)
+                                        .ok()
+                                })
+                                .join(", "),
+                        )
+                    }
+                    _ => None,
+                }?;
+
+                Some(CompletionItem {
+                    label: format!("{id}({signature}) {{}}", id = item.label),
+                    ..item
+                })
+            })
+            .collect::<Vec<_>>(),
+    );
+}
+
+fn complete_any(
+    state: &Database,
+    root: Node,
+    mut node: Node,
+    uri: Arc<Url>,
+) -> Option<CompletionResponse> {
+    let source = state.source(uri.clone());
+
     let mut items = BTreeSet::new();
-    let mut node = node;
 
     let current_module = root
         .named_child("module_decl")
         .and_then(|m| m.named_child("id"))
         .and_then(|id| id.utf8_text(source.as_bytes()).ok());
+
+    let text_at_completion = node
+        .utf8_text(source.as_bytes())
+        .ok()?
+        // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
+        .lines()
+        .next()
+        .map(str::trim);
 
     loop {
         for d in query::decls_(node, uri.clone(), source.as_bytes()) {
@@ -250,7 +265,7 @@ pub(crate) fn complete(
                     }
             });
 
-    Ok(Some(CompletionResponse::from(
+    Some(CompletionResponse::from(
         items
             .iter()
             .chain(other_decls)
@@ -279,7 +294,7 @@ pub(crate) fn complete(
                 }
             }))
             .collect::<Vec<_>>(),
-    )))
+    ))
 }
 
 fn to_completion_item(d: &Decl) -> CompletionItem {
@@ -592,7 +607,7 @@ f",
 
         // Sort results for debug output diffing.
         let result = match result {
-            Ok(Some(CompletionResponse::Array(mut r))) => {
+            Some(CompletionResponse::Array(mut r)) => {
                 r.sort_by(|a, b| a.label.cmp(&b.label));
                 r
             }

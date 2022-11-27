@@ -1,40 +1,38 @@
 ---
 source: src/complete.rs
-expression: "server.completion(CompletionParams {\n            text_document_position: TextDocumentPositionParams {\n                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n                position: Position::new(8, 10),\n            },\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n            context: None,\n        }).await"
+expression: "complete(&db.0,\n    CompletionParams {\n        text_document_position: TextDocumentPositionParams {\n            text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n            position: Position::new(8, 10),\n        },\n        work_done_progress_params: WorkDoneProgressParams::default(),\n        partial_result_params: PartialResultParams::default(),\n        context: None,\n    })"
 ---
-Ok(
-    Some(
-        Array(
-            [
-                CompletionItem {
-                    label: "fct(c: count, s: string) {}",
-                    kind: Some(
-                        Function,
+Some(
+    Array(
+        [
+            CompletionItem {
+                label: "fct(c: count, s: string) {}",
+                kind: Some(
+                    Function,
+                ),
+                detail: None,
+                documentation: Some(
+                    MarkupContent(
+                        MarkupContent {
+                            kind: Markdown,
+                            value: "```zeek\nglobal fct: function(c: count, s: string);\n```",
+                        },
                     ),
-                    detail: None,
-                    documentation: Some(
-                        MarkupContent(
-                            MarkupContent {
-                                kind: Markdown,
-                                value: "```zeek\nglobal fct: function(c: count, s: string);\n```",
-                            },
-                        ),
-                    ),
-                    deprecated: None,
-                    preselect: None,
-                    sort_text: None,
-                    filter_text: None,
-                    insert_text: None,
-                    insert_text_format: None,
-                    insert_text_mode: None,
-                    text_edit: None,
-                    additional_text_edits: None,
-                    command: None,
-                    commit_characters: None,
-                    data: None,
-                    tags: None,
-                },
-            ],
-        ),
+                ),
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: None,
+                insert_text_format: None,
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
+        ],
     ),
 )

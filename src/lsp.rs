@@ -776,7 +776,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        self.with_state(move |state| complete(&state, params))?
+        self.with_state(move |state| complete(&state, params))
             .map_err(|_| Error::internal_error())
     }
 

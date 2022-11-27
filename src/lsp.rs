@@ -776,7 +776,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        self.with_state(move |state| complete(&state, params))?
+        self.with_state(move |state| complete(&state, params))
             .map_err(|_| Error::internal_error())
     }
 
@@ -1247,11 +1247,12 @@ pub(crate) mod test {
         db.add_file(
             uri.clone(),
             "module mod_x;
-             @load a
-             @load b
-             global X = 3;
-             global mod_x::Z = 3;
-             global GLOBAL::Y = 3;",
+@load a
+@load b
+global X = 3;
+global mod_x::Z = 3;
+global GLOBAL::Y = 3;
+",
         );
 
         let server = serve(db);
@@ -1260,7 +1261,7 @@ pub(crate) mod test {
             .completion(CompletionParams {
                 text_document_position: TextDocumentPositionParams {
                     text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
-                    position: Position::new(0, 0),
+                    position: Position::new(6, 0),
                 },
                 partial_result_params: PartialResultParams::default(),
                 work_done_progress_params: WorkDoneProgressParams::default(),

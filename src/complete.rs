@@ -65,22 +65,28 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     None.or_else(|| {
         // If we are completing after `$` try to return all fields for client-side filtering.
         // TODO(bbannier): we should also handle `$` in record initializations.
-        if params
+
+        let dd_triggered = params
             .context
             .and_then(|ctx| ctx.trigger_character)
-            .map_or(false, |c| c == "$")
-            || root
-                .descendant_for_position(Position::new(
+            .map_or(false, |c| c == "$");
+
+        let ends_in_dd = root
+            .descendant_for_position(Position::new(
                     node.range().end.line,
                     node.range().end.character,
-                ))
-                .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
-                .map_or(false, |text| text.ends_with('$'))
+                    ))
+            .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
+            .map_or(false, |text| text.ends_with('$'));
+
+        let is_partial = !dd_triggered && !ends_in_dd;
+
+        if dd_triggered
+            || ends_in_dd
             || node.parent().map_or(false, |p| {
                 p.kind() == "field_access" || p.kind() == "field_check"
-            })
-        {
-            complete_field(state, node, uri.clone())
+            }) {
+            complete_field(state, node, uri.clone(), is_partial)
         } else {
             None
         }
@@ -122,16 +128,31 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     .map(CompletionResponse::from)
 }
 
-fn complete_field(state: &Database, node: Node, uri: Arc<Url>) -> Option<Vec<CompletionItem>> {
+/// Complete a field after `$` or `?$`
+///
+/// # Arguments
+///
+/// * `state` - global database
+/// * `node` - node to complete
+/// * `uri` - document URI
+/// * `is_partial` - whether the field identifier is already partial present
+fn complete_field(
+    state: &Database,
+    mut node: Node,
+    uri: Arc<Url>,
+    is_partial: bool,
+) -> Option<Vec<CompletionItem>> {
     // If we are completing with something after the `$` (e.g., `foo$a`), instead
     // obtain the stem (`foo`) for resolving.
-    let stem = node
-        .parent()
-        .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
-        .and_then(|p| p.named_child("expr"));
+    if is_partial {
+        let stem = node
+            .parent()
+            .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
+            .and_then(|p| p.named_child("expr"));
 
-    // If we have a stem, perform any resolving with it; else use the original node.
-    let node = stem.unwrap_or(node);
+        // If we have a stem, perform any resolving with it; else use the original node.
+        node = stem.unwrap_or(node);
+    }
 
     if let Some(r) = state.resolve(NodeLocation::from_node(uri, node)) {
         let decl = state.typ(r);
@@ -423,6 +444,35 @@ mod test {
     }
 
     #[test]
+    fn field_access_chained() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+        type X: record { n: count; };
+        type Y: record { x: X; };
+        event foo(y: Y) {
+            y$x$
+        }
+        ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    Position::new(4, 16),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    #[test]
     fn field_access_partial() {
         let mut db = TestDatabase::new();
 
@@ -485,6 +535,35 @@ mod test {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn field_access_chained_partial() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+        type X: record { abc: count; };
+        type Y: record { x: X; };
+        event foo(y: Y) {
+            y$x$a
+        }
+        ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    Position::new(4, 17),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
     }
 
     #[test]

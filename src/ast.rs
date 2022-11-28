@@ -234,16 +234,15 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     })
 }
 
-fn resolve(db: &dyn Ast, node: NodeLocation) -> Option<Arc<Decl>> {
-    let uri = node.uri;
+fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
+    let uri = location.uri.clone();
     let tree = db.parse(uri.clone())?;
     let node = tree
         .root_node()
-        .named_descendant_for_point_range(node.range)?;
+        .named_descendant_for_point_range(location.range)?;
     let source = db.source(uri.clone());
 
     match node.kind() {
-        // If we are on an `expr` or `init` node unwrap it and work on whatever is inside.
         "expr" | "init" => {
             return node
                 .named_child_not("nl")
@@ -269,6 +268,7 @@ fn resolve(db: &dyn Ast, node: NodeLocation) -> Option<Arc<Decl>> {
                         .map(Clone::clone)
                         .map(Arc::new);
                 }
+                DeclKind::Field => return db.typ(type_decl),
                 _ => return None,
             }
         }
@@ -284,7 +284,6 @@ fn resolve(db: &dyn Ast, node: NodeLocation) -> Option<Arc<Decl>> {
 
     // Try to find a decl with name of the given node up the tree.
     let id = node.utf8_text(source.as_bytes()).ok()?.to_string();
-    let location = NodeLocation::from_node(uri, node);
 
     if let Some(r) = db.resolve_id(Arc::new(id.clone()), location.clone()) {
         return Some(r);
@@ -560,7 +559,13 @@ mod test {
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{Position, Url};
 
-    use crate::{ast::Ast, lsp::TestDatabase, parse::Parse, query::NodeLocation, Files};
+    use crate::{
+        ast::Ast,
+        lsp::TestDatabase,
+        parse::Parse,
+        query::{DeclKind, NodeLocation},
+        Files,
+    };
 
     #[test]
     fn loaded_files_recursive() {
@@ -978,6 +983,88 @@ global x2 = f2();
                 .id,
             "X2"
         );
+    }
+
+    #[test]
+    fn typ_var_decl() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+            type B: record {
+                i: count;
+            };
+            type A: record {
+                b: B;
+            };
+            event foo(a: A) {
+                local b0: B = a$b;
+                local b1 = a$b;
+                local i1 = a$b$i;
+                local i2 = b1$i;
+            }
+            ",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        {
+            let b0 = root
+                .named_descendant_for_position(Position::new(8, 22))
+                .unwrap();
+            assert_eq!(b0.utf8_text(source.as_bytes()).unwrap(), "b0");
+
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), b0))
+                .unwrap();
+            assert_eq!(decl.kind, DeclKind::Variable);
+
+            assert_debug_snapshot!(db.typ(decl));
+        }
+
+        {
+            let b1 = root
+                .named_descendant_for_position(Position::new(9, 22))
+                .unwrap();
+            assert_eq!(b1.utf8_text(source.as_bytes()).unwrap(), "b1");
+
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), b1))
+                .unwrap();
+            assert_eq!(decl.kind, DeclKind::Variable);
+
+            assert_debug_snapshot!(db.typ(decl));
+        }
+
+        {
+            let i1 = root
+                .named_descendant_for_position(Position::new(10, 22))
+                .unwrap();
+            assert_eq!(i1.utf8_text(source.as_bytes()).unwrap(), "i1");
+
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), i1))
+                .unwrap();
+            assert_eq!(decl.kind, DeclKind::Variable);
+
+            assert_debug_snapshot!(db.typ(decl));
+        }
+
+        {
+            let i2 = root
+                .named_descendant_for_position(Position::new(11, 22))
+                .unwrap();
+            assert_eq!(i2.utf8_text(source.as_bytes()).unwrap(), "i2");
+
+            let decl = db.resolve(NodeLocation::from_node(uri, i2)).unwrap();
+            assert_eq!(decl.kind, DeclKind::Variable);
+
+            assert_debug_snapshot!(db.typ(decl));
+        }
     }
 
     #[test]

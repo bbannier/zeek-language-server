@@ -1,0 +1,45 @@
+---
+source: src/ast.rs
+expression: db.typ(decl)
+---
+Some(
+    Decl {
+        module: None,
+        id: "b",
+        fqid: "A::b",
+        kind: Field,
+        is_export: None,
+        range: Range {
+            start: Position {
+                line: 5,
+                character: 16,
+            },
+            end: Position {
+                line: 5,
+                character: 17,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 5,
+                character: 16,
+            },
+            end: Position {
+                line: 5,
+                character: 17,
+            },
+        },
+        documentation: "```zeek\n# In A\nb: B;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

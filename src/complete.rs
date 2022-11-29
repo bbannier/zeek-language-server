@@ -155,7 +155,11 @@ fn complete_field(
     }
 
     if let Some(r) = state.resolve(NodeLocation::from_node(uri, node)) {
-        let decl = state.typ(r);
+        let decl = state.typ(r).and_then(|d| match &d.kind {
+            // If the decl refers to a field get the decl for underlying its type instead.
+            DeclKind::Field => state.typ(d),
+            _ => Some(d),
+        });
 
         // Compute completion.
         if let Some(decl) = decl {
@@ -558,6 +562,54 @@ mod test {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri.as_ref().clone()),
                     Position::new(4, 17),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn referenced_field_access() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+        type X: record { abc: count; };
+        type Y: record { x: X; };
+        event foo(y: Y) {
+            local x = y$x;
+            x$
+        }",
+        );
+
+        let x = complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    Position::new(5, 14),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        )
+        .unwrap();
+
+        match x {
+            CompletionResponse::Array(xs) => assert_eq!(xs.len(), 1),
+            _ => unreachable!(),
+        }
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    Position::new(5, 14),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),

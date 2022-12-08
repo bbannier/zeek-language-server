@@ -7,6 +7,8 @@ use crate::{
 };
 use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
+use semver::Version;
+use serde::Deserialize;
 use std::{
     collections::BTreeSet,
     fmt::Debug,
@@ -85,14 +87,27 @@ pub(crate) struct Backend {
 }
 
 impl Backend {
-    async fn warn_message<M>(&self, message: M)
+    async fn client_message<M>(&self, level: MessageType, message: M)
     where
         M: std::fmt::Display,
     {
         if let Some(client) = &self.client {
             // Show warnings to the user.
-            client.show_message(MessageType::WARNING, message).await;
+            client.show_message(level, message).await;
         }
+    }
+    async fn warn_message<M>(&self, message: M)
+    where
+        M: std::fmt::Display,
+    {
+        self.client_message(MessageType::WARNING, message).await;
+    }
+
+    async fn info_message<M>(&self, message: M)
+    where
+        M: std::fmt::Display,
+    {
+        self.client_message(MessageType::INFO, message).await;
     }
 
     fn with_state<F, R>(&self, f: F) -> Result<R>
@@ -264,6 +279,28 @@ impl Backend {
 
         Ok(system_files.chain(workspace_files).collect())
     }
+
+    pub async fn get_latest_release(&self, uri: Option<&str>) -> Option<Version> {
+        #[derive(Deserialize, Debug)]
+        struct GithubRelease {
+            name: String,
+        }
+
+        let client = reqwest::ClientBuilder::new()
+            .user_agent("zeek-language-server")
+            .build()
+            .ok()?;
+
+        let uri = uri
+            .unwrap_or("http://api.github.com/repos/bbannier/zeek-language-server/releases/latest");
+
+        let resp = client.get(uri).send().await.ok()?.text().await.ok()?;
+
+        let release: GithubRelease = serde_json::from_str(&resp).ok()?;
+        let latest = semver::Version::parse(release.name.trim_matches('v')).ok()?;
+
+        Some(latest)
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -285,8 +322,16 @@ impl LanguageServer for Backend {
         self.with_state_mut(move |state| {
             state.set_files(Arc::new(BTreeSet::new()));
             state.set_prefixes(Arc::new(Vec::new()));
+
             state.set_workspace_folders(Arc::new(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
+
+            state.set_client_options(Arc::new(
+                params
+                    .initialization_options
+                    .and_then(|options| serde_json::from_value(options).ok())
+                    .unwrap_or_else(Options::new),
+            ));
         })?;
 
         // Set system prefixes.
@@ -331,6 +376,21 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
+        // Check whether a newer release is available.
+        if self.with_state(|s| s.client_options().check_for_updates) == Ok(true) {
+            if let Some(latest) = self.get_latest_release(None).await {
+                let current =
+                    Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| latest.clone());
+
+                if current < latest {
+                    self.info_message(format!(
+                        "a newer release of zeek-language-server ({latest}) is available, currently running {current}"
+                    ))
+                    .await;
+                }
+            }
+        }
+
         // Load all currently visible files. These are likely only files in system prefixes.
         if let Ok(files) = self.visible_files().await {
             let update = self.did_change_watched_files(DidChangeWatchedFilesParams {
@@ -1123,6 +1183,20 @@ pub async fn run() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
+#[derive(Deserialize, Debug, Clone, Copy)]
+/// Custom `initializationOptions` clients can send.
+pub struct Options {
+    check_for_updates: bool,
+}
+
+impl Options {
+    fn new() -> Self {
+        Self {
+            check_for_updates: true,
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test {
     use std::{
@@ -1133,14 +1207,17 @@ pub(crate) mod test {
 
     use insta::assert_debug_snapshot;
     use salsa::{ParallelDatabase, Snapshot};
+    use semver::Version;
+    use serde_json::json;
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, FormattingOptions, HoverParams,
+            CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
             PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
             WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
+    use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
     use crate::{ast::Ast, lsp, Files};
 
@@ -1528,5 +1605,32 @@ event x::foo() {}",
                 .await,
             Ok(None)
         );
+    }
+
+    #[tokio::test]
+    async fn get_latest_release() {
+        let server = serve(TestDatabase::new());
+        let _ = server.initialize(InitializeParams::default()).await;
+
+        {
+            // Good response from server.
+            let mock = MockServer::start().await;
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"name":"v0.1.2"})))
+                .mount(&mock)
+                .await;
+
+            assert_eq!(
+                server.get_latest_release(Some(&mock.uri())).await,
+                Some(Version::new(0, 1, 2))
+            );
+        }
+
+        {
+            // Server unavailable/sending unexpected response.
+            let mock = MockServer::start().await;
+
+            assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
+        }
     }
 }

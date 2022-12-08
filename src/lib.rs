@@ -19,4 +19,7 @@ pub trait Files: salsa::Database {
 pub trait Client: salsa::Database {
     #[salsa::input]
     fn capabilities(&self) -> Arc<ClientCapabilities>;
+
+    #[salsa::input]
+    fn client_options(&self) -> Arc<lsp::Options>;
 }

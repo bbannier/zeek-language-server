@@ -12,6 +12,7 @@ regex = "1.7.0"
 [dev-dependencies]
 insta = "1.21.1"
 tempfile = "3.3.0"
+wiremock = "0.5.15"
 
 [features]
 default = []
@@ -28,8 +29,12 @@ opentelemetry-jaeger = { version = "0.17.0", features = ["reqwest_collector_clie
 path-clean = "0.1.0"
 pyroscope = { version = "0.5.3", optional = true }
 regex = "1.7.0"
+reqwest = { version = "0.11.13", default-features = false, features = ["rustls-tls"] }
 rust-fuzzy-search = "0.1.1"
 salsa = "0.16.1"
+semver = { version = "1.0.14", features = ["serde"] }
+serde = { version = "1.0.149", features = ["derive"] }
+serde_json = "1.0.89"
 tokio = { version = "1.22.0", features = ["macros", "rt-multi-thread", "io-std", "io-util", "process", "time"] }
 tower-lsp = { version = "0.17.0", features = ["runtime-tokio"] }
 tracing = "0.1.37"

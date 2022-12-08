@@ -17,13 +17,22 @@ and `zeek-config` should be in `PATH`.
 For optional formatting support
 [`zeek-format`](https://github.com/zeek/zeekscript/) should be in `PATH`.
 
+## Configuration
+
+The server interprets the following `initializationOptions`:
+
+- `check_for_updates` (default: `true`):
+  Whether to check for newer releases during startup
+
 ### Editor setup
 
 #### vscode
 
 We provide a [minimal extension for
-vscode](https://github.com/bbannier/zeek-language-server/tree/main/vscode). An
-extension VSIX file is created for each
+vscode](https://github.com/bbannier/zeek-language-server/tree/main/vscode)
+which is [published to the vscode
+marketplace](https://marketplace.visualstudio.com/items?itemName=bbannier.zeek-language-server).
+Additionally, an extension VSIX file is created for each
 [release](https://github.com/bbannier/zeek-language-server/releases). On
 startup the extension will automatically download the server binary for the
 release.

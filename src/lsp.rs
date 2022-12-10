@@ -1030,17 +1030,17 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri)))?;
+        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
 
         let source = match source {
             Some(s) => s,
             None => return Ok(None),
         };
 
-        let num_lines = u32::try_from(source.lines().count()).expect("too many lines");
-        let end = u32::try_from(source.lines().last().map_or(0, str::len)).expect("line too long");
-        let end = Position::new(num_lines, end);
-        let range = Range::new(Position::new(0, 0), end);
+        let range = match self.with_state(|state| state.parse(uri))? {
+            Some(t) => t.root_node().range(),
+            None => return Ok(None),
+        };
 
         let formatted = if let Ok(f) = zeek::format(&source).await {
             f
@@ -1049,12 +1049,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // The edit consists of removing the original source range, and inserting the new text
-        // after that (edits cannot overlap).
-        Ok(Some(vec![
-            TextEdit::new(range, String::new()),
-            TextEdit::new(Range::new(end, end), formatted),
-        ]))
+        Ok(Some(vec![TextEdit::new(range, formatted)]))
     }
 
     #[instrument]
@@ -1573,6 +1568,8 @@ event x::foo() {}",
     #[ignore]
     #[tokio::test]
     async fn formatting() {
+        use super::DocumentFormattingParams;
+
         let mut db = TestDatabase::new();
         let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
         db.add_file(uri_ok.clone(), "event zeek_init(){}");
@@ -1583,10 +1580,8 @@ event x::foo() {}",
         let server = serve(db);
 
         assert!(server
-            .formatting(super::DocumentFormattingParams {
-                text_document: TextDocumentIdentifier {
-                    uri: uri_ok.as_ref().clone(),
-                },
+            .formatting(DocumentFormattingParams {
+                text_document: TextDocumentIdentifier::new(uri_ok.as_ref().clone(),),
                 options: FormattingOptions::default(),
                 work_done_progress_params: WorkDoneProgressParams::default(),
             })
@@ -1595,10 +1590,8 @@ event x::foo() {}",
 
         assert_eq!(
             server
-                .formatting(super::DocumentFormattingParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: uri_invalid.as_ref().clone(),
-                    },
+                .formatting(DocumentFormattingParams {
+                    text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
                     options: FormattingOptions::default(),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })

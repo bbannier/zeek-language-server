@@ -28,6 +28,7 @@ opentelemetry = { version = "0.18.0", features = ["trace", "rt-tokio"], optional
 opentelemetry-jaeger = { version = "0.17.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
 path-clean = "0.1.0"
 pyroscope = { version = "0.5.3", optional = true }
+rayon = "1.6.1"
 regex = { default-features = false, version = "1.7.0" }
 reqwest = { version = "0.11.13", default-features = false }
 rust-fuzzy-search = "0.1.1"

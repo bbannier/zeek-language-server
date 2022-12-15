@@ -10,7 +10,7 @@ use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -410,46 +410,57 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        let _update_files = self.with_state_mut(|s| {
-            // Create new list of files and update individual sources.
-            let mut files = s.files().as_ref().clone();
+        use rayon::prelude::*;
 
+        let _update_files = self.with_state_mut(|s| {
             {
                 let span = trace_span!("updating");
                 let _enter = span.enter();
-                for change in params.changes {
-                    let uri = Arc::new(change.uri);
 
-                    match change.typ {
-                        FileChangeType::DELETED => {
-                            files.remove(uri.as_ref());
-                            continue;
-                        }
-                        FileChangeType::CREATED => {
-                            files.insert(uri.clone());
-                        }
-                        _ => {}
+                // Create new list of files and update individual sources.
+                let mut files = s.files().as_ref().clone();
+
+                // Untrack deleted files.
+                for deleted in params.changes.iter().filter_map(|change| {
+                    if change.typ == FileChangeType::DELETED {
+                        Some(&change.uri)
+                    } else {
+                        None
                     }
-
-                    // At this point we are working with CREATED or CHANGED events.
-
-                    // TODO(bbannier): Parallelize file reading.
-                    let source = match std::fs::read_to_string(uri.path()) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            warn!("failed to read '{}': {}", &uri, e);
-                            continue;
-                        }
-                    };
-
-                    s.set_source(uri.clone(), Arc::new(source));
+                }) {
+                    files.remove(deleted);
                 }
+
+                // Read sources of added or changed files.
+                let changed = params
+                    .changes
+                    .into_par_iter()
+                    .filter_map(|change| {
+                        if change.typ == FileChangeType::DELETED {
+                            None
+                        } else {
+                            let uri = Arc::new(change.uri);
+                            let source = match std::fs::read_to_string(uri.path()) {
+                                Ok(s) => Arc::new(s),
+                                Err(e) => {
+                                    warn!("failed to read '{}': {}", &uri, e);
+                                    return None;
+                                }
+                            };
+                            Some((uri, source))
+                        }
+                    })
+                    .collect::<BTreeMap<_, _>>();
+
+                // For added or changed files, updated their sources and track the files if needed.
+                for (uri, source) in changed {
+                    s.set_source(uri.clone(), source);
+                    files.insert(uri);
+                }
+
+                // Commit new file list.
+                s.set_files(Arc::new(files));
             }
-
-            let files = Arc::new(files);
-
-            // Commit new file list.
-            s.set_files(files);
         });
 
         // Preload expensive information. Ultimately we want to be able to load implicit

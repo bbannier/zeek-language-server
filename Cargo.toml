@@ -20,7 +20,7 @@ telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-subscriber", "tra
 profiling = ["pyroscope"]
 
 [dependencies]
-clap = { version = "4.0.29", features = ["std", "derive"], default-features = false }
+clap = { version = "4.0.29", features = ["std", "derive", "help"], default-features = false }
 eyre = { default-features = false, version = "0.6.8", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.25" }
 itertools = "0.10.5"

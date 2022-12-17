@@ -783,7 +783,7 @@ impl LanguageServer for Backend {
                 .map(|(m, decls)| {
                     #[allow(deprecated)]
                     DocumentSymbol {
-                        name: format!("{}", m),
+                        name: format!("{m}"),
                         kind: SymbolKind::NAMESPACE,
                         children: Some(decls.map(symbol).collect()),
 

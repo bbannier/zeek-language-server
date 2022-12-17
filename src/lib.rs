@@ -15,6 +15,7 @@ pub trait Files: salsa::Database {
     fn source(&self, uri: Arc<Url>) -> Arc<String>;
 }
 
+#[allow(clippy::trait_duplication_in_bounds)]
 #[salsa::query_group(ClientStorage)]
 pub trait Client: salsa::Database {
     #[salsa::input]

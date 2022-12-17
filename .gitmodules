@@ -1,4 +1,4 @@
 [submodule "vendor/tree-sitter-zeek"]
-	path = vendor/tree-sitter-zeek
+	path = crates/tree-sitter-zeek/vendor/tree-sitter-zeek
 	url = https://github.com/bbannier/tree-sitter-zeek
 	branch = t/zeek-lsp

@@ -119,9 +119,9 @@ checksum = "dfb24e866b15a1af2a1b663f10c6b6b8f397a84aadb828f12e5b289ec23a3a3c"
 
 [[package]]
 name = "cc"
-version = "1.0.77"
+version = "1.0.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f73505338f7d905b19d18738976aae232eb46b8efc15554ffc56deb5d9ebe4"
+checksum = "a20104e2335ce8a659d6dd92a51a767a0c062599c73b343fd152cb401e828c3d"
 
 [[package]]
 name = "cfg-if"
@@ -2084,6 +2084,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-zeek"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "regex",
+ "tree-sitter",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2458,7 +2467,6 @@ dependencies = [
 name = "zeek-language-server"
 version = "0.25.0"
 dependencies = [
- "cc",
  "clap 4.0.29",
  "eyre",
  "futures",
@@ -2483,6 +2491,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "tree-sitter",
+ "tree-sitter-zeek",
  "walkdir",
  "wiremock",
 ]

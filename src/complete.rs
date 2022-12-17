@@ -5,7 +5,7 @@ use crate::{
     lsp::Database,
     parse::Parse,
     query::{self, Decl, DeclKind, Node, NodeLocation, Query},
-    zeek, Files,
+    Files,
 };
 
 use itertools::Itertools;
@@ -13,6 +13,7 @@ use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, Documentation,
     MarkupContent, Position, Url,
 };
+use tree_sitter_zeek::KEYWORDS;
 
 pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<CompletionResponse> {
     let uri = Arc::new(params.text_document_position.text_document.uri);
@@ -282,7 +283,7 @@ fn complete_any(
         .unique()
         .map(to_completion_item)
         // Also send filtered down keywords to the client.
-        .chain(zeek::KEYWORDS.iter().filter_map(|kw| {
+        .chain(KEYWORDS.iter().filter_map(|kw| {
             let should_include = if let Some(text) = text_at_completion {
                 text.is_empty()
                     || rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &kw.to_lowercase())

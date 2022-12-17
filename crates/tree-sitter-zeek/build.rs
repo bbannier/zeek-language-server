@@ -29,7 +29,7 @@ fn generate_keywords(grammar: &Path) {
 
     let source = std::format!(
         "
-    pub(crate) static KEYWORDS: [&str; {}] = [{}];",
+    pub static KEYWORDS: [&str; {}] = [{}];",
         set.len(),
         set.iter()
             .map(|keyword| format!("{:#?}", &keyword))

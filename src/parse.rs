@@ -2,11 +2,8 @@ use crate::{query::Node, Files};
 use std::{ops::Deref, sync::Arc};
 use tower_lsp::lsp_types::Url;
 use tracing::instrument;
-use tree_sitter::{Language, Parser};
-
-extern "C" {
-    pub(crate) fn tree_sitter_zeek() -> Language;
-}
+use tree_sitter::Parser;
+use tree_sitter_zeek::language_zeek;
 
 #[derive(Clone, Debug)]
 pub struct Tree(tree_sitter::Tree);
@@ -42,10 +39,9 @@ pub trait Parse: Files {
 
 #[instrument(skip(db))]
 fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
-    let language = unsafe { tree_sitter_zeek() };
     let mut parser = Parser::new();
     parser
-        .set_language(language)
+        .set_language(language_zeek())
         .expect("cannot set parser language");
 
     let source = db.source(file);

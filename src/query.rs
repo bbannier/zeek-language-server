@@ -8,8 +8,9 @@ use std::{
 };
 use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
+use tree_sitter_zeek::language_zeek;
 
-use crate::parse::{tree_sitter_zeek, Parse};
+use crate::parse::Parse;
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -403,7 +404,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
     let signature = format!("[{signature} (func_params ({signature}))]");
     let typ = format!("[(type {signature}?) {signature}]?@typ");
     let query = match tree_sitter::Query::new(
-        unsafe { tree_sitter_zeek() },
+        language_zeek(),
         &format!(r#"(_ (_ (["global" "local"]?)@scope (id)@id {typ})@decl)@outer_node"#),
     ) {
         Ok(q) => q,
@@ -900,14 +901,13 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
 
 #[instrument]
 fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
-    let query =
-        match tree_sitter::Query::new(unsafe { tree_sitter_zeek() }, "(\"@load\") (file)@file") {
-            Ok(q) => q,
-            Err(e) => {
-                error!("could not construct query: {}", e);
-                return Vec::new();
-            }
-        };
+    let query = match tree_sitter::Query::new(language_zeek(), "(\"@load\") (file)@file") {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return Vec::new();
+        }
+    };
 
     let c_file = query
         .capture_index_for_name("file")

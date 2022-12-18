@@ -1,3 +1,4 @@
+use anyhow::Result;
 use tree_sitter_stack_graphs::{
     loader::{FileAnalyzers, LanguageConfiguration},
     CancellationFlag,
@@ -11,7 +12,14 @@ pub const STACK_GRAPHS_BUILTINS_CONFIG: &str = include_str!("../src/builtins.cfg
 /// The stack graphs builtins source for this language
 pub const STACK_GRAPHS_BUILTINS_SOURCE: &str = include_str!("../src/builtins.zeek");
 
-pub fn language_configuration(cancellation_flag: &dyn CancellationFlag) -> LanguageConfiguration {
+/// A language configuration for this language.
+///
+/// # Errors
+///
+/// Returns an error if the configuration cannot be created.
+pub fn language_configuration(
+    cancellation_flag: &dyn CancellationFlag,
+) -> Result<LanguageConfiguration> {
     LanguageConfiguration::from_tsg_str(
         tree_sitter_zeek::language_zeek(),
         Some(String::from("source.zeek")),
@@ -23,5 +31,5 @@ pub fn language_configuration(cancellation_flag: &dyn CancellationFlag) -> Langu
         FileAnalyzers::new(),
         cancellation_flag,
     )
-    .unwrap()
+    .map_err(Into::into)
 }

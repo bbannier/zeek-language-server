@@ -14,7 +14,7 @@ fn main() -> anyhow::Result<()> {
     CiTester::new(
         vec![tree_sitter_stack_graphs_zeek::language_configuration(
             &NoCancellation,
-        )],
+        )?],
         vec![test_path],
     )
     .run()

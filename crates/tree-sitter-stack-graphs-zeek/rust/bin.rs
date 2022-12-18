@@ -11,5 +11,5 @@ use tree_sitter_stack_graphs::NoCancellation;
 fn main() -> anyhow::Result<()> {
     Cli::main(vec![tree_sitter_stack_graphs_zeek::language_configuration(
         &NoCancellation,
-    )])
+    )?])
 }

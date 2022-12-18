@@ -1,0 +1,25 @@
+[package]
+name = "tree-sitter-stack-graphs-zeek"
+version = "0.1.0"
+description = "Stack graphs definition for Zeek using tree-sitter-zeek"
+readme = "README.md"
+keywords = ["tree-sitter", "stack-graphs", "zeek"]
+edition = "2018"
+
+[[bin]]
+name = "tree-sitter-stack-graphs-zeek"
+path = "rust/bin.rs"
+
+[lib]
+path = "rust/lib.rs"
+
+[[test]]
+name = "test"
+path = "rust/test.rs"
+harness = false
+
+[dependencies]
+anyhow = "1.0.66"
+stack-graphs = { version = "0.10.1", git = "https://github.com/github/stack-graphs" }
+tree-sitter-stack-graphs = { version = "~0.4.0", git = "https://github.com/github/stack-graphs/", features=["cli"] }
+tree-sitter-zeek = { path = "../tree-sitter-zeek" }

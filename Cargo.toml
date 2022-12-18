@@ -42,4 +42,7 @@ tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }
 walkdir = "2.3.2"
 
 [workspace]
-members = ["crates/tree-sitter-zeek"]
+members = [
+  "crates/tree-sitter-stack-graphs-zeek",
+  "crates/tree-sitter-zeek"
+]

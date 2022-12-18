@@ -1,0 +1,19 @@
+{
+    "name": "tree-sitter-stack-graphs-zeek",
+    "version": "0.1.0",
+    "description": "Stack graphs definition for Zeek using tree-sitter-zeek",
+    "keywords": [
+        "tree-sitter",
+        "stack-graphs",
+        "zeek"
+    ],
+    "devDependencies": {
+        // "tree-sitter-stack-graphs": "git+https://github.com/github/stack-graphs.git:/tree-sitter-stack-graphs/npm"
+        "stack-graphs": "git+https://github.com/github/stack-graphs.git"
+    },
+    "scripts": {
+        "test": "npx tree-sitter-stack-graphs test --grammar vendor/tree-sitter-zeek --tsg src/stack-graphs --builtins src/builtins test",
+        "parse-file": "npx tree-sitter-stack-graphs parse --grammar vendor/tree-sitter-zeek",
+        "test-file": "npx tree-sitter-stack-graphs test --grammar vendor/tree-sitter-zeek --tsg src/stack-graphs --builtins src/builtins"
+    }
+}

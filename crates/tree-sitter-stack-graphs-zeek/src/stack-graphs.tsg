@@ -5,7 +5,6 @@
 ;; Global Variables
 ;; ^^^^^^^^^^^^^^^^
 
-global MODULE = "GLOBAL"
 global FILE_PATH
 global ROOT_NODE
 global JUMP_TO_SCOPE_NODE
@@ -33,42 +32,93 @@ attribute node_symbol = node            => symbol = (source-text node), source_n
 ;; Stack Graph Rules
 ;; ^^^^^^^^^^^^^^^^^
 
-(module_decl)@mod {
-   node @mod.lexical_scope
-   node @mod.module_defs
+(source_file)@s {
+   node @s.lexical_scope
 }
 
-((module_decl)@mod [(var_decl) (expr)]@stmt) {
+(module_decl (id)@id)@mod {
+   node @mod.lexical_scope
+   node @mod.module_defs
+
+   node def
+   attr (def) node_definition = @id
+   edge @mod.lexical_scope -> def
+   edge def -> @mod.module_defs
+
+
+   ; Add this module definition to the global scope.
+   edge ROOT_NODE -> def
+   edge def -> ROOT_NODE
+
+   ; Add an pop node so we can look up identifiers in the same module.
+   node implicit_ref
+   attr (implicit_ref) node_reference = @id
+   edge implicit_ref -> @mod.lexical_scope
+   edge @mod.lexical_scope -> implicit_ref
+}
+
+(source_file (decl (module_decl)@mod))@s {
+   edge @s.lexical_scope -> @mod.lexical_scope
+}
+
+
+((decl (module_decl (id)@mid )@mod) (decl [(global_decl (id)@id)]@stmt)) {
    edge @stmt.lexical_scope -> @mod.lexical_scope
    edge @mod.lexical_scope -> @stmt.lexical_defs
+   edge @mod.module_defs -> @stmt.module_defs
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 [
- (var_decl)
+ (global_decl)
  (expr)
+ (stmt)
 ]@stmt {
    node @stmt.lexical_scope
    node @stmt.lexical_defs
+   node @stmt.module_defs
 }
 
-(var_decl (id)@id)@decl {
+((decl (module_decl (id)@mid)) (decl (global_decl (id)@id)@decl)) {
    node def
    attr (def) node_definition = @id
    edge @decl.lexical_defs -> def
+   edge @decl.module_defs -> def
+}
 
+(_ (stmt (expr)@expr) @stmt) @x {
+   edge @expr.lexical_scope -> @stmt.lexical_scope
+   edge @stmt.lexical_scope -> @x.lexical_scope
 }
 
 (expr (id)@id)@e {
-   node ref
-   attr (ref) node_reference = @id
-   edge ref -> @e.lexical_scope
+   scan (source-text @id) {
+      "(\\w+)::(\\w+)" {
+         ; If the id contains a `::` push a lookup for the module. Look for the
+         ; module in the root scope.
+         node mod
+         attr (mod) push_symbol = $1
+         edge mod -> ROOT_NODE
+
+         ; An unqualified reference. Look for it in the module.
+         node ref
+         attr (ref) type = "push_symbol", symbol = $2, source_node = @id, is_reference
+         edge ref -> mod
+      }
+      "\\w+" {
+         node ref
+         attr (ref) node_reference = @id
+         edge ref -> @e.lexical_scope
+         edge ref -> @e.module_defs
+      }
+   }
 }
 
 (_ (initializer (init (expr (id))@inner)))@outer {
    edge @inner.lexical_scope -> @outer.lexical_scope
    edge @outer.lexical_scope -> @inner.lexical_defs
 }
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 [

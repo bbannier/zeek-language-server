@@ -6,6 +6,7 @@ pub mod complete;
 pub mod lsp;
 pub mod parse;
 pub mod query;
+pub mod resolver;
 pub mod zeek;
 
 #[allow(clippy::trait_duplication_in_bounds)]

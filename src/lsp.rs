@@ -3,7 +3,7 @@ use crate::{
     complete::complete,
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
-    zeek, Client, Files,
+    resolver, zeek, Client, Files,
 };
 use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
@@ -31,11 +31,12 @@ use tower_lsp::{
         GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
         ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
         Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
-        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ReferenceParams,
+        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
+        WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -365,6 +366,7 @@ impl LanguageServer for Backend {
                 }),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(zeek::has_format().await)),
+                references_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1158,6 +1160,11 @@ impl LanguageServer for Backend {
         })?;
 
         Ok(response.map(GotoImplementationResponse::from))
+    }
+
+    #[instrument]
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        self.with_state(move |state| resolver::references(state, params.text_document_position))
     }
 }
 

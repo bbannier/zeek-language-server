@@ -7,20 +7,20 @@ repos:
         args: ["--all", "--all-features", "--", "-D", "clippy::pedantic"]
       - id: cargo-check
   - repo: https://github.com/jorisroovers/gitlint
-    rev: v0.17.0
+    rev: v0.18.0
     hooks:
       - id: gitlint
   - repo: https://github.com/crate-ci/typos
-    rev: v1.12.14
+    rev: v1.13.6
     hooks:
       - id: typos
         exclude: "vscode/package-lock.json"
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.32.2
+    rev: v0.33.0
     hooks:
       - id: markdownlint-fix
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.3.0
+    rev: v4.4.0
     hooks:
       - id: trailing-whitespace
         exclude: "^tests/Baseline"

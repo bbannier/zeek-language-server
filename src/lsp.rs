@@ -26,16 +26,17 @@ use tower_lsp::{
         CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
         DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
         DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent,
-        FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
-        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
+        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
+        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
+        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
+        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -344,6 +345,8 @@ impl LanguageServer for Backend {
             Err(e) => error!("{e}"),
         }
 
+        let has_zeek_format = zeek::has_format().await;
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -364,7 +367,8 @@ impl LanguageServer for Backend {
                     ..SignatureHelpOptions::default()
                 }),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
-                document_formatting_provider: Some(OneOf::Left(zeek::has_format().await)),
+                document_formatting_provider: Some(OneOf::Left(has_zeek_format)),
+                document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1064,6 +1068,44 @@ impl LanguageServer for Backend {
     }
 
     #[instrument]
+    async fn range_formatting(
+        &self,
+        params: DocumentRangeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = Arc::new(params.text_document.uri);
+
+        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+
+        let source = match source {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        let start = params.range.start;
+        let end = params.range.end;
+        let num_lines = if start.line > end.line {
+            return Ok(None);
+        } else {
+            end.line - start.line
+        };
+
+        let lines = source
+            .lines()
+            .skip(start.line as usize)
+            .take(num_lines as usize)
+            .join("\n");
+
+        let formatted = if let Ok(f) = zeek::format(&lines).await {
+            f
+        } else {
+            // Swallow errors from zeek-format, we likely already emitted a diagnostic.
+            return Ok(None);
+        };
+
+        Ok(Some(vec![TextEdit::new(params.range, formatted)]))
+    }
+
+    #[instrument]
     async fn goto_declaration(
         &self,
         params: GotoDefinitionParams,
@@ -1218,8 +1260,8 @@ pub(crate) mod test {
     use tower_lsp::{
         lsp_types::{
             CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
-            PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-            WorkDoneProgressParams, WorkspaceSymbolParams,
+            PartialResultParams, Position, Range, TextDocumentIdentifier,
+            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -1604,6 +1646,43 @@ event x::foo() {}",
                 .formatting(DocumentFormattingParams {
                     text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
                     options: FormattingOptions::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await,
+            Ok(None)
+        );
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn range_formatting() {
+        use super::DocumentRangeFormattingParams;
+
+        let mut db = TestDatabase::new();
+        let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
+        db.add_file(uri_ok.clone(), "module foo ;\n\nevent zeek_init(){}");
+
+        let uri_invalid = Arc::new(Url::from_file_path("/invalid.zeek").unwrap());
+        db.add_file(uri_invalid.clone(), "event ssl");
+
+        let server = serve(db);
+
+        assert!(server
+            .range_formatting(DocumentRangeFormattingParams {
+                text_document: TextDocumentIdentifier::new(uri_ok.as_ref().clone(),),
+                options: FormattingOptions::default(),
+                range: Range::new(Position::new(0, 0), Position::new(1, 1)),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .await
+            .is_ok());
+
+        assert_eq!(
+            server
+                .range_formatting(DocumentRangeFormattingParams {
+                    text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
+                    options: FormattingOptions::default(),
+                    range: Range::new(Position::new(0, 0), Position::new(1, 1)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await,

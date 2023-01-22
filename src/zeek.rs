@@ -183,6 +183,7 @@ pub(crate) async fn format(doc: &str) -> Result<String> {
     let mut fmt = tokio::process::Command::new("zeek-format")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()?;
 
     fmt.stdin

@@ -7,7 +7,7 @@ on:
       - 'prerelease'
 
 jobs:
-  build:
+  build-binaries:
     strategy:
       matrix:
           name:
@@ -50,17 +50,16 @@ jobs:
           command: build
           args: --release --locked --target ${{ matrix.target }}
 
-      - name: Build vscode extension
-        run: |
-          cd vscode
-          npm install
-          npm run vsix
-
       - name: Rename artifacts
         run: |
           mkdir artifacts
           mv target/${{ matrix.target }}/release/zeek-language-server artifacts/zeek-language-server-${{ matrix.target }}
-          mv vscode/*.vsix artifacts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: bin
+          path: artifacts/zeek-language-server-${{ matrix.target }}
 
       - name: Upload Release Assets
         id: upload-release-assets
@@ -71,3 +70,35 @@ jobs:
           draft: false
           files: |
             artifacts/*
+
+  build-vscode-extension:
+    name: Build vscode extension
+    needs: build-binaries
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Download binaries artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: vscode
+
+      - name: Build vscode extension
+        run: |
+          cd vscode
+          chmod +x bin/*
+          npm install
+          npm run vsix
+
+      - name: Upload Release Assets
+        id: upload-release-assets
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: false
+          files: |
+            vscode/*.vsix

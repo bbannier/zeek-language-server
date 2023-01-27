@@ -31,8 +31,6 @@ somewhere in `PATH`.
 This extension provides configuration through VSCode's configuration settings.
 All configuration settings are under `zeekLanguageServer.*`.
 
-- `zeekLanguageServer.path`: if set used to launch the language server
-  executable; if unset the executable is looked up in `PATH`.
 - `zeekLanguageServer.zeekBinaryDirectory`: directory containing Zeek
   executables. If unset we will attempt to find them in PATH.
 - `zeekLanguageServer.checkZeekFormat`: check for zeek-format
@@ -40,7 +38,3 @@ All configuration settings are under `zeekLanguageServer.*`.
 - `zeekLanguageServer.ZEEKPATH`: Colon-separated list of alternative Zeek
   prefixes to use. By default prefixes are determined from the output of
   `zeek-config`.
-- `zeekLanguageServer.checkForUpdates`: Check for updates of the server binary
-  on startup. By default we check if `zeekLanguageServer.path` is set. This
-  should only be needed if not using a server binary bundled with the
-  extension.

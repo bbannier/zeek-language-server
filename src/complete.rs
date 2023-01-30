@@ -21,17 +21,11 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 
     let source = state.source(uri.clone());
 
-    let tree = match state.parse(uri.clone()) {
-        Some(t) => t,
-        None => return None,
-    };
+    let Some(tree) = state.parse(uri.clone()) else { return None; };
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
-    let mut node = match root.descendant_for_position(position) {
-        Some(n) => n,
-        None => return None,
-    };
+    let Some(mut node) = root.descendant_for_position(position) else { return None; };
 
     let text = completion_text(node, &source);
 
@@ -500,7 +494,7 @@ mod test {
         );
 
         {
-            let uri = uri1.clone();
+            let uri = uri1;
             let position = Position::new(2, 17);
             let params = CompletionParams {
                 text_document_position: TextDocumentPositionParams {
@@ -515,13 +509,13 @@ mod test {
                 &db.0,
                 CompletionParams {
                     context: None,
-                    ..params.clone()
+                    ..params
                 }
             ));
         }
 
         {
-            let uri = uri2.clone();
+            let uri = uri2;
             let position = Position::new(2, 17);
             let params = CompletionParams {
                 text_document_position: TextDocumentPositionParams {
@@ -536,7 +530,7 @@ mod test {
                 &db.0,
                 CompletionParams {
                     context: None,
-                    ..params.clone()
+                    ..params
                 }
             ));
         }

@@ -262,7 +262,10 @@ mod test {
 
     #[tokio::test]
     async fn prefixes_from_env() {
-        assert!(zeek::prefixes(Some("".into())).await.unwrap().is_empty());
+        assert!(zeek::prefixes(Some(String::new()))
+            .await
+            .unwrap()
+            .is_empty());
 
         assert!(zeek::prefixes(Some(":".into())).await.unwrap().is_empty());
 

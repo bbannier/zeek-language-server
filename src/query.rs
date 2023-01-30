@@ -826,15 +826,9 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
 
     // Synthesize declarations for function arguments. Ideally the grammar would expose
     // these directly.
-    let func_params = match node.named_child("func_params") {
-        Some(p) => p,
-        None => return HashSet::new(),
-    };
+    let Some(func_params) = node.named_child("func_params") else { return HashSet::new(); };
 
-    let formal_args = match func_params.named_child("formal_args") {
-        Some(a) => a,
-        None => return HashSet::new(),
-    };
+    let Some(formal_args) = func_params.named_child("formal_args") else { return HashSet::new(); };
 
     formal_args
         .named_children("formal_arg")
@@ -871,12 +865,11 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
         return HashSet::new();
     }
 
-    let init = match node
+    let Some(init) = node
         .named_child("expr")
         .and_then(|n| n.utf8_text(source).ok())
-    {
-        Some(t) => t,
-        None => return HashSet::new(),
+    else {
+        return HashSet::new();
     };
 
     params
@@ -932,20 +925,14 @@ pub trait Query: Parse {
 #[instrument(skip(db))]
 fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
     let source = db.source(uri.clone());
-    let tree = match db.parse(uri.clone()) {
-        Some(t) => t,
-        None => return Arc::new(BTreeSet::new()),
-    };
+    let Some(tree) = db.parse(uri.clone()) else { return Arc::new(BTreeSet::new()); };
 
     Arc::new(decls_(tree.root_node(), uri, source.as_bytes()))
 }
 
 #[instrument(skip(db))]
 fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
-    let tree = match db.parse(uri.clone()) {
-        Some(t) => t,
-        None => return Arc::new(Vec::new()),
-    };
+    let Some(tree) = db.parse(uri.clone()) else { return Arc::new(Vec::new()); };
     let source = db.source(uri);
 
     Arc::new(

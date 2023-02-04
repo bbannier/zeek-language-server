@@ -375,10 +375,7 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
         for f in db.files().iter() {
-            let path = match f.to_file_path() {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
+            let Ok(path) = f.to_file_path() else { continue };
 
             if !path.ends_with(essential_input) {
                 continue;
@@ -392,14 +389,12 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
             }
         }
 
-        let implicit_load = if let Some(f) = implicit_file {
-            f
+        if let Some(implicit_load) = implicit_file {
+            loads.push(implicit_load);
         } else {
             error!("could not resolve load of '{essential_input}'");
             continue;
         };
-
-        loads.push(implicit_load);
     }
 
     Arc::new(loads)
@@ -424,14 +419,12 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
 
 #[instrument(skip(db))]
 fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
-    let path = match uri.to_file_path() {
-        Ok(p) => p,
-        Err(_) => return Arc::new(Vec::new()),
+    let Ok(path) = uri.to_file_path() else {
+        return Arc::new(Vec::new())
     };
 
-    let path = match path.parent() {
-        Some(p) => p,
-        None => return Arc::new(Vec::new()),
+    let Some(path) = path.parent() else {
+        return Arc::new(Vec::new())
     };
 
     let prefixes = db.prefixes();

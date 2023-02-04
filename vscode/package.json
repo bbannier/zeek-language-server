@@ -130,7 +130,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build-base -- --minify",
     "vsix": "vsce package -o zeek-language-server.vsix",
-    "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node12",
     "build": "npm run build-base -- --sourcemap",
     "watch": "npm run build-base -- --sourcemap --watch",
     "lint": "prettier --check . && eslint --ext=ts .",
@@ -138,7 +138,7 @@
   },
   "dependencies": {
     "got": "^12.1.2",
-    "vscode-languageclient": "^8.0.0",
+    "vscode-languageclient": "^7.0.0",
     "vscode-uri": "^3.0.3"
   },
   "devDependencies": {

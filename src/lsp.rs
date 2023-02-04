@@ -175,10 +175,7 @@ impl Backend {
     }
 
     async fn progress_end(&self, token: Option<ProgressToken>) {
-        let token = match token {
-            Some(t) => t,
-            None => return,
-        };
+        let Some(token) = token else { return; };
 
         if let Some(client) = &self.client {
             let params = ProgressParams {
@@ -192,10 +189,7 @@ impl Backend {
     }
 
     async fn progress(&self, token: Option<ProgressToken>, message: Option<String>) {
-        let token = match token {
-            Some(t) => t,
-            None => return,
-        };
+        let Some(token) = token else { return; };
 
         if let Some(client) = &self.client {
             let params = ProgressParams {
@@ -218,10 +212,7 @@ impl Backend {
             let diags = self.with_state(|state| {
                 state.file_changed(uri.clone());
 
-                let tree = match state.parse(uri.clone()) {
-                    Some(t) => t,
-                    None => return Vec::new(),
-                };
+                let Some(tree) = state.parse(uri.clone()) else { return Vec::new(); };
 
                 tree.root_node()
                     .errors()
@@ -477,10 +468,7 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files = match self.with_state(|s| s.files().as_ref().clone()) {
-            Ok(xs) => xs,
-            Err(_) => return,
-        };
+        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else { return; };
 
         if let Ok(preloaded_decls) = self.with_state(|state| {
             let span = trace_span!("preloading");
@@ -564,10 +552,7 @@ impl LanguageServer for Backend {
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
 
-        let file = match uri.to_file_path() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
+        let Ok(file) = uri.to_file_path() else { return; };
 
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
@@ -581,10 +566,7 @@ impl LanguageServer for Backend {
             .ok()
             .flatten();
 
-        let file_dir = match file.parent() {
-            Some(p) => p,
-            None => return,
-        };
+        let Some(file_dir) = file.parent() else { return; };
 
         let checks = if let Some(folder) = workspace_folder {
             zeek::check(&file, folder).await
@@ -639,16 +621,10 @@ impl LanguageServer for Backend {
             let source = state.source(uri.clone());
 
             let tree = state.parse(uri.clone());
-            let tree = match tree.as_ref() {
-                Some(t) => t,
-                None => return Ok(None),
-            };
+            let Some(tree) = tree.as_ref() else { return Ok(None); };
 
             let node = tree.root_node();
-            let node = match node.named_descendant_for_position(params.position) {
-                Some(n) => n,
-                None => return Ok(None),
-            };
+            let Some(node) = node.named_descendant_for_position(params.position) else { return Ok(None); };
 
             let text = node.utf8_text(source.as_bytes()).map_err(|e| {
                 error!("could not get source text: {}", e);
@@ -906,16 +882,11 @@ impl LanguageServer for Backend {
 
         self.with_state(move |state| {
             let source = state.source(uri.clone());
-            let tree = match state.parse(uri.clone()) {
-                Some(t) => t,
-                None => return Ok(None),
-            };
+            let Some(tree) = state.parse(uri.clone()) else { return Ok(None); };
 
             // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-            let line = match source.lines().nth(position.line as usize) {
-                Some(l) => l,
-                None => return Ok(None),
-            };
+            let Some(line) = source.lines().nth(position.line as usize) else { return Ok(None); };
+
             #[allow(clippy::cast_possible_truncation)]
             let line = if (line.len() + 1) as u32 > position.character {
                 &line[..position.character as usize]
@@ -924,7 +895,7 @@ impl LanguageServer for Backend {
             };
 
             // Search backward in the line for '('. The identifier before that could be a function name.
-            let node = match line
+            let Some(node) = line
                 .chars()
                 .rev()
                 .enumerate()
@@ -938,40 +909,28 @@ impl LanguageServer for Backend {
                         character,
                         ..position
                     })
-                }) {
-                Some(n) => n,
-                None => return Ok(None),
-            };
+                }) else {
+                return Ok(None);
+                };
 
             #[allow(clippy::cast_possible_truncation)]
             let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
 
-            let id = match node.utf8_text(source.as_bytes()) {
-                Ok(id) => id,
-                Err(_) => return Ok(None),
+            let Ok(id) = node.utf8_text(source.as_bytes()) else {
+                return Ok(None);
             };
 
-            let f = match state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node))
-            {
-                Some(f) => f,
-                _ => return Ok(None),
-            };
+            let Some(f) = state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node)) else { return Ok(None) };
 
-            let signature = match &f.kind {
-                DeclKind::FuncDecl(s)
-                | DeclKind::FuncDef(s)
-                | DeclKind::EventDecl(s)
-                | DeclKind::EventDef(s)
-                | DeclKind::HookDecl(s)
-                | DeclKind::HookDef(s) => s,
-                _ => return Ok(None),
-            };
+            let (DeclKind::FuncDecl(signature)
+                | DeclKind::FuncDef(signature)
+                | DeclKind::EventDecl(signature)
+                | DeclKind::EventDef(signature)
+                | DeclKind::HookDecl(signature)
+                | DeclKind::HookDef(signature)) = &f.kind else { return Ok(None) };
 
             // Recompute `tree` and `source` in the context of the function declaration.
-            let tree = match state.parse(f.uri.clone()) {
-                Some(t) => t,
-                None => return Ok(None),
-            };
+            let Some(tree) = state.parse(f.uri.clone()) else { return Ok(None); };
             let source = state.source(f.uri.clone());
 
             let label = format!(
@@ -1047,19 +1006,14 @@ impl LanguageServer for Backend {
 
         let source = self.with_state(|state| Some(state.source(uri.clone())))?;
 
-        let source = match source {
-            Some(s) => s,
-            None => return Ok(None),
-        };
+        let Some(source) = source else{ return Ok(None); };
 
         let range = match self.with_state(|state| state.parse(uri))? {
             Some(t) => t.root_node().range(),
             None => return Ok(None),
         };
 
-        let formatted = if let Ok(f) = zeek::format(&source).await {
-            f
-        } else {
+        let Ok(formatted) = zeek::format(&source).await else {
             // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
         };
@@ -1076,10 +1030,7 @@ impl LanguageServer for Backend {
 
         let source = self.with_state(|state| Some(state.source(uri.clone())))?;
 
-        let source = match source {
-            Some(s) => s,
-            None => return Ok(None),
-        };
+        let Some(source) = source else{ return Ok(None); };
 
         let start = params.range.start;
         let end = params.range.end;
@@ -1095,9 +1046,7 @@ impl LanguageServer for Backend {
             .take(num_lines as usize)
             .join("\n");
 
-        let formatted = if let Ok(f) = zeek::format(&lines).await {
-            f
-        } else {
+        let Ok(formatted) = zeek::format(&lines).await else {
             // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
         };

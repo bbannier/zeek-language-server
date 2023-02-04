@@ -97,3 +97,23 @@ jobs:
           npm install -g tree-sitter-cli
       - uses: actions/setup-python@v2
       - uses: pre-commit/action@v2.0.3
+
+  vscode-extension:
+    name: Check vscode extension
+    runs-on: ubuntu-22.04
+
+  steps:
+      - uses: actions/checkout@v2
+
+      - name: Build vscode extension
+        run: |
+          cd vscode
+          npm install
+          npm run vsix
+
+      - name: Verify PAT
+        run: |
+          npm install -g @vscode/vsce
+          vsce verify-pat
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

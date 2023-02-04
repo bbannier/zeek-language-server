@@ -78,8 +78,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-        with:
-          submodules: recursive
 
       - name: Download binaries artifacts
         uses: actions/download-artifact@v3
@@ -102,3 +100,10 @@ jobs:
           draft: false
           files: |
             vscode/*.vsix
+
+      - name: Publish
+        run: |
+          cd vscode
+          npm run deploy
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

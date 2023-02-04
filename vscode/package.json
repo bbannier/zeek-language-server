@@ -55,15 +55,28 @@
           "default": "",
           "description": "Directory containing Zeek executables. If unset we will attempt to find them in PATH."
         },
+        "zeekLanguageServer.path": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the zeek-language-server executable. If unset we will attempt to look it up in PATH."
+        },
         "zeekLanguageServer.checkZeekFormat": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Check for zeek-format on startup"
         },
         "zeekLanguageServer.ZEEKPATH": {
           "type": "string",
           "default": "",
           "description": "Colon-separated list of alternative Zeek prefixes to use. By default prefixes are determined from the output of zeek-config."
+        },
+        "zeekLanguageServer.checkForUpdates": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": "null",
+          "markdownDescription": "Check for updates of the server binary on startup. By default we check if `#zeekLanguageServer.path#` is set. This should only be needed if not using a server binary bundled with the extension."
         }
       }
     },
@@ -130,6 +143,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build-base -- --minify",
     "vsix": "vsce package -o zeek-language-server.vsix",
+    "deploy": "vsce publish",
     "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node12",
     "build": "npm run build-base -- --sourcemap",
     "watch": "npm run build-base -- --sourcemap --watch",
@@ -151,6 +165,6 @@
     "mocha": "^10.0.0",
     "prettier": "^2.7.1",
     "typescript": "^4.4.3",
-    "vsce": "^2.6.7"
+    "@vscode/vsce": "^2.17.0"
   }
 }

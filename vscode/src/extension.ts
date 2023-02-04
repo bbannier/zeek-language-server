@@ -56,6 +56,12 @@ const log = new (class {
 })();
 
 function getLanguageServerPath(context: ExtensionContext): string {
+  // Check configured path.
+  const configPath = workspace
+    .getConfiguration("zeekLanguageServer")
+    .get<string>("path");
+  if (configPath) return configPath;
+
   // Do not attempt to start server on unsupported platforms.
   const platform = process.platform;
   if (!PLATFORMS[platform]) {
@@ -179,6 +185,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
     serverExecutable.options = { env };
   }
 
+  let checkForUpdates = configuration.get<boolean>("checkForUpdates");
+  if (checkForUpdates === undefined || checkForUpdates === null) {
+    const path = configuration.get<string>("path");
+    checkForUpdates = path.length > 0;
+  }
+
   const serverOptions: ServerOptions = {
     run: serverExecutable,
     debug: serverExecutable,
@@ -186,7 +198,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "zeek" }],
-    initializationOptions: { check_for_updates: true },
+    initializationOptions: { check_for_updates: checkForUpdates },
   };
 
   CLIENT = new LanguageClient(

@@ -102,7 +102,7 @@ jobs:
     name: Check vscode extension
     runs-on: ubuntu-22.04
 
-  steps:
+    steps:
       - uses: actions/checkout@v2
 
       - name: Build vscode extension

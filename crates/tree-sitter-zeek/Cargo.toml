@@ -9,5 +9,5 @@ edition = "2021"
 tree-sitter = "0.20.9"
 
 [build-dependencies]
-cc = "1.0.78"
-regex = "1.7.0"
+cc = "1.0.79"
+regex = "1.7.1"

@@ -172,6 +172,8 @@ pub(crate) fn essential_input_files() -> Vec<&'static str> {
         "base/init-bare.zeek",
         "base/init-frameworks-and-bifs.zeek",
         "base/init-default.zeek",
+        "builtin-plugins/__preload__.zeek",
+        "builtin-plugins/__load__.zeek",
     ]
 }
 

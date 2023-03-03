@@ -7,11 +7,11 @@ repos:
         args: ["--all", "--all-features", "--", "-D", "clippy::pedantic"]
       - id: cargo-check
   - repo: https://github.com/jorisroovers/gitlint
-    rev: v0.18.0
+    rev: v0.19.0dev
     hooks:
       - id: gitlint
   - repo: https://github.com/crate-ci/typos
-    rev: v1.13.6
+    rev: v1.13.16
     hooks:
       - id: typos
         exclude: "vscode/package-lock.json"
@@ -29,7 +29,7 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.0-alpha.4
+    rev: v3.0.0-alpha.6
     hooks:
       - id: prettier
         files: ^vscode

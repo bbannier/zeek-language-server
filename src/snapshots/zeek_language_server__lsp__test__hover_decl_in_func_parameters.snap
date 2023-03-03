@@ -1,26 +1,12 @@
 ---
 source: src/lsp.rs
-assertion_line: 1148
 expression: server.hover(params).await
-
 ---
 Ok(
     Some(
         Hover {
             contents: Array(
                 [
-                    LanguageString(
-                        LanguageString {
-                            language: "zeek",
-                            value: "y",
-                        },
-                    ),
-                    LanguageString(
-                        LanguageString {
-                            language: "lisp",
-                            value: "(id)",
-                        },
-                    ),
                     String(
                         "### variable `y`",
                     ),

@@ -632,12 +632,12 @@ impl LanguageServer for Backend {
             })?;
 
             let mut contents = vec![
-                #[cfg(debug_assertions)]
+                #[cfg(all(debug_assertions, not(test)))]
                 MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
                     value: text.into(),
                     language: "zeek".into(),
                 }),
-                #[cfg(debug_assertions)]
+                #[cfg(all(debug_assertions, not(test)))]
                 MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
                     value: node.to_sexp(),
                     language: "lisp".into(),

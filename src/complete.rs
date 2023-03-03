@@ -10,8 +10,8 @@ use crate::{
 
 use itertools::Itertools;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, Documentation,
-    MarkupContent, Position, Url,
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
+    CompletionResponse, Documentation, MarkupContent, Position, Url,
 };
 use tree_sitter_zeek::KEYWORDS;
 
@@ -195,27 +195,30 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
         .filter_map(|d| {
             let item = to_completion_item(d);
             let signature = match &d.kind {
-                DeclKind::EventDecl(s) | DeclKind::FuncDecl(s) | DeclKind::HookDecl(s) => {
-                    let args = &s.args;
-                    Some(
-                        args.iter()
-                            .filter_map(|d| {
-                                let tree = state.parse(d.uri.clone())?;
-                                let source = state.source(d.uri.clone());
-                                tree.root_node()
-                                    .named_descendant_for_point_range(d.selection_range)?
-                                    .utf8_text(source.as_bytes())
-                                    .map(String::from)
-                                    .ok()
-                            })
-                            .join(", "),
-                    )
-                }
+                DeclKind::EventDecl(s) | DeclKind::FuncDecl(s) | DeclKind::HookDecl(s) => Some(
+                    s.args
+                        .iter()
+                        .filter_map(|d| {
+                            let tree = state.parse(d.uri.clone())?;
+                            let source = state.source(d.uri.clone());
+                            tree.root_node()
+                                .named_descendant_for_point_range(d.selection_range)?
+                                .utf8_text(source.as_bytes())
+                                .map(String::from)
+                                .ok()
+                        })
+                        .join(", "),
+                ),
                 _ => None,
             }?;
 
             Some(CompletionItem {
-                label: format!("{id}({signature}) {{}}", id = item.label),
+                insert_text: Some(format!("{id}({signature}) {{}}", id = item.label)),
+                label: item.label,
+                label_details: Some(CompletionItemLabelDetails {
+                    detail: Some(format!("({signature})")),
+                    ..CompletionItemLabelDetails::default()
+                }),
                 ..item
             })
         })

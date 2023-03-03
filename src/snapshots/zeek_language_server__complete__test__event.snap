@@ -6,8 +6,15 @@ Some(
     Array(
         [
             CompletionItem {
-                label: "evt(c: count, s: string) {}",
-                label_details: None,
+                label: "evt",
+                label_details: Some(
+                    CompletionItemLabelDetails {
+                        detail: Some(
+                            "(c: count, s: string)",
+                        ),
+                        description: None,
+                    },
+                ),
                 kind: Some(
                     Event,
                 ),
@@ -24,7 +31,9 @@ Some(
                 preselect: None,
                 sort_text: None,
                 filter_text: None,
-                insert_text: None,
+                insert_text: Some(
+                    "evt(c: count, s: string) {}",
+                ),
                 insert_text_format: None,
                 insert_text_mode: None,
                 text_edit: None,

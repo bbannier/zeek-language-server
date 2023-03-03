@@ -7,6 +7,7 @@ Some(
         [
             CompletionItem {
                 label: "hok(c: count, s: string) {}",
+                label_details: None,
                 kind: Some(
                     Operator,
                 ),

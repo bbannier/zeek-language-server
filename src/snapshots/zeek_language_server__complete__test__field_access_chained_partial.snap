@@ -7,6 +7,7 @@ Some(
         [
             CompletionItem {
                 label: "abc",
+                label_details: None,
                 kind: Some(
                     Field,
                 ),

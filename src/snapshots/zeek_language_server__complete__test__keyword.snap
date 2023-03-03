@@ -5,6 +5,7 @@ expression: result
 [
     CompletionItem {
         label: "fallthrough",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -26,6 +27,7 @@ expression: result
     },
     CompletionItem {
         label: "file",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -47,6 +49,7 @@ expression: result
     },
     CompletionItem {
         label: "foo",
+        label_details: None,
         kind: Some(
             Function,
         ),
@@ -75,6 +78,7 @@ expression: result
     },
     CompletionItem {
         label: "for",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -96,6 +100,7 @@ expression: result
     },
     CompletionItem {
         label: "function",
+        label_details: None,
         kind: Some(
             Keyword,
         ),

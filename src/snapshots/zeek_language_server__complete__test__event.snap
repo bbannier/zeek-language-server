@@ -7,6 +7,7 @@ Some(
         [
             CompletionItem {
                 label: "evt(c: count, s: string) {}",
+                label_details: None,
                 kind: Some(
                     Event,
                 ),

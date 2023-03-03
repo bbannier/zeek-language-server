@@ -5,6 +5,7 @@ expression: result
 [
     CompletionItem {
         label: "&add_func",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -26,6 +27,7 @@ expression: result
     },
     CompletionItem {
         label: "&backend",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -47,6 +49,7 @@ expression: result
     },
     CompletionItem {
         label: "&broker_store",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -68,6 +71,7 @@ expression: result
     },
     CompletionItem {
         label: "&create_expire",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -89,6 +93,7 @@ expression: result
     },
     CompletionItem {
         label: "&default",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -110,6 +115,7 @@ expression: result
     },
     CompletionItem {
         label: "&delete_func",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -131,6 +137,7 @@ expression: result
     },
     CompletionItem {
         label: "&deprecated",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -152,6 +159,7 @@ expression: result
     },
     CompletionItem {
         label: "&error_handler",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -173,6 +181,7 @@ expression: result
     },
     CompletionItem {
         label: "&expire_func",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -194,6 +203,7 @@ expression: result
     },
     CompletionItem {
         label: "&is_assigned",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -215,6 +225,7 @@ expression: result
     },
     CompletionItem {
         label: "&is_used",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -236,6 +247,7 @@ expression: result
     },
     CompletionItem {
         label: "&log",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -257,6 +269,7 @@ expression: result
     },
     CompletionItem {
         label: "&on_change",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -278,6 +291,7 @@ expression: result
     },
     CompletionItem {
         label: "&optional",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -299,6 +313,7 @@ expression: result
     },
     CompletionItem {
         label: "&priority",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -320,6 +335,7 @@ expression: result
     },
     CompletionItem {
         label: "&raw_output",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -341,6 +357,7 @@ expression: result
     },
     CompletionItem {
         label: "&read_expire",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -362,6 +379,7 @@ expression: result
     },
     CompletionItem {
         label: "&redef",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -383,6 +401,7 @@ expression: result
     },
     CompletionItem {
         label: "&type_column",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -404,6 +423,7 @@ expression: result
     },
     CompletionItem {
         label: "&write_expire",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -425,6 +445,7 @@ expression: result
     },
     CompletionItem {
         label: "@deprecated",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -446,6 +467,7 @@ expression: result
     },
     CompletionItem {
         label: "@else",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -467,6 +489,7 @@ expression: result
     },
     CompletionItem {
         label: "@endif",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -488,6 +511,7 @@ expression: result
     },
     CompletionItem {
         label: "@if",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -509,6 +533,7 @@ expression: result
     },
     CompletionItem {
         label: "@ifdef",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -530,6 +555,7 @@ expression: result
     },
     CompletionItem {
         label: "@ifndef",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -551,6 +577,7 @@ expression: result
     },
     CompletionItem {
         label: "@load",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -572,6 +599,7 @@ expression: result
     },
     CompletionItem {
         label: "@load-sigs",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -593,6 +621,7 @@ expression: result
     },
     CompletionItem {
         label: "@prefixes",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -614,6 +643,7 @@ expression: result
     },
     CompletionItem {
         label: "X",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -642,6 +672,7 @@ expression: result
     },
     CompletionItem {
         label: "Y",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -670,6 +701,7 @@ expression: result
     },
     CompletionItem {
         label: "Z",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -698,6 +730,7 @@ expression: result
     },
     CompletionItem {
         label: "add",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -719,6 +752,7 @@ expression: result
     },
     CompletionItem {
         label: "addr",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -740,6 +774,7 @@ expression: result
     },
     CompletionItem {
         label: "any",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -761,6 +796,7 @@ expression: result
     },
     CompletionItem {
         label: "as",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -782,6 +818,7 @@ expression: result
     },
     CompletionItem {
         label: "bool",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -803,6 +840,7 @@ expression: result
     },
     CompletionItem {
         label: "break",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -824,6 +862,7 @@ expression: result
     },
     CompletionItem {
         label: "case",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -845,6 +884,7 @@ expression: result
     },
     CompletionItem {
         label: "const",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -866,6 +906,7 @@ expression: result
     },
     CompletionItem {
         label: "copy",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -887,6 +928,7 @@ expression: result
     },
     CompletionItem {
         label: "count",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -908,6 +950,7 @@ expression: result
     },
     CompletionItem {
         label: "default",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -929,6 +972,7 @@ expression: result
     },
     CompletionItem {
         label: "delete",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -950,6 +994,7 @@ expression: result
     },
     CompletionItem {
         label: "double",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -971,6 +1016,7 @@ expression: result
     },
     CompletionItem {
         label: "else",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -992,6 +1038,7 @@ expression: result
     },
     CompletionItem {
         label: "enum",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1013,6 +1060,7 @@ expression: result
     },
     CompletionItem {
         label: "event",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1034,6 +1082,7 @@ expression: result
     },
     CompletionItem {
         label: "export",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1055,6 +1104,7 @@ expression: result
     },
     CompletionItem {
         label: "fallthrough",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1076,6 +1126,7 @@ expression: result
     },
     CompletionItem {
         label: "file",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1097,6 +1148,7 @@ expression: result
     },
     CompletionItem {
         label: "for",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1118,6 +1170,7 @@ expression: result
     },
     CompletionItem {
         label: "function",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1139,6 +1192,7 @@ expression: result
     },
     CompletionItem {
         label: "global",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1160,6 +1214,7 @@ expression: result
     },
     CompletionItem {
         label: "hook",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1181,6 +1236,7 @@ expression: result
     },
     CompletionItem {
         label: "if",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1202,6 +1258,7 @@ expression: result
     },
     CompletionItem {
         label: "in",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1223,6 +1280,7 @@ expression: result
     },
     CompletionItem {
         label: "int",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1244,6 +1302,7 @@ expression: result
     },
     CompletionItem {
         label: "interval",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1265,6 +1324,7 @@ expression: result
     },
     CompletionItem {
         label: "is",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1286,6 +1346,7 @@ expression: result
     },
     CompletionItem {
         label: "list",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1307,6 +1368,7 @@ expression: result
     },
     CompletionItem {
         label: "local",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1328,6 +1390,7 @@ expression: result
     },
     CompletionItem {
         label: "mod_a::A",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -1356,6 +1419,7 @@ expression: result
     },
     CompletionItem {
         label: "mod_b::B",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -1384,6 +1448,7 @@ expression: result
     },
     CompletionItem {
         label: "mod_x::X",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -1412,6 +1477,7 @@ expression: result
     },
     CompletionItem {
         label: "mod_x::Z",
+        label_details: None,
         kind: Some(
             Variable,
         ),
@@ -1440,6 +1506,7 @@ expression: result
     },
     CompletionItem {
         label: "module",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1461,6 +1528,7 @@ expression: result
     },
     CompletionItem {
         label: "next",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1482,6 +1550,7 @@ expression: result
     },
     CompletionItem {
         label: "of",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1503,6 +1572,7 @@ expression: result
     },
     CompletionItem {
         label: "opaque",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1524,6 +1594,7 @@ expression: result
     },
     CompletionItem {
         label: "option",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1545,6 +1616,7 @@ expression: result
     },
     CompletionItem {
         label: "pattern",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1566,6 +1638,7 @@ expression: result
     },
     CompletionItem {
         label: "port",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1587,6 +1660,7 @@ expression: result
     },
     CompletionItem {
         label: "print",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1608,6 +1682,7 @@ expression: result
     },
     CompletionItem {
         label: "record",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1629,6 +1704,7 @@ expression: result
     },
     CompletionItem {
         label: "redef",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1650,6 +1726,7 @@ expression: result
     },
     CompletionItem {
         label: "return",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1671,6 +1748,7 @@ expression: result
     },
     CompletionItem {
         label: "schedule",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1692,6 +1770,7 @@ expression: result
     },
     CompletionItem {
         label: "set",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1713,6 +1792,7 @@ expression: result
     },
     CompletionItem {
         label: "string",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1734,6 +1814,7 @@ expression: result
     },
     CompletionItem {
         label: "subnet",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1755,6 +1836,7 @@ expression: result
     },
     CompletionItem {
         label: "switch",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1776,6 +1858,7 @@ expression: result
     },
     CompletionItem {
         label: "table",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1797,6 +1880,7 @@ expression: result
     },
     CompletionItem {
         label: "time",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1818,6 +1902,7 @@ expression: result
     },
     CompletionItem {
         label: "timeout",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1839,6 +1924,7 @@ expression: result
     },
     CompletionItem {
         label: "timer",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1860,6 +1946,7 @@ expression: result
     },
     CompletionItem {
         label: "type",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1881,6 +1968,7 @@ expression: result
     },
     CompletionItem {
         label: "union",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1902,6 +1990,7 @@ expression: result
     },
     CompletionItem {
         label: "vector",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1923,6 +2012,7 @@ expression: result
     },
     CompletionItem {
         label: "when",
+        label_details: None,
         kind: Some(
             Keyword,
         ),
@@ -1944,6 +2034,7 @@ expression: result
     },
     CompletionItem {
         label: "while",
+        label_details: None,
         kind: Some(
             Keyword,
         ),

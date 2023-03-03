@@ -7,6 +7,7 @@ Some(
         [
             CompletionItem {
                 label: "foo/a1",
+                label_details: None,
                 kind: Some(
                     File,
                 ),
@@ -28,6 +29,7 @@ Some(
             },
             CompletionItem {
                 label: "foo/b1",
+                label_details: None,
                 kind: Some(
                     File,
                 ),

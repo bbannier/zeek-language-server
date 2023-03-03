@@ -1,12 +1,13 @@
 ---
 source: src/complete.rs
-expression: "complete(&db.0, CompletionParams { context: None, ..params.clone() })"
+expression: "complete(&db.0, CompletionParams { context: None, ..params })"
 ---
 Some(
     Array(
         [
             CompletionItem {
                 label: "abc",
+                label_details: None,
                 kind: Some(
                     Field,
                 ),

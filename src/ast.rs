@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Range, Url};
 use tracing::{error, instrument};
 
 use crate::{
@@ -243,6 +243,22 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     let source = db.source(uri.clone());
 
     match node.kind() {
+        // Builtin types.
+        // NOTE: This is driven by what types the parser exposes, extend as possible.
+        "ipv4" | "ipv6" | "hostname" | "hex" | "port" | "interval" | "string" | "floatp"
+        | "integer" => {
+            return Some(Arc::new(Decl {
+                module: query::ModuleId::Global,
+                id: format!("<{}>", node.kind()),
+                fqid: format!("<{}>", node.kind()),
+                kind: DeclKind::Type(Vec::new()),
+                is_export: None,
+                range: Range::default(),
+                selection_range: Range::default(),
+                documentation: format!("Builtin type '{}'", node.kind()),
+                uri,
+            }));
+        }
         "expr" | "init" => {
             return node
                 .named_child_not("nl")
@@ -550,7 +566,7 @@ mod test {
     use std::{path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
-    use tower_lsp::lsp_types::{Position, Url};
+    use tower_lsp::lsp_types::{Position, Range, Url};
 
     use crate::{
         ast::Ast,
@@ -1057,6 +1073,41 @@ global x2 = f2();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(db.typ(decl));
+        }
+    }
+
+    #[test]
+    fn typ_builtin() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+            global x = 1;
+            global y = x + 1;
+
+            global i1 = 1.1.1.1;
+            global i2 = [dada:beef::ffff:ffff:ffff:ffff];
+            global h = example.org;
+            global he = 0x1234;
+            global p = 8080/tcp;
+            global i3 = 10 mins;
+            global s = \"str\";
+            global f = 0.1234;",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone());
+
+        for (i, _) in source
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| !l.trim().is_empty())
+        {
+            let pos = Position::new(i.try_into().unwrap(), 19);
+            assert_debug_snapshot!(db
+                .resolve(NodeLocation::from_range(uri.clone(), Range::new(pos, pos)))
+                .and_then(|d| db.typ(d)));
         }
     }
 

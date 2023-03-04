@@ -1,0 +1,47 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_range(uri.clone(),\n            Range::new(pos, pos))).and_then(|d| db.typ(d))"
+---
+Some(
+    Decl {
+        module: None,
+        id: "x",
+        fqid: "x",
+        kind: Global,
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 1,
+                character: 12,
+            },
+            end: Position {
+                line: 1,
+                character: 25,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 1,
+                character: 19,
+            },
+            end: Position {
+                line: 1,
+                character: 20,
+            },
+        },
+        documentation: "```zeek\nglobal x = 1;\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

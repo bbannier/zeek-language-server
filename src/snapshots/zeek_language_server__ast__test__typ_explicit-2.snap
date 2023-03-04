@@ -1,0 +1,49 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_node(uri, x)).and_then(|d| db.typ(d))"
+---
+Some(
+    Decl {
+        module: None,
+        id: "X",
+        fqid: "X",
+        kind: Type(
+            [],
+        ),
+        is_export: Some(
+            false,
+        ),
+        range: Range {
+            start: Position {
+                line: 3,
+                character: 12,
+            },
+            end: Position {
+                line: 3,
+                character: 30,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 3,
+                character: 17,
+            },
+            end: Position {
+                line: 3,
+                character: 18,
+            },
+        },
+        documentation: "```zeek\ntype X: record {};\n```",
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/x.zeek",
+            query: None,
+            fragment: None,
+        },
+    },
+)

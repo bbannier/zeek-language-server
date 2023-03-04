@@ -262,6 +262,25 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 uri,
             }));
         }
+        "type" => {
+            let text = node.utf8_text(source.as_bytes()).ok()?;
+            return db
+                .resolve_id(Arc::new(text.to_string()), location)
+                .or_else(|| {
+                    Some(Arc::new(Decl {
+                        module: query::ModuleId::Global,
+                        id: text.to_string(),
+                        fqid: text.to_string(),
+                        kind: DeclKind::Type(Vec::new()),
+                        is_export: None,
+                        range: Range::default(),
+                        selection_range: Range::default(),
+                        documentation: format!("Builtin type '{text}'"),
+                        uri,
+                    }))
+                });
+        }
+
         "expr" | "init" => {
             return node
                 .named_child_not("nl")
@@ -1131,6 +1150,42 @@ global x2 = f2();
             .resolve(NodeLocation::from_node(uri.clone(), y))
             .and_then(|d| db.typ(d));
         assert_eq!(x_typ, y_typ);
+    }
+
+    #[test]
+    fn typ_explicit() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+            global a : count = 42;
+
+            type X: record {};
+            global x: X;
+            ",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let a = root
+            .named_descendant_for_position(Position::new(1, 19))
+            .unwrap();
+        assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri.clone(), a))
+            .and_then(|d| db.typ(d)));
+
+        let x = root
+            .named_descendant_for_position(Position::new(4, 19))
+            .unwrap();
+        assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri, x))
+            .and_then(|d| db.typ(d)));
     }
 
     #[test]

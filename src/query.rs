@@ -41,16 +41,58 @@ pub struct Signature {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Location {
+    pub range: Range,
+    pub selection_range: Range,
+    pub uri: Arc<Url>,
+}
+
+impl PartialOrd for Location {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match OrderedRange(self.range).partial_cmp(&OrderedRange(other.range)) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match OrderedRange(self.selection_range).partial_cmp(&OrderedRange(other.selection_range)) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.uri.partial_cmp(&other.uri)
+    }
+}
+
+impl Ord for Location {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match OrderedRange(self.range).cmp(&OrderedRange(other.range)) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match OrderedRange(self.selection_range).cmp(&OrderedRange(other.selection_range)) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.uri.cmp(&other.uri)
+    }
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Location {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        NodeLocation::from_range(self.uri.clone(), self.range).hash(state);
+        NodeLocation::from_range(self.uri.clone(), self.selection_range).hash(state);
+        self.uri.hash(state);
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Decl {
     pub module: ModuleId,
     pub id: String,
     pub fqid: String,
     pub kind: DeclKind,
     pub is_export: Option<bool>,
-    pub range: Range,
-    pub selection_range: Range,
+    pub loc: Option<Location>,
     pub documentation: String,
-    pub uri: Arc<Url>,
 }
 
 impl PartialOrd for Decl {
@@ -75,22 +117,11 @@ impl PartialOrd for Decl {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-
-        match OrderedRange(self.range).partial_cmp(&OrderedRange(other.range)) {
+        match self.loc.partial_cmp(&other.loc) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-
-        match OrderedRange(self.selection_range).partial_cmp(&OrderedRange(other.selection_range)) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-
-        match self.documentation.partial_cmp(&other.documentation) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self.uri.partial_cmp(&other.uri)
+        self.documentation.partial_cmp(&other.documentation)
     }
 }
 
@@ -116,19 +147,7 @@ impl Ord for Decl {
             core::cmp::Ordering::Equal => {}
             ord => return ord,
         }
-        match OrderedRange(self.range).cmp(&OrderedRange(other.range)) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        match OrderedRange(self.selection_range).cmp(&OrderedRange(other.selection_range)) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        match self.documentation.cmp(&other.documentation) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        self.uri.cmp(&other.uri)
+        self.documentation.cmp(&other.documentation)
     }
 }
 
@@ -194,9 +213,8 @@ impl Hash for Decl {
         self.kind.hash(state);
         self.is_export.hash(state);
         self.is_export.hash(state);
-        NodeLocation::from_range(self.uri.clone(), self.range).hash(state);
+        self.loc.hash(state);
         self.documentation.hash(state);
-        self.uri.hash(state);
     }
 }
 
@@ -535,9 +553,11 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                             fqid: arg_id.to_string(),
                             kind: DeclKind::Variable,
                             is_export: None,
-                            range: arg_id_.range(),
-                            selection_range: arg.range(),
-                            uri: uri.clone(),
+                            loc: Some(Location {
+                                range: arg_id_.range(),
+                                selection_range: arg.range(),
+                                uri: uri.clone(),
+                            }),
                             documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
                         })
                     })
@@ -586,10 +606,12 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                             id: id.to_string(),
                             fqid: format!("{fqid}::{id}"),
                             kind: DeclKind::Field,
-                            range: id_.range(),
-                            selection_range: id_.range(),
+                            loc: Some(Location {
+                                range: id_.range(),
+                                selection_range: id_.range(),
+                                uri: uri.clone(),
+                            }),
                             documentation,
-                            uri: uri.clone(),
 
                             module: ModuleId::None,
                             is_export: None,
@@ -624,10 +646,12 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                                 id,
                                 fqid,
                                 kind: DeclKind::EnumMember,
-                                range,
-                                selection_range,
+                                loc: Some(Location {
+                                    range,
+                                    selection_range,
+                                    uri: uri.clone(),
+                                }),
                                 documentation,
-                                uri: uri.clone(),
                                 // An enum value is exported if its wrapping decl is exported.
                                 is_export: Some(in_export(decl)),
                             })
@@ -712,10 +736,12 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                                 id,
                                 fqid,
                                 kind: DeclKind::EnumMember,
-                                range: id_.range(),
-                                selection_range: id_.range(),
+                                loc: Some(Location {
+                                    range: id_.range(),
+                                    selection_range: id_.range(),
+                                    uri: uri.clone(),
+                                }),
                                 documentation,
-                                uri: uri.clone(),
 
                                 // An enum value is exported if its wrapping decl is exported.
                                 is_export: Some(in_export(decl)),
@@ -760,10 +786,12 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                     fqid,
                     kind,
                     is_export: Some(in_export(decl)),
-                    range,
-                    selection_range,
+                    loc: Some(Location {
+                        range,
+                        selection_range,
+                        uri: uri.clone(),
+                    }),
                     documentation,
-                    uri: uri.clone(),
                 })
                 .chain(additional_decls.into_iter()),
             )
@@ -843,9 +871,11 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
                 fqid: arg_id.to_string(),
                 kind: DeclKind::Variable,
                 is_export: None,
-                range: arg_id_.range(),
-                selection_range: arg.range(),
-                uri: uri.clone(),
+                loc: Some(Location {
+                    range: arg_id_.range(),
+                    selection_range: arg.range(),
+                    uri: uri.clone(),
+                }),
                 documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
             })
         })
@@ -883,10 +913,12 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
                 fqid: id,
                 kind: DeclKind::LoopIndex(i, init.to_string()),
                 is_export: None,
-                range: n.range(),
-                selection_range: n.range(),
+                loc: Some(Location {
+                    range: n.range(),
+                    selection_range: n.range(),
+                    uri: uri.clone(),
+                }),
                 documentation: format!("Index {i} of `{init}`"),
-                uri: uri.clone(),
             })
         })
         .collect()
@@ -1102,7 +1134,7 @@ global GLOBAL::f3: function();
 
         let decls = db.decls(uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
-        decls.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+        decls.sort_by(|a, b| a.loc.cmp(&b.loc));
 
         assert_debug_snapshot!(decls);
     }
@@ -1152,7 +1184,7 @@ function f1(x: count, y: string) {
         let mut decls = super::fn_param_decls(in_f1, uri.clone(), source.as_bytes())
             .into_iter()
             .collect::<Vec<_>>();
-        decls.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+        decls.sort_by(|a, b| a.loc.cmp(&b.loc));
         assert_debug_snapshot!(decls);
 
         let outside_f1 = root

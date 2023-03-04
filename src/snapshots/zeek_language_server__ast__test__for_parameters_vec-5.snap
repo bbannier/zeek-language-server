@@ -1,8 +1,6 @@
 ---
 source: src/ast.rs
-assertion_line: 800
-expression: "super::resolve(&db, tb, uri.clone())"
-
+expression: "db.resolve(NodeLocation::from_node(uri, tb))"
 ---
 Some(
     Decl {
@@ -14,37 +12,41 @@ Some(
             "table([1]=\"a\", [2]=\"b\")",
         ),
         is_export: None,
-        range: Range {
-            start: Position {
-                line: 4,
-                character: 9,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 4,
+                        character: 9,
+                    },
+                    end: Position {
+                        line: 4,
+                        character: 11,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 4,
+                        character: 9,
+                    },
+                    end: Position {
+                        line: 4,
+                        character: 11,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 4,
-                character: 11,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 4,
-                character: 9,
-            },
-            end: Position {
-                line: 4,
-                character: 11,
-            },
-        },
+        ),
         documentation: "Index 1 of `table([1]=\"a\", [2]=\"b\")`",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/x.zeek",
-            query: None,
-            fragment: None,
-        },
     },
 )

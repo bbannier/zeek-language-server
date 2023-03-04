@@ -1,8 +1,6 @@
 ---
 source: src/query.rs
-assertion_line: 741
 expression: decls
-
 ---
 [
     Decl {
@@ -11,38 +9,42 @@ expression: decls
         fqid: "x",
         kind: Variable,
         is_export: None,
-        range: Range {
-            start: Position {
-                line: 1,
-                character: 12,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 12,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 13,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 12,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 20,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/tmp/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 1,
-                character: 13,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 1,
-                character: 12,
-            },
-            end: Position {
-                line: 1,
-                character: 20,
-            },
-        },
+        ),
         documentation: "```zeek\nx: count\n```",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/tmp/x.zeek",
-            query: None,
-            fragment: None,
-        },
     },
     Decl {
         module: None,
@@ -50,37 +52,41 @@ expression: decls
         fqid: "y",
         kind: Variable,
         is_export: None,
-        range: Range {
-            start: Position {
-                line: 1,
-                character: 22,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 22,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 23,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 22,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 31,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/tmp/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 1,
-                character: 23,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 1,
-                character: 22,
-            },
-            end: Position {
-                line: 1,
-                character: 31,
-            },
-        },
+        ),
         documentation: "```zeek\ny: string\n```",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/tmp/x.zeek",
-            query: None,
-            fragment: None,
-        },
     },
 ]

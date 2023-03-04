@@ -1,8 +1,6 @@
 ---
 source: src/ast.rs
-assertion_line: 678
-expression: "super::resolve(&db, x2, uri)"
-
+expression: "db.resolve(NodeLocation::from_node(uri, x2))"
 ---
 Some(
     Decl {
@@ -11,37 +9,41 @@ Some(
         fqid: "x::X::x2",
         kind: Field,
         is_export: None,
-        range: Range {
-            start: Position {
-                line: 2,
-                character: 23,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 23,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 25,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 23,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 25,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/y.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 2,
-                character: 25,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 2,
-                character: 23,
-            },
-            end: Position {
-                line: 2,
-                character: 25,
-            },
-        },
+        ),
         documentation: "```zeek\n# In x::X\nx2: count;\n```",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/y.zeek",
-            query: None,
-            fragment: None,
-        },
     },
 )

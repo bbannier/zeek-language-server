@@ -9,7 +9,7 @@ use tracing::{error, instrument};
 
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, NodeLocation, Query},
+    query::{self, Decl, DeclKind, Location, NodeLocation, Query},
     zeek, Files,
 };
 
@@ -99,7 +99,10 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
             query::decls_(scope, uri.clone(), source.as_bytes())
                 .into_iter()
                 .filter(|d| d.id == id.as_str() || d.fqid == id.as_str())
-                .filter(|d| d.range.start <= node.range().start),
+                .filter(|d| {
+                    let Some(loc) = &d.loc else {return false};
+                    loc.range.start <= node.range().start
+                }),
         );
 
         if decls.iter().any(|d| !is_redef(d)) {
@@ -178,13 +181,14 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
 
 #[allow(clippy::needless_pass_by_value)]
 fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
-    let uri = &decl.uri;
+    let Some(loc) = &decl.loc else {return Some(decl)};
+    let uri = &loc.uri;
 
     let tree = db.parse(uri.clone())?;
 
     let node = tree
         .root_node()
-        .named_descendant_for_point_range(decl.range)?;
+        .named_descendant_for_point_range(loc.range)?;
 
     let d = match node.kind() {
         "var_decl" | "formal_arg" => {
@@ -206,34 +210,43 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     };
 
     // Perform additional unwrapping if needed.
-    d.and_then(|d| match &d.kind {
-        // For function declarations produce the function's return type.
-        DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_id(
-            Arc::new(sig.result.clone()?),
-            NodeLocation::from_node(d.uri.clone(), node),
-        ),
+    d.and_then(|d| {
+        let Some(loc) = &d.loc else {return Some(d)};
 
-        // For enum members return the enum.
-        DeclKind::EnumMember => {
-            // Depending on whether we are in an enum type decl or enum redef decl we need to go up
-            // to a different height. In the end we only use the ID so detect that, so we go to the
-            // outer entity and then resolve the ID.
-            let mut n = tree.root_node().named_descendant_for_point_range(d.range)?;
-            while let Some(p) = n.parent() {
-                match n.kind() {
-                    "type_decl" | "redef_enum_decl" => break,
-                    _ => n = p,
+        match &d.kind {
+            // For function declarations produce the function's return type.
+            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_id(
+                Arc::new(sig.result.clone()?),
+                NodeLocation::from_node(loc.uri.clone(), node),
+            ),
+
+            // For enum members return the enum.
+            DeclKind::EnumMember => {
+                // Depending on whether we are in an enum type decl or enum redef decl we need to go up
+                // to a different height. In the end we only use the ID so detect that, so we go to the
+                // outer entity and then resolve the ID.
+                let mut n = tree
+                    .root_node()
+                    .named_descendant_for_point_range(loc.range)?;
+                while let Some(p) = n.parent() {
+                    match n.kind() {
+                        "type_decl" | "redef_enum_decl" => break,
+                        _ => n = p,
+                    }
                 }
+
+                db.resolve(NodeLocation::from_node(
+                    loc.uri.clone(),
+                    n.named_child("id")?,
+                ))
             }
 
-            db.resolve(NodeLocation::from_node(d.uri.clone(), n.named_child("id")?))
+            // Return the actual type for variable declarations.
+            DeclKind::Global | DeclKind::Variable | DeclKind::LoopIndex(_, _) => db.typ(d),
+
+            // Other kinds we return directly.
+            _ => Some(d),
         }
-
-        // Return the actual type for variable declarations.
-        DeclKind::Global | DeclKind::Variable | DeclKind::LoopIndex(_, _) => db.typ(d),
-
-        // Other kinds we return directly.
-        _ => Some(d),
     })
 }
 
@@ -256,10 +269,12 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 fqid: format!("<{}>", node.kind()),
                 kind: DeclKind::Type(Vec::new()),
                 is_export: None,
-                range: Range::default(),
-                selection_range: Range::default(),
+                loc: Some(Location {
+                    range: Range::default(),
+                    selection_range: Range::default(),
+                    uri,
+                }),
                 documentation: format!("Builtin type '{}'", node.kind()),
-                uri,
             }));
         }
         "type" => {
@@ -273,10 +288,12 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                         fqid: text.to_string(),
                         kind: DeclKind::Type(Vec::new()),
                         is_export: None,
-                        range: Range::default(),
-                        selection_range: Range::default(),
+                        loc: Some(Location {
+                            range: Range::default(),
+                            selection_range: Range::default(),
+                            uri,
+                        }),
                         documentation: format!("Builtin type '{text}'"),
-                        uri,
                     }))
                 });
         }

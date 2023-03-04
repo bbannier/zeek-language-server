@@ -13,37 +13,41 @@ Some(
         is_export: Some(
             true,
         ),
-        range: Range {
-            start: Position {
-                line: 3,
-                character: 16,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 3,
+                        character: 16,
+                    },
+                    end: Position {
+                        line: 3,
+                        character: 28,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 3,
+                        character: 23,
+                    },
+                    end: Position {
+                        line: 3,
+                        character: 24,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 3,
-                character: 28,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 3,
-                character: 23,
-            },
-            end: Position {
-                line: 3,
-                character: 24,
-            },
-        },
+        ),
         documentation: "```zeek\nglobal y: X;\n```",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/x.zeek",
-            query: None,
-            fragment: None,
-        },
     },
 )

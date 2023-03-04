@@ -1,8 +1,6 @@
 ---
 source: src/ast.rs
-assertion_line: 872
-expression: "db.resolve(NodeLocation::from_node(uri.clone(), a_c))"
-
+expression: "db.resolve(NodeLocation::from_node(uri, a_c))"
 ---
 Some(
     Decl {
@@ -11,37 +9,41 @@ Some(
         fqid: "x::A::c",
         kind: Field,
         is_export: None,
-        range: Range {
-            start: Position {
-                line: 3,
-                character: 20,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 3,
+                        character: 20,
+                    },
+                    end: Position {
+                        line: 3,
+                        character: 21,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 3,
+                        character: 20,
+                    },
+                    end: Position {
+                        line: 3,
+                        character: 21,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 3,
-                character: 21,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 3,
-                character: 20,
-            },
-            end: Position {
-                line: 3,
-                character: 21,
-            },
-        },
+        ),
         documentation: "```zeek\n# In x::A\nc: count &optional;\n```",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/x.zeek",
-            query: None,
-            fragment: None,
-        },
     },
 )

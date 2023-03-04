@@ -9,37 +9,41 @@ Some(
         fqid: "B::i",
         kind: Field,
         is_export: None,
-        range: Range {
-            start: Position {
-                line: 2,
-                character: 16,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 16,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 17,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 16,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 17,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
             },
-            end: Position {
-                line: 2,
-                character: 17,
-            },
-        },
-        selection_range: Range {
-            start: Position {
-                line: 2,
-                character: 16,
-            },
-            end: Position {
-                line: 2,
-                character: 17,
-            },
-        },
+        ),
         documentation: "```zeek\n# In B\ni: count;\n```",
-        uri: Url {
-            scheme: "file",
-            cannot_be_a_base: false,
-            username: "",
-            password: None,
-            host: None,
-            port: None,
-            path: "/x.zeek",
-            query: None,
-            fragment: None,
-        },
     },
 )

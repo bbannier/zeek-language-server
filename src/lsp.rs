@@ -707,12 +707,14 @@ impl LanguageServer for Backend {
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let symbol = |d: &Decl| -> DocumentSymbol {
+        let symbol = |d: &Decl| -> Option<DocumentSymbol> {
+            let Some(loc) = &d.loc else {return None};
+
             #[allow(deprecated)]
-            DocumentSymbol {
+            Some(DocumentSymbol {
                 name: d.id.clone(),
-                range: d.range,
-                selection_range: d.selection_range,
+                range: loc.range,
+                selection_range: loc.selection_range,
                 kind: to_symbol_kind(&d.kind),
                 deprecated: None,
                 detail: None,
@@ -724,21 +726,24 @@ impl LanguageServer for Backend {
                     | DeclKind::RedefEnum(fields) => Some(
                         fields
                             .iter()
-                            .map(|f| DocumentSymbol {
-                                name: f.id.clone(),
-                                range: f.range,
-                                selection_range: f.selection_range,
-                                deprecated: None,
-                                children: None,
-                                kind: to_symbol_kind(&f.kind),
-                                tags: None,
-                                detail: None,
+                            .filter_map(|f| {
+                                let Some(loc) = &f.loc else {return None};
+                                Some(DocumentSymbol {
+                                    name: f.id.clone(),
+                                    range: loc.range,
+                                    selection_range: loc.selection_range,
+                                    deprecated: None,
+                                    children: None,
+                                    kind: to_symbol_kind(&f.kind),
+                                    tags: None,
+                                    detail: None,
+                                })
                             })
                             .collect(),
                     ),
                     _ => None,
                 },
-            }
+            })
         };
 
         let modules = self.with_state(move |state| {
@@ -765,7 +770,7 @@ impl LanguageServer for Backend {
                     DocumentSymbol {
                         name: format!("{m}"),
                         kind: SymbolKind::NAMESPACE,
-                        children: Some(decls.map(symbol).collect()),
+                        children: Some(decls.filter_map(symbol).collect()),
 
                         // FIXME(bbannier): Weird ranges.
                         range: Range::new(Position::new(0, 0), Position::new(0, 0)),
@@ -777,7 +782,7 @@ impl LanguageServer for Backend {
                         tags: None,
                     }
                 })
-                .chain(decls_wo_mod.into_iter().map(symbol))
+                .chain(decls_wo_mod.into_iter().filter_map(symbol))
                 .collect()
         })?;
 
@@ -802,20 +807,21 @@ impl LanguageServer for Backend {
                         .filter(|d| {
                             rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase()) > 0.0
                         })
-                        .map(|d| {
+                        .filter_map(|d| {
                             let url: &Url = uri;
+                            let Some(loc) = &d.loc else {return None};
 
                             #[allow(deprecated)]
-                            SymbolInformation {
+                            Some(SymbolInformation {
                                 name: d.fqid.clone(),
                                 kind: to_symbol_kind(&d.kind),
 
-                                location: Location::new(url.clone(), d.range),
+                                location: Location::new(url.clone(), loc.range),
                                 container_name: Some(format!("{}", &d.module)),
 
                                 tags: None,
                                 deprecated: None,
-                            }
+                            })
                         })
                         .collect::<Vec<_>>()
                 })
@@ -849,7 +855,10 @@ impl LanguageServer for Backend {
             match node.kind() {
                 "id" => state
                     .resolve(NodeLocation::from_node(uri, node))
-                    .map(|d| Location::new(d.uri.as_ref().clone(), d.range)),
+                    .and_then(|d| {
+                        let Some(loc) = &d.loc else {return None};
+                        Some(Location::new(loc.uri.as_ref().clone(), loc.range))
+                    }),
                 "file" => {
                     let text = node
                         .utf8_text(source.as_bytes())
@@ -930,8 +939,9 @@ impl LanguageServer for Backend {
                 | DeclKind::HookDef(signature)) = &f.kind else { return Ok(None) };
 
             // Recompute `tree` and `source` in the context of the function declaration.
-            let Some(tree) = state.parse(f.uri.clone()) else { return Ok(None); };
-            let source = state.source(f.uri.clone());
+            let Some(loc) = &f.loc else { return Ok(None)};
+            let Some(tree) = state.parse(loc.uri.clone()) else { return Ok(None); };
+            let source = state.source(loc.uri.clone());
 
             let label = format!(
                 "{}({})",
@@ -940,8 +950,9 @@ impl LanguageServer for Backend {
                     .args
                     .iter()
                     .filter_map(|a| {
+                        let Some(loc) = &a.loc else { return None};
                         tree.root_node()
-                            .named_descendant_for_point_range(a.selection_range)?
+                            .named_descendant_for_point_range(loc.selection_range)?
                             .utf8_text(source.as_bytes())
                             .ok()
                     })
@@ -1093,8 +1104,12 @@ impl LanguageServer for Backend {
             }
         })?;
 
-        Ok(decl.map(|d| {
-            GotoDeclarationResponse::Scalar(Location::new(d.uri.as_ref().clone(), d.range))
+        Ok(decl.and_then(|d| {
+            let Some(loc) = &d.loc else {return None};
+            Some(GotoDeclarationResponse::Scalar(Location::new(
+                loc.uri.as_ref().clone(),
+                loc.range,
+            )))
         }))
     }
 
@@ -1138,8 +1153,9 @@ impl LanguageServer for Backend {
                         )
                     })
                     .filter_map(|d| {
+                        let Some(loc) = &d.loc else {return None};
                         if d.id == decl.id {
-                            Some(Location::new(d.uri.as_ref().clone(), d.range))
+                            Some(Location::new(loc.uri.as_ref().clone(), loc.range))
                         } else {
                             None
                         }

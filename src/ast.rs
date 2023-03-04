@@ -229,6 +229,9 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             db.resolve(NodeLocation::from_node(d.uri.clone(), n.named_child("id")?))
         }
 
+        // Return the actual type for variable declarations.
+        DeclKind::Global | DeclKind::Variable | DeclKind::LoopIndex(_, _) => db.typ(d),
+
         // Other kinds we return directly.
         _ => Some(d),
     })
@@ -1098,6 +1101,8 @@ global x2 = f2();
 
         let db = db.0;
         let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
 
         for (i, _) in source
             .lines()
@@ -1109,6 +1114,23 @@ global x2 = f2();
                 .resolve(NodeLocation::from_range(uri.clone(), Range::new(pos, pos)))
                 .and_then(|d| db.typ(d)));
         }
+
+        // Validate that type is inferred for derived values.
+        let x = root
+            .named_descendant_for_position(Position::new(1, 19))
+            .unwrap();
+        assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
+        let x_typ = db
+            .resolve(NodeLocation::from_node(uri.clone(), x))
+            .and_then(|d| db.typ(d));
+        let y = root
+            .named_descendant_for_position(Position::new(2, 19))
+            .unwrap();
+        assert_eq!(y.utf8_text(source.as_bytes()).unwrap(), "y");
+        let y_typ = db
+            .resolve(NodeLocation::from_node(uri.clone(), y))
+            .and_then(|d| db.typ(d));
+        assert_eq!(x_typ, y_typ);
     }
 
     #[test]

@@ -4,34 +4,34 @@ expression: "db.resolve(NodeLocation::from_range(uri.clone(),\n            Range
 ---
 Some(
     Decl {
-        module: None,
-        id: "x",
-        fqid: "x",
-        kind: Global,
-        is_export: Some(
-            false,
+        module: Global,
+        id: "<integer>",
+        fqid: "<integer>",
+        kind: Type(
+            [],
         ),
+        is_export: None,
         range: Range {
             start: Position {
-                line: 1,
-                character: 12,
+                line: 0,
+                character: 0,
             },
             end: Position {
-                line: 1,
-                character: 25,
+                line: 0,
+                character: 0,
             },
         },
         selection_range: Range {
             start: Position {
-                line: 1,
-                character: 19,
+                line: 0,
+                character: 0,
             },
             end: Position {
-                line: 1,
-                character: 20,
+                line: 0,
+                character: 0,
             },
         },
-        documentation: "```zeek\nglobal x = 1;\n```",
+        documentation: "Builtin type 'integer'",
         uri: Url {
             scheme: "file",
             cannot_be_a_base: false,

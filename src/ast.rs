@@ -4,12 +4,12 @@ use std::{
     sync::Arc,
 };
 
-use tower_lsp::lsp_types::{Range, Url};
+use tower_lsp::lsp_types::Url;
 use tracing::{error, instrument};
 
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, Location, NodeLocation, Query},
+    query::{self, Decl, DeclKind, NodeLocation, Query},
     zeek, Files,
 };
 
@@ -181,6 +181,14 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
 
 #[allow(clippy::needless_pass_by_value)]
 fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+    // If we see a type decl with location we are likely dealing with a buildin type already which
+    // cannot be further resolved; return it directly.
+    if let DeclKind::Type(_) = &decl.kind {
+        if decl.loc.is_none() {
+            return Some(decl);
+        }
+    }
+
     let Some(loc) = &decl.loc else {return Some(decl)};
     let uri = &loc.uri;
 
@@ -269,11 +277,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 fqid: format!("<{}>", node.kind()),
                 kind: DeclKind::Type(Vec::new()),
                 is_export: None,
-                loc: Some(Location {
-                    range: Range::default(),
-                    selection_range: Range::default(),
-                    uri,
-                }),
+                loc: None,
                 documentation: format!("Builtin type '{}'", node.kind()),
             }));
         }
@@ -288,11 +292,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                         fqid: text.to_string(),
                         kind: DeclKind::Type(Vec::new()),
                         is_export: None,
-                        loc: Some(Location {
-                            range: Range::default(),
-                            selection_range: Range::default(),
-                            uri,
-                        }),
+                        loc: None,
                         documentation: format!("Builtin type '{text}'"),
                     }))
                 });

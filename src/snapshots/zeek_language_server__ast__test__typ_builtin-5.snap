@@ -12,6 +12,6 @@ Some(
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type 'hostname'",
+        documentation: "Builtin type '<hostname>'",
     },
 )

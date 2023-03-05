@@ -12,6 +12,6 @@ Some(
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type 'interval'",
+        documentation: "Builtin type '<interval>'",
     },
 )

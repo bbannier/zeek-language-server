@@ -52,6 +52,9 @@ pub trait Ast: Files + Parse + Query {
 
     /// Resolve anidentifier in a scope.
     fn resolve_id(&self, id: Arc<String>, scope: NodeLocation) -> Option<Arc<Decl>>;
+
+    /// Gets decl for the builtin type `id`.
+    fn builtin_type(&self, id: Arc<String>) -> Arc<Decl>;
 }
 
 #[instrument(skip(db))]
@@ -270,32 +273,12 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         // Builtin types.
         // NOTE: This is driven by what types the parser exposes, extend as possible.
         "ipv4" | "ipv6" | "hostname" | "hex" | "port" | "interval" | "string" | "floatp"
-        | "integer" => {
-            return Some(Arc::new(Decl {
-                module: query::ModuleId::Global,
-                id: format!("<{}>", node.kind()),
-                fqid: format!("<{}>", node.kind()),
-                kind: DeclKind::Type(Vec::new()),
-                is_export: None,
-                loc: None,
-                documentation: format!("Builtin type '{}'", node.kind()),
-            }));
-        }
+        | "integer" => return Some(db.builtin_type(Arc::new(format!("<{}>", node.kind())))),
         "type" => {
-            let text = node.utf8_text(source.as_bytes()).ok()?;
+            let text = Arc::new(node.utf8_text(source.as_bytes()).ok()?.to_string());
             return db
-                .resolve_id(Arc::new(text.to_string()), location)
-                .or_else(|| {
-                    Some(Arc::new(Decl {
-                        module: query::ModuleId::Global,
-                        id: text.to_string(),
-                        fqid: text.to_string(),
-                        kind: DeclKind::Type(Vec::new()),
-                        is_export: None,
-                        loc: None,
-                        documentation: format!("Builtin type '{text}'"),
-                    }))
-                });
+                .resolve_id(text.clone(), location)
+                .or_else(|| Some(db.builtin_type(text)));
         }
 
         "expr" | "init" => {
@@ -597,6 +580,19 @@ pub(crate) fn load_to_file(
             .or(known_no_ext)
             .or(known_directory)
             .map(|(f, _)| (*f).clone())
+    })
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn builtin_type(_: &dyn Ast, id: Arc<String>) -> Arc<Decl> {
+    Arc::new(Decl {
+        module: query::ModuleId::Global,
+        id: id.to_string(),
+        fqid: id.to_string(),
+        kind: DeclKind::Type(Vec::new()),
+        is_export: None,
+        loc: None,
+        documentation: format!("Builtin type '{id}'"),
     })
 }
 

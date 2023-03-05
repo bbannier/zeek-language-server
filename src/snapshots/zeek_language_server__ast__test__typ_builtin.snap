@@ -12,6 +12,6 @@ Some(
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type 'integer'",
+        documentation: "Builtin type '<integer>'",
     },
 )

@@ -12,6 +12,6 @@ Some(
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type 'port'",
+        documentation: "Builtin type '<port>'",
     },
 )

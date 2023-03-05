@@ -12,6 +12,6 @@ Some(
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type 'floatp'",
+        documentation: "Builtin type '<floatp>'",
     },
 )

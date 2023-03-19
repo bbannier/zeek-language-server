@@ -240,7 +240,7 @@ impl fmt::Display for ModuleId {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Node<'a>(tree_sitter::Node<'a>);
+pub struct Node<'a>(pub(crate) tree_sitter::Node<'a>);
 
 impl<'a> Node<'a> {
     #[must_use]

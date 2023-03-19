@@ -1,0 +1,40 @@
+---
+source: src/lsp.rs
+expression: "server.inlay_hint(InlayHintParams {\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n            range: Range::new(Position::new(0, 0),\n                Position::new(src.lines().count().try_into().unwrap(),\n                    src.lines().last().unwrap().len().try_into().unwrap())),\n        }).await"
+---
+Ok(
+    Some(
+        [
+            InlayHint {
+                position: Position {
+                    line: 0,
+                    character: 7,
+                },
+                label: String(
+                    "<integer>",
+                ),
+                kind: None,
+                text_edits: None,
+                tooltip: None,
+                padding_left: None,
+                padding_right: None,
+                data: None,
+            },
+            InlayHint {
+                position: Position {
+                    line: 1,
+                    character: 7,
+                },
+                label: String(
+                    "<integer>",
+                ),
+                kind: None,
+                text_edits: None,
+                tooltip: None,
+                padding_left: None,
+                padding_right: None,
+                data: None,
+            },
+        ],
+    ),
+)

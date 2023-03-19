@@ -30,17 +30,18 @@ use tower_lsp::{
         DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
         FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
         HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
-        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceSymbolParams,
+        InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintParams,
+        Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
 use tracing::{error, instrument, trace_span, warn};
+use tree_sitter_zeek::language_zeek;
 use walkdir::WalkDir;
 
 #[cfg(test)]
@@ -360,6 +361,7 @@ impl LanguageServer for Backend {
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1166,6 +1168,77 @@ impl LanguageServer for Backend {
 
         Ok(response.map(GotoImplementationResponse::from))
     }
+
+    #[instrument]
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = Arc::new(params.text_document.uri);
+        let range = params.range;
+
+        let var_decl = "(var_decl (id)@id . (initializer))";
+        let func_call = "(expr (expr_list)@id)";
+
+        let query = tree_sitter::Query::new(language_zeek(), &format!("[{var_decl} {func_call}]"))
+            .map_err(|e| {
+                dbg!(e);
+                Error::internal_error()
+            })?;
+
+        let c_id = query
+            .capture_index_for_name("id")
+            .expect("id should be captured");
+
+        fn to_hint(n: query::Node, uri: Arc<Url>, state: &Snapshot<Database>) -> Option<InlayHint> {
+            let typ = state
+                .resolve(NodeLocation::from_node(uri, n))
+                .and_then(|d| state.typ(d))?;
+
+            Some(InlayHint {
+                position: n.range().start,
+                label: tower_lsp::lsp_types::InlayHintLabel::String(typ.id.clone()),
+                kind: None,
+                text_edits: None,
+                tooltip: None,
+                padding_left: None,
+                padding_right: None,
+                data: None,
+            })
+        }
+
+        let span1 = trace_span!("computing inlay hints");
+        let _enter1 = span1.enter();
+
+        self.with_state(|state| {
+            let tree = state.parse(uri.clone());
+            let tree = tree.as_ref()?;
+            let node: query::Node = tree.root_node().named_descendant_for_point_range(range)?;
+
+            let source = state.source(uri.clone());
+
+            Some(
+                tree_sitter::QueryCursor::new()
+                    .matches(&query, node.0, source.as_bytes())
+                    .map(|c| {
+                        let span2 = trace_span!("computing inlay hint");
+                        let _enter1 = span2.enter();
+                        c.nodes_for_capture_index(c_id)
+                            .filter_map(|f| {
+                                // Skip declaration with explicit type.
+                                if let Some(sibling) = f.next_sibling() {
+                                    dbg!(sibling.to_sexp());
+                                    if sibling.kind() == "type" {
+                                        return None;
+                                    }
+                                }
+
+                                to_hint(f.into(), uri.clone(), &state)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .flatten()
+                    .collect(),
+            )
+        })
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1225,7 +1298,7 @@ pub(crate) mod test {
     use tower_lsp::{
         lsp_types::{
             CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
-            PartialResultParams, Position, Range, TextDocumentIdentifier,
+            InlayHintParams, PartialResultParams, Position, Range, TextDocumentIdentifier,
             TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
@@ -1680,5 +1753,35 @@ event x::foo() {}",
 
             assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
         }
+    }
+
+    #[tokio::test]
+    async fn inlay_hint() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        let src = "global x = 32;
+global y = x + 1;
+global z: count = 1;";
+
+        db.add_file(uri.clone(), src);
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .inlay_hint(InlayHintParams {
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    range: Range::new(
+                        Position::new(0, 0),
+                        Position::new(
+                            src.lines().count().try_into().unwrap(),
+                            src.lines().last().unwrap().len().try_into().unwrap(),
+                        ),
+                    ),
+                })
+                .await
+        );
     }
 }

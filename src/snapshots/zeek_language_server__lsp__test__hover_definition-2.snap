@@ -1,0 +1,35 @@
+---
+source: src/lsp.rs
+expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams {\n                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n                position: Position::new(10, 15),\n            },\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+---
+Ok(
+    Some(
+        Hover {
+            contents: Array(
+                [
+                    String(
+                        "### event `zeek_init`",
+                    ),
+                    String(
+                        "Type: `event()`",
+                    ),
+                    String(
+                        "Declaration.\n```zeek\nglobal zeek_init: event();\n```",
+                    ),
+                ],
+            ),
+            range: Some(
+                Range {
+                    start: Position {
+                        line: 10,
+                        character: 14,
+                    },
+                    end: Position {
+                        line: 10,
+                        character: 23,
+                    },
+                },
+            ),
+        },
+    ),
+)

@@ -1214,7 +1214,7 @@ impl Options {
 pub(crate) mod test {
     use std::{
         collections::BTreeSet,
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
 
@@ -1232,7 +1232,7 @@ pub(crate) mod test {
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, Files};
+    use crate::{ast::Ast, lsp, zeek, Files};
 
     use super::Backend;
 
@@ -1397,6 +1397,79 @@ local x = f();
     }
 
     #[tokio::test]
+    async fn hover_definition() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+        export {
+        ## Declaration.
+        global foo: event();
+        }
+
+        ## Definition.
+        event foo() {}
+
+        ## Definition.
+        event zeek_init() {}
+
+        ## Declaration & definition.
+        event bar() {}",
+        );
+
+        let prefix = Path::new("/prefix");
+        db.add_prefix(prefix.to_str().unwrap());
+        db.add_file(
+            Arc::new(
+                Url::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
+                    .unwrap(),
+            ),
+            "
+            ##Declaration.
+            global zeek_init: event();",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(7, 15),
+                    },
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(10, 15),
+                    },
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        position: Position::new(13, 15),
+                    },
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
     async fn hover_decl_in_func_parameters() {
         let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
@@ -1521,6 +1594,51 @@ event zeek_init() {}",
         assert_debug_snapshot!(
             server
                 .goto_declaration(super::GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        Position::new(4, 8),
+                    ),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn goto_definition() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "module x;
+@load events.bif
+global yeah: event(f:string);
+event yeah(c:count) {}
+event zeek_init() {}",
+        );
+
+        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
+        db.add_file(uri_evts.clone(), "global zeek_init: event();");
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .goto_definition(super::GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        Position::new(3, 8),
+                    ),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .goto_definition(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new(uri.as_ref().clone()),
                         Position::new(4, 8),

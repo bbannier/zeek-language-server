@@ -1,0 +1,33 @@
+---
+source: src/lsp.rs
+expression: "server.goto_declaration(super::GotoDefinitionParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.as_ref().clone()),\n                Position::new(3, 8)),\n            partial_result_params: PartialResultParams::default(),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+---
+Ok(
+    Some(
+        Scalar(
+            Location {
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+                range: Range {
+                    start: Position {
+                        line: 2,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 29,
+                    },
+                },
+            },
+        ),
+    ),
+)

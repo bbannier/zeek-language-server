@@ -143,12 +143,27 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
     let last_decl = if let Some(redef) = &result {
         redef
     } else {
-        decls
+        let all = decls
             .iter()
             .chain(implicit_decls.iter())
             .chain(explicit_decls_recursive.iter())
             .filter(|d| d.fqid == id.as_str())
-            .last()?
+            .collect::<Vec<_>>();
+
+        // Prefer to return the decl instead of the definition for constructs which support both.
+        // In either case, the last instance still wins.
+        let only_decls = all.iter().filter(|d| {
+            matches!(
+                d.kind,
+                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
+            )
+        });
+
+        if let Some(decl) = only_decls.last() {
+            decl
+        } else {
+            *all.last()?
+        }
     };
 
     if is_redef(last_decl) {
@@ -324,6 +339,20 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     let id = node.utf8_text(source.as_bytes()).ok()?.to_string();
 
     if let Some(r) = db.resolve_id(Arc::new(id.clone()), location.clone()) {
+        // If we have found something which can have separate declaration and definition
+        // return the declaration if possible. At this point this must be in another file.
+        match r.kind {
+            DeclKind::FuncDef(_) | DeclKind::EventDef(_) | DeclKind::HookDef(_) => {
+                if let Some(decl) =
+                    db.resolve_id(Arc::new(id), NodeLocation::from_node(uri, tree.root_node()))
+                {
+                    return Some(decl);
+                }
+            }
+            _ => {}
+        };
+
+        // We seem to only know the definition.
         return Some(r);
     }
 

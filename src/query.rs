@@ -75,7 +75,7 @@ impl Ord for Location {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Location {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         NodeLocation::from_range(self.uri.clone(), self.range).hash(state);
@@ -193,7 +193,7 @@ impl NodeLocation {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for NodeLocation {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.range.start.line.hash(state);
@@ -205,7 +205,7 @@ impl Hash for NodeLocation {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Decl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.module.hash(state);

@@ -1171,22 +1171,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
-        let uri = Arc::new(params.text_document.uri);
-        let range = params.range;
-
-        let var_decl = "(var_decl (id)@id . (initializer))";
-        let func_call = "(expr (expr_list)@id)";
-
-        let query = tree_sitter::Query::new(language_zeek(), &format!("[{var_decl} {func_call}]"))
-            .map_err(|e| {
-                dbg!(e);
-                Error::internal_error()
-            })?;
-
-        let c_id = query
-            .capture_index_for_name("id")
-            .expect("id should be captured");
-
         fn to_hint(n: query::Node, uri: Arc<Url>, state: &Snapshot<Database>) -> Option<InlayHint> {
             let typ = state
                 .resolve(NodeLocation::from_node(uri, n))
@@ -1204,8 +1188,18 @@ impl LanguageServer for Backend {
             })
         }
 
-        let span1 = trace_span!("computing inlay hints");
-        let _enter1 = span1.enter();
+        let uri = Arc::new(params.text_document.uri);
+        let range = params.range;
+
+        let var_decl = "(var_decl (id)@id . (initializer))";
+        let func_call = "(expr (expr_list)@id)";
+
+        let query = tree_sitter::Query::new(language_zeek(), &format!("[{var_decl} {func_call}]"))
+            .map_err(|_| Error::internal_error())?;
+
+        let c_id = query
+            .capture_index_for_name("id")
+            .expect("id should be captured");
 
         self.with_state(|state| {
             let tree = state.parse(uri.clone());
@@ -1217,14 +1211,11 @@ impl LanguageServer for Backend {
             Some(
                 tree_sitter::QueryCursor::new()
                     .matches(&query, node.0, source.as_bytes())
-                    .map(|c| {
-                        let span2 = trace_span!("computing inlay hint");
-                        let _enter1 = span2.enter();
+                    .flat_map(|c| {
                         c.nodes_for_capture_index(c_id)
                             .filter_map(|f| {
                                 // Skip declaration with explicit type.
                                 if let Some(sibling) = f.next_sibling() {
-                                    dbg!(sibling.to_sexp());
                                     if sibling.kind() == "type" {
                                         return None;
                                     }
@@ -1234,7 +1225,6 @@ impl LanguageServer for Backend {
                             })
                             .collect::<Vec<_>>()
                     })
-                    .flatten()
                     .collect(),
             )
         })

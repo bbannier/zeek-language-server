@@ -1284,4 +1284,72 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), ta)));
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, tb)));
     }
+
+    #[test]
+    fn enum_value_docs() {
+        let mut db = TestDatabase::new();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            uri.clone(),
+            "
+            export {
+                    type E: enum {
+                            ## A.
+                            A,
+                            ## B.
+                            B,
+                            ## C.
+                            C,
+                    };
+
+                    global a = A;
+                    global b = B;
+                    global c = C;
+            }",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone());
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let a = root
+            .named_descendant_for_position(Position::new(11, 31))
+            .unwrap();
+        assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "A");
+        assert_eq!(
+            db.resolve(NodeLocation::from_node(uri.clone(), a))
+                .unwrap()
+                .documentation
+                .lines()
+                .next(),
+            Some("A.")
+        );
+
+        let b = root
+            .named_descendant_for_position(Position::new(12, 31))
+            .unwrap();
+        assert_eq!(b.utf8_text(source.as_bytes()).unwrap(), "B");
+        assert_eq!(
+            db.resolve(NodeLocation::from_node(uri.clone(), b))
+                .unwrap()
+                .documentation
+                .lines()
+                .next(),
+            Some("B.")
+        );
+
+        let c = root
+            .named_descendant_for_position(Position::new(13, 31))
+            .unwrap();
+        assert_eq!(c.utf8_text(source.as_bytes()).unwrap(), "C");
+        assert_eq!(
+            db.resolve(NodeLocation::from_node(uri.clone(), c))
+                .unwrap()
+                .documentation
+                .lines()
+                .next(),
+            Some("C.")
+        );
+    }
 }

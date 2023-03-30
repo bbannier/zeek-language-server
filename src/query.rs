@@ -623,9 +623,11 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
             };
 
             let type_decl = |decl: Node| -> Option<DeclKind> {
-                if let Some(enum_body) = decl.named_child("type")?.named_child("enum_body") {
-                    let values = enum_body
-                        .named_children("enum_body_elem")
+                let enum_body_elems = decl.named_child("type")?.named_children("enum_body_elem");
+                if enum_body_elems.is_empty() {
+                    Some(DeclKind::Type(extract_fields(decl)?))
+                } else {
+                    let values = enum_body_elems
                         .into_iter()
                         .filter_map(|n| {
                             let id_ = n.named_child("id")?;
@@ -658,8 +660,6 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                         })
                         .collect();
                     Some(DeclKind::Enum(values))
-                } else {
-                    Some(DeclKind::Type(extract_fields(decl)?))
                 }
             };
 

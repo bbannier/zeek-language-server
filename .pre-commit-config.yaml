@@ -7,11 +7,11 @@ repos:
         args: ["--all", "--all-features", "--", "-D", "clippy::pedantic"]
       - id: cargo-check
   - repo: https://github.com/jorisroovers/gitlint
-    rev: v0.19.0dev
+    rev: v0.19.1
     hooks:
       - id: gitlint
   - repo: https://github.com/crate-ci/typos
-    rev: v1.13.16
+    rev: v1.14.5
     hooks:
       - id: typos
         exclude: "vscode/package-lock.json"

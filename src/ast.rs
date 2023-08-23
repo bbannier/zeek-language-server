@@ -21,9 +21,6 @@ pub trait Ast: Files + Parse + Query {
     #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
 
-    #[salsa::input]
-    fn files(&self) -> Arc<BTreeSet<Arc<Url>>>;
-
     #[must_use]
     fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
 

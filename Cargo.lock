@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "zeek-language-server"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "clap 4.3.5",
  "eyre",

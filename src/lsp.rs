@@ -23,20 +23,20 @@ use tower_lsp::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
             WorkDoneProgressCreate,
         },
-        CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
-        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
-        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
-        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
-        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceSymbolParams,
+        CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability,
+        DeleteFilesParams, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
+        DidChangeWatchedFilesParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+        DocumentFormattingParams, DocumentRangeFormattingParams, DocumentSymbol,
+        DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange,
+        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+        Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -1223,6 +1223,23 @@ impl LanguageServer for Backend {
 
         Ok(response.map(GotoImplementationResponse::from))
     }
+
+    async fn did_delete_files(&self, params: DeleteFilesParams) {
+        let _ = self.with_state_mut(|state| {
+            let mut files = state.files();
+            let files = Arc::make_mut(&mut files);
+
+            let _: Vec<_> = params
+                .files
+                .into_iter()
+                .filter_map(|d| Url::parse(&d.uri).ok())
+                .map(Arc::new)
+                .map(|f| files.remove_entry(&f))
+                .collect();
+
+            state.set_files(Arc::new(files.clone()));
+        });
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1280,15 +1297,16 @@ pub(crate) mod test {
     use serde_json::json;
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
-            PartialResultParams, Position, Range, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionParams, CompletionResponse, DeleteFilesParams, FileDelete, FormattingOptions,
+            HoverParams, InitializeParams, PartialResultParams, Position, Range,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek};
+    use crate::{ast::Ast, lsp, zeek, Files};
 
     use super::Backend;
 
@@ -1842,5 +1860,63 @@ event x::foo() {}",
 
             assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
         }
+    }
+
+    #[tokio::test]
+    async fn did_delete_files() {
+        let mut db = TestDatabase::default();
+
+        let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(uri1.clone(), "module x;");
+
+        let uri2 = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        db.add_file(uri2.clone(), "module y;");
+
+        let uri3 = Arc::new(Url::from_file_path("/z.zeek").unwrap());
+        db.add_file(uri3.clone(), "module z;");
+
+        let server = serve(db);
+
+        // We started out with three file.
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 3))
+            .unwrap();
+
+        // Deleting no files does nothing.
+        server
+            .did_delete_files(DeleteFilesParams { files: vec![] })
+            .await;
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 3))
+            .unwrap();
+
+        // Can delete a single file.
+        server
+            .did_delete_files(DeleteFilesParams {
+                files: vec![FileDelete {
+                    uri: uri1.to_string(),
+                }],
+            })
+            .await;
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 2))
+            .unwrap();
+
+        // Can delete multiple files.
+        server
+            .did_delete_files(DeleteFilesParams {
+                files: vec![
+                    FileDelete {
+                        uri: uri2.to_string(),
+                    },
+                    FileDelete {
+                        uri: uri3.to_string(),
+                    },
+                ],
+            })
+            .await;
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 0))
+            .unwrap();
     }
 }

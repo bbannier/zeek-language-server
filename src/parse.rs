@@ -52,10 +52,8 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
 mod test {
     use tower_lsp::lsp_types::Url;
 
-    use crate::Files;
-
     use {
-        crate::{lsp::Database, parse::Parse, File, FileDatabase},
+        crate::{lsp::Database, parse::Parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
     };
@@ -67,13 +65,7 @@ mod test {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-        let mut files = db.files();
-        let files = Arc::make_mut(&mut files);
-        let mut file = FileDatabase::default();
-        file.set_source(Arc::new(SOURCE.to_string()));
-        files.insert(uri.clone(), Arc::new(file));
-        db.set_files(Arc::new(files.clone()));
-
+        db.set_file_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);

@@ -1040,7 +1040,7 @@ mod test {
         lsp::{Database, TestDatabase},
         parse::Parse,
         query::Node,
-        File, FileDatabase, Files,
+        File, Files,
     };
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{Position, Url};
@@ -1081,12 +1081,7 @@ mod test {
             let mut db = Database::default();
             let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-            let mut files = db.files();
-            let files = Arc::make_mut(&mut files);
-            let mut file = FileDatabase::default();
-            file.set_source(Arc::new(source.to_string()));
-            files.insert(uri.clone(), Arc::new(file));
-            db.set_files(Arc::new(files.clone()));
+            db.set_file_source(uri.clone(), Arc::new(source.to_string()));
 
             db.parse(uri)
         };
@@ -1108,13 +1103,7 @@ mod test {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-        let mut files = db.files();
-        let files = Arc::make_mut(&mut files);
-        let mut file = FileDatabase::default();
-        file.set_source(Arc::new(SOURCE.to_string()));
-        files.insert(uri.clone(), Arc::new(file));
-        db.set_files(Arc::new(files.clone()));
-
+        db.set_file_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, uri.clone(), SOURCE.as_bytes());
@@ -1144,20 +1133,18 @@ mod test {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
 
-        let mut files = db.files();
-        let files = Arc::make_mut(&mut files);
-        let mut file = FileDatabase::default();
-        file.set_source(Arc::new(
-            "module x;
+        db.set_file_source(
+            uri.clone(),
+            Arc::new(
+                "module x;
 export {
 global f1: function();
 global foo::f2: function();
 global GLOBAL::f3: function();
 }"
-            .into(),
-        ));
-        files.insert(uri.clone(), Arc::new(file));
-        db.set_files(Arc::new(files.clone()));
+                .to_string(),
+            ),
+        );
 
         let decls = db.decls(uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
@@ -1171,13 +1158,7 @@ global GLOBAL::f3: function();
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-        let mut files = db.files();
-        let files = Arc::make_mut(&mut files);
-        let mut file = FileDatabase::default();
-        file.set_source(Arc::new(SOURCE.to_string()));
-        files.insert(uri.clone(), Arc::new(file));
-        db.set_files(Arc::new(files.clone()));
-
+        db.set_file_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));

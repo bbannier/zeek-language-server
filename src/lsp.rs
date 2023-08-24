@@ -78,6 +78,17 @@ impl Database {
         // Precompute decls in this file.
         let _d = self.decls(uri);
     }
+
+    pub fn set_file_source(&mut self, uri: Arc<Url>, source: Arc<String>) {
+        let mut files = self.files();
+        let files = Arc::make_mut(&mut files);
+
+        let mut file = FileDatabase::default();
+        file.set_source(source);
+        files.insert(uri, Arc::new(file)); // Update or insert.
+
+        self.set_files(Arc::new(files.clone()));
+    }
 }
 
 impl salsa::Database for Database {}
@@ -525,12 +536,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(uri);
 
         let _set_files = self.with_state_mut(|state| {
-            let mut files = state.files();
-            let files = Arc::make_mut(&mut files);
-            let mut file = FileDatabase::default();
-            file.set_source(Arc::new(source));
-            files.insert(uri.clone(), Arc::new(file)); // Insert or update.
-            state.set_files(Arc::new(files.clone()));
+            state.set_file_source(uri.clone(), Arc::new(source));
         });
 
         // Reload implicit declarations since their result depends on the list of known files and
@@ -558,12 +564,7 @@ impl LanguageServer for Backend {
         let source = changes.text.to_string();
 
         let _set_source = self.with_state_mut(|state| {
-            let mut files = state.files();
-            let files = Arc::make_mut(&mut files);
-            let mut file = FileDatabase::default();
-            file.set_source(Arc::new(source));
-            files.insert(uri.clone(), Arc::new(file)); // Insert or update.
-            state.set_files(Arc::new(files.clone()));
+            state.set_file_source(uri.clone(), Arc::new(source));
         });
 
         if let Err(e) = self.file_changed(uri).await {
@@ -1288,7 +1289,7 @@ pub(crate) mod test {
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek, File, FileDatabase, Files};
+    use crate::{ast::Ast, lsp, zeek, Files};
 
     use super::Backend;
 
@@ -1304,15 +1305,7 @@ pub(crate) mod test {
         }
 
         pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            let mut files = self.0.files();
-            let files = Arc::make_mut(&mut files);
-
-            let mut file = FileDatabase::default();
-            file.set_source(Arc::new(source.to_string()));
-
-            files.insert(uri, Arc::new(file));
-
-            self.0.set_files(Arc::new(files.clone()));
+            self.0.set_file_source(uri, Arc::new(source.to_string()));
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)

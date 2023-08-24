@@ -1177,7 +1177,7 @@ global GLOBAL::f3: function();
 
     #[test]
     fn fn_param_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1211,7 +1211,7 @@ function f1(x: count, y: string) {
 
     #[test]
     fn fn_like_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),

@@ -1270,7 +1270,6 @@ impl Options {
 #[cfg(test)]
 pub(crate) mod test {
     use std::{
-        collections::BTreeMap,
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
@@ -1289,21 +1288,14 @@ pub(crate) mod test {
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek, Files};
+    use crate::{ast::Ast, lsp, zeek};
 
     use super::Backend;
 
+    #[derive(Default)]
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
 
     impl TestDatabase {
-        pub(crate) fn new() -> Self {
-            let mut db = lsp::Database::default();
-            db.set_files(Arc::new(BTreeMap::new()));
-            db.set_prefixes(Arc::new(Vec::new()));
-
-            Self(db)
-        }
-
         pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
             self.0.set_file_source(uri, Arc::new(source.to_string()));
         }
@@ -1332,14 +1324,14 @@ pub(crate) mod test {
 
     #[test]
     fn debug_database() {
-        let db = TestDatabase::new();
+        let db = TestDatabase::default();
 
         assert_eq!(format!("{:?}", db.0), "Database");
     }
 
     #[tokio::test]
     async fn symbol() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
@@ -1373,7 +1365,7 @@ pub(crate) mod test {
 
     #[tokio::test]
     async fn completion() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
@@ -1425,7 +1417,7 @@ global GLOBAL::Y = 3;
 
     #[tokio::test]
     async fn hover_variable() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1450,7 +1442,7 @@ local x = f();
 
     #[tokio::test]
     async fn hover_definition() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1523,7 +1515,7 @@ local x = f();
 
     #[tokio::test]
     async fn hover_decl_in_func_parameters() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1549,7 +1541,7 @@ function f(x: X, y: Y) {
 
     #[tokio::test]
     async fn signature_help() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri_x.clone(),
@@ -1614,7 +1606,7 @@ global f: function(x: count, y: string): string;
 
     #[tokio::test]
     async fn goto_declaration() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1659,7 +1651,7 @@ event zeek_init() {}",
 
     #[tokio::test]
     async fn goto_definition() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1704,7 +1696,7 @@ event zeek_init() {}",
 
     #[tokio::test]
     async fn goto_implementation() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
         db.add_file(
             uri_evts.clone(),
@@ -1758,7 +1750,7 @@ event x::foo() {}",
     async fn formatting() {
         use super::DocumentFormattingParams;
 
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
         db.add_file(uri_ok.clone(), "event zeek_init(){}");
 
@@ -1793,7 +1785,7 @@ event x::foo() {}",
     async fn range_formatting() {
         use super::DocumentRangeFormattingParams;
 
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
         db.add_file(uri_ok.clone(), "module foo ;\n\nevent zeek_init(){}");
 
@@ -1827,7 +1819,7 @@ event x::foo() {}",
 
     #[tokio::test]
     async fn get_latest_release() {
-        let server = serve(TestDatabase::new());
+        let server = serve(TestDatabase::default());
         let _ = server.initialize(InitializeParams::default()).await;
 
         {

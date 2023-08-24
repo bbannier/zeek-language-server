@@ -3,14 +3,14 @@ use crate::{
     complete::complete,
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
-    zeek, Client, Files,
+    zeek, Client, File, FileDatabase, Files,
 };
 use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -53,9 +53,24 @@ pub(crate) use test::TestDatabase;
     crate::FilesStorage,
     crate::ClientStorage
 )]
-#[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        let mut db = Self {
+            storage: salsa::Storage::default(),
+        };
+
+        db.set_files(Arc::default());
+        db.set_prefixes(Arc::default());
+        db.set_workspace_folders(Arc::default());
+        db.set_capabilities(Arc::default());
+        db.set_client_options(Arc::default());
+
+        db
+    }
 }
 
 impl Database {
@@ -318,12 +333,8 @@ impl LanguageServer for Backend {
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
         self.with_state_mut(move |state| {
-            state.set_files(Arc::new(BTreeSet::new()));
-            state.set_prefixes(Arc::new(Vec::new()));
-
             state.set_workspace_folders(Arc::new(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
-
             state.set_client_options(Arc::new(
                 params
                     .initialization_options
@@ -455,8 +466,9 @@ impl LanguageServer for Backend {
 
                 // For added or changed files, updated their sources and track the files if needed.
                 for (uri, source) in changed {
-                    s.set_source(uri.clone(), source);
-                    files.insert(uri);
+                    let mut file = FileDatabase::default();
+                    file.set_source(source);
+                    files.insert(uri, Arc::new(file)); // Insert or update.
                 }
 
                 // Commit new file list.
@@ -483,7 +495,7 @@ impl LanguageServer for Backend {
             let _enter = span.enter();
 
             files
-                .iter()
+                .keys()
                 .map(|f| {
                     let f = f.clone();
                     let db = state.snapshot();
@@ -513,14 +525,12 @@ impl LanguageServer for Backend {
         let uri = Arc::new(uri);
 
         let _set_files = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
-
             let mut files = state.files();
-            if !files.contains(&uri) {
-                let files = Arc::make_mut(&mut files);
-                files.insert(uri.clone());
-                state.set_files(Arc::new(files.clone()));
-            }
+            let files = Arc::make_mut(&mut files);
+            let mut file = FileDatabase::default();
+            file.set_source(Arc::new(source));
+            files.insert(uri.clone(), Arc::new(file)); // Insert or update.
+            state.set_files(Arc::new(files.clone()));
         });
 
         // Reload implicit declarations since their result depends on the list of known files and
@@ -548,7 +558,12 @@ impl LanguageServer for Backend {
         let source = changes.text.to_string();
 
         let _set_source = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
+            let mut files = state.files();
+            let files = Arc::make_mut(&mut files);
+            let mut file = FileDatabase::default();
+            file.set_source(Arc::new(source));
+            files.insert(uri.clone(), Arc::new(file)); // Insert or update.
+            state.set_files(Arc::new(files.clone()));
         });
 
         if let Err(e) = self.file_changed(uri).await {
@@ -630,7 +645,9 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.files().get(&uri).map(|s| s.source()) else {
+                return Ok(None);
+            };
 
             let tree = state.parse(uri.clone());
             let Some(tree) = tree.as_ref() else {
@@ -694,10 +711,11 @@ impl LanguageServer for Backend {
                 }
                 "file" => {
                     let file = PathBuf::from(text);
+                    let files = state.files();
                     let uri = load_to_file(
                         &file,
                         uri.as_ref(),
-                        state.files().as_ref(),
+                        &files.keys().collect(),
                         state.prefixes().as_ref(),
                     );
                     if let Some(uri) = uri {
@@ -815,7 +833,7 @@ impl LanguageServer for Backend {
         let symbols = self.with_state(|state| {
             let files = state.files();
             files
-                .iter()
+                .keys()
                 .flat_map(|uri| {
                     state
                         .decls(uri.clone())
@@ -866,7 +884,9 @@ impl LanguageServer for Backend {
             let tree = state.parse(uri.clone());
             let tree = tree.as_ref()?;
             let node = tree.root_node().named_descendant_for_position(position)?;
-            let source = state.source(uri.clone());
+            let Some(source) = state.files().get(&uri).map(|f| f.source()) else {
+                return None;
+            };
 
             match node.kind() {
                 "id" => state
@@ -888,7 +908,7 @@ impl LanguageServer for Backend {
                     load_to_file(
                         &file,
                         uri.as_ref(),
-                        state.files().as_ref(),
+                        &state.files().keys().collect(),
                         state.prefixes().as_ref(),
                     )
                     .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
@@ -906,7 +926,9 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.files().get(&uri).map(|f| f.source()) else {
+                return Ok(None);
+            };
             let Some(tree) = state.parse(uri.clone()) else {
                 return Ok(None);
             };
@@ -970,7 +992,9 @@ impl LanguageServer for Backend {
             let Some(tree) = state.parse(loc.uri.clone()) else {
                 return Ok(None);
             };
-            let source = state.source(loc.uri.clone());
+            let Some(source) = state.files().get(&loc.uri).map(|f| f.source()) else {
+                return Ok(None);
+            };
 
             let label = format!(
                 "{}({})",
@@ -1044,7 +1068,7 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+        let source = self.with_state(|state| state.files().get(&uri).map(|f| f.source()))?;
 
         let Some(source) = source else {
             return Ok(None);
@@ -1070,8 +1094,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
-
+        let source = self.with_state(|state| state.files().get(&uri).map(|f| f.source()))?;
         let Some(source) = source else {
             return Ok(None);
         };
@@ -1170,7 +1193,7 @@ impl LanguageServer for Backend {
             Some(
                 state
                     .files()
-                    .iter()
+                    .keys()
                     .flat_map(|f| {
                         state
                             .decls(f.clone())
@@ -1229,7 +1252,7 @@ pub async fn run() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy, Default)]
 /// Custom `initializationOptions` clients can send.
 pub struct Options {
     check_for_updates: bool,
@@ -1246,7 +1269,7 @@ impl Options {
 #[cfg(test)]
 pub(crate) mod test {
     use std::{
-        collections::BTreeSet,
+        collections::BTreeMap,
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
@@ -1265,7 +1288,7 @@ pub(crate) mod test {
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek, Files};
+    use crate::{ast::Ast, lsp, zeek, File, FileDatabase, Files};
 
     use super::Backend;
 
@@ -1274,18 +1297,21 @@ pub(crate) mod test {
     impl TestDatabase {
         pub(crate) fn new() -> Self {
             let mut db = lsp::Database::default();
-            db.set_files(Arc::new(BTreeSet::new()));
+            db.set_files(Arc::new(BTreeMap::new()));
             db.set_prefixes(Arc::new(Vec::new()));
 
             Self(db)
         }
 
         pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            self.0.set_source(uri.clone(), Arc::new(source.to_string()));
-
             let mut files = self.0.files();
             let files = Arc::make_mut(&mut files);
-            files.insert(uri);
+
+            let mut file = FileDatabase::default();
+            file.set_source(Arc::new(source.to_string()));
+
+            files.insert(uri, Arc::new(file));
+
             self.0.set_files(Arc::new(files.clone()));
         }
 

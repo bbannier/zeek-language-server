@@ -427,7 +427,7 @@ fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> 
     let mut decls = db.decls(uri.clone()).as_ref().clone();
 
     for load in db.loaded_files_recursive(uri).as_ref() {
-        for decl in db.decls(load.clone()).iter() {
+        for decl in &*db.decls(load.clone()) {
             decls.insert(decl.clone());
         }
     }
@@ -443,7 +443,7 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
     // (unless global state changes).
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
-        for f in db.files().iter() {
+        for f in &*db.files() {
             let Ok(path) = f.to_file_path() else { continue };
 
             if !path.ends_with(essential_input) {

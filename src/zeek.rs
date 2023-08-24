@@ -101,6 +101,9 @@ pub struct CheckResult {
 /// # Errors
 ///
 /// Will return `Err` if `zeek` cannot be run.
+///
+/// # Panics
+///
 pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
     file: P1,
     cwd: P2,

@@ -5,7 +5,7 @@ use crate::{
     lsp::Database,
     parse::Parse,
     query::{self, Decl, DeclKind, Node, NodeLocation, Query},
-    File, Files,
+    Files,
 };
 
 use itertools::Itertools;
@@ -19,17 +19,13 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let source = state.files().get(&uri).map(|f| f.source())?;
+    let source = state.source(uri.clone());
 
-    let Some(tree) = state.parse(uri.clone()) else {
-        return None;
-    };
+    let Some(tree) = state.parse(uri.clone()) else { return None; };
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
-    let Some(mut node) = root.descendant_for_position(position) else {
-        return None;
-    };
+    let Some(mut node) = root.descendant_for_position(position) else { return None; };
 
     let text = completion_text(node, &source);
 
@@ -203,9 +199,9 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
                     s.args
                         .iter()
                         .filter_map(|d| {
-                            let Some(loc) = &d.loc else { return None };
+                            let Some(loc) = &d.loc else {return None};
                             let tree = state.parse(loc.uri.clone())?;
-                            let source = state.files().get(&loc.uri).map(|f| f.source())?;
+                            let source = state.source(loc.uri.clone());
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -236,9 +232,7 @@ fn complete_any(
     mut node: Node,
     uri: Arc<Url>,
 ) -> Vec<CompletionItem> {
-    let Some(source) = state.files().get(&uri).map(|f| f.source()) else {
-        return Vec::new();
-    };
+    let source = state.source(uri.clone());
 
     let mut items = BTreeSet::new();
 
@@ -367,7 +361,7 @@ mod test {
 
     #[test]
     fn field_access() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
 
         let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
@@ -454,7 +448,7 @@ mod test {
 
     #[test]
     fn field_access_chained() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -483,7 +477,7 @@ mod test {
 
     #[test]
     fn field_access_partial() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
 
         let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
@@ -548,7 +542,7 @@ mod test {
 
     #[test]
     fn field_access_chained_partial() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -577,7 +571,7 @@ mod test {
 
     #[test]
     fn referenced_field_access() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -625,7 +619,7 @@ mod test {
 
     #[test]
     fn load() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
@@ -656,7 +650,7 @@ mod test {
 
     #[test]
     fn event() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -715,7 +709,7 @@ hook h
 
     #[test]
     fn keyword() {
-        let mut db = TestDatabase::default();
+        let mut db = TestDatabase::new();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),

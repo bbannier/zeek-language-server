@@ -1,4 +1,4 @@
-use crate::{query::Node, Files};
+use crate::{query::Node, File, Files};
 use std::{ops::Deref, sync::Arc};
 use tower_lsp::lsp_types::Url;
 use tracing::instrument;
@@ -44,7 +44,7 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
         .set_language(language_zeek())
         .expect("cannot set parser language");
 
-    let source = db.source(file);
+    let source = db.files().get(&file).map(|f| f.source())?;
     parser.parse(source.as_str(), None).map(Tree).map(Arc::new)
 }
 
@@ -53,7 +53,7 @@ mod test {
     use tower_lsp::lsp_types::Url;
 
     use {
-        crate::{lsp::Database, parse::Parse, Files},
+        crate::{lsp::Database, parse::Parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
     };
@@ -65,8 +65,7 @@ mod test {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
-
+        db.set_file_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);

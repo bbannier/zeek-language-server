@@ -3,14 +3,14 @@ use crate::{
     complete::complete,
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
-    zeek, Client, Files,
+    zeek, Client, File, FileDatabase, Files,
 };
 use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -23,20 +23,20 @@ use tower_lsp::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
             WorkDoneProgressCreate,
         },
-        CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
-        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
-        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
-        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
-        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceSymbolParams,
+        CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability,
+        DeleteFilesParams, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
+        DidChangeWatchedFilesParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+        DocumentFormattingParams, DocumentRangeFormattingParams, DocumentSymbol,
+        DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange,
+        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+        Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -53,15 +53,41 @@ pub(crate) use test::TestDatabase;
     crate::FilesStorage,
     crate::ClientStorage
 )]
-#[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        let mut db = Self {
+            storage: salsa::Storage::default(),
+        };
+
+        db.set_files(Arc::default());
+        db.set_prefixes(Arc::default());
+        db.set_workspace_folders(Arc::default());
+        db.set_capabilities(Arc::default());
+        db.set_client_options(Arc::default());
+
+        db
+    }
 }
 
 impl Database {
     fn file_changed(&self, uri: Arc<Url>) {
         // Precompute decls in this file.
         let _d = self.decls(uri);
+    }
+
+    pub fn set_file_source(&mut self, uri: Arc<Url>, source: Arc<String>) {
+        let mut files = self.files();
+        let files = Arc::make_mut(&mut files);
+
+        let mut file = FileDatabase::default();
+        file.set_source(source);
+        files.insert(uri, Arc::new(file)); // Update or insert.
+
+        self.set_files(Arc::new(files.clone()));
     }
 }
 
@@ -175,7 +201,9 @@ impl Backend {
     }
 
     async fn progress_end(&self, token: Option<ProgressToken>) {
-        let Some(token) = token else { return; };
+        let Some(token) = token else {
+            return;
+        };
 
         if let Some(client) = &self.client {
             let params = ProgressParams {
@@ -189,7 +217,9 @@ impl Backend {
     }
 
     async fn progress(&self, token: Option<ProgressToken>, message: Option<String>) {
-        let Some(token) = token else { return; };
+        let Some(token) = token else {
+            return;
+        };
 
         if let Some(client) = &self.client {
             let params = ProgressParams {
@@ -212,7 +242,9 @@ impl Backend {
             let diags = self.with_state(|state| {
                 state.file_changed(uri.clone());
 
-                let Some(tree) = state.parse(uri.clone()) else { return Vec::new(); };
+                let Some(tree) = state.parse(uri.clone()) else {
+                    return Vec::new();
+                };
 
                 tree.root_node()
                     .errors()
@@ -312,12 +344,8 @@ impl LanguageServer for Backend {
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
         self.with_state_mut(move |state| {
-            state.set_files(Arc::new(BTreeSet::new()));
-            state.set_prefixes(Arc::new(Vec::new()));
-
             state.set_workspace_folders(Arc::new(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
-
             state.set_client_options(Arc::new(
                 params
                     .initialization_options
@@ -449,8 +477,9 @@ impl LanguageServer for Backend {
 
                 // For added or changed files, updated their sources and track the files if needed.
                 for (uri, source) in changed {
-                    s.set_source(uri.clone(), source);
-                    files.insert(uri);
+                    let mut file = FileDatabase::default();
+                    file.set_source(source);
+                    files.insert(uri, Arc::new(file)); // Insert or update.
                 }
 
                 // Commit new file list.
@@ -468,14 +497,16 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else { return; };
+        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else {
+            return;
+        };
 
         if let Ok(preloaded_decls) = self.with_state(|state| {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
             files
-                .iter()
+                .keys()
                 .map(|f| {
                     let f = f.clone();
                     let db = state.snapshot();
@@ -505,14 +536,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(uri);
 
         let _set_files = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
-
-            let mut files = state.files();
-            if !files.contains(&uri) {
-                let files = Arc::make_mut(&mut files);
-                files.insert(uri.clone());
-                state.set_files(Arc::new(files.clone()));
-            }
+            state.set_file_source(uri.clone(), Arc::new(source));
         });
 
         // Reload implicit declarations since their result depends on the list of known files and
@@ -540,7 +564,7 @@ impl LanguageServer for Backend {
         let source = changes.text.to_string();
 
         let _set_source = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
+            state.set_file_source(uri.clone(), Arc::new(source));
         });
 
         if let Err(e) = self.file_changed(uri).await {
@@ -552,7 +576,9 @@ impl LanguageServer for Backend {
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
 
-        let Ok(file) = uri.to_file_path() else { return; };
+        let Ok(file) = uri.to_file_path() else {
+            return;
+        };
 
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
@@ -566,7 +592,9 @@ impl LanguageServer for Backend {
             .ok()
             .flatten();
 
-        let Some(file_dir) = file.parent() else { return; };
+        let Some(file_dir) = file.parent() else {
+            return;
+        };
 
         let checks = if let Some(folder) = workspace_folder {
             zeek::check(&file, folder).await
@@ -618,13 +646,19 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.files().get(&uri).map(|s| s.source()) else {
+                return Ok(None);
+            };
 
             let tree = state.parse(uri.clone());
-            let Some(tree) = tree.as_ref() else { return Ok(None); };
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
 
             let node = tree.root_node();
-            let Some(node) = node.named_descendant_for_position(params.position) else { return Ok(None); };
+            let Some(node) = node.named_descendant_for_position(params.position) else {
+                return Ok(None);
+            };
 
             let text = node.utf8_text(source.as_bytes()).map_err(|e| {
                 error!("could not get source text: {}", e);
@@ -678,10 +712,11 @@ impl LanguageServer for Backend {
                 }
                 "file" => {
                     let file = PathBuf::from(text);
+                    let files = state.files();
                     let uri = load_to_file(
                         &file,
                         uri.as_ref(),
-                        state.files().as_ref(),
+                        &files.keys().collect(),
                         state.prefixes().as_ref(),
                     );
                     if let Some(uri) = uri {
@@ -708,7 +743,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let symbol = |d: &Decl| -> Option<DocumentSymbol> {
-            let Some(loc) = &d.loc else {return None};
+            let Some(loc) = &d.loc else { return None };
 
             #[allow(deprecated)]
             Some(DocumentSymbol {
@@ -727,7 +762,7 @@ impl LanguageServer for Backend {
                         fields
                             .iter()
                             .filter_map(|f| {
-                                let Some(loc) = &f.loc else {return None};
+                                let Some(loc) = &f.loc else { return None };
                                 Some(DocumentSymbol {
                                     name: f.id.clone(),
                                     range: loc.range,
@@ -799,7 +834,7 @@ impl LanguageServer for Backend {
         let symbols = self.with_state(|state| {
             let files = state.files();
             files
-                .iter()
+                .keys()
                 .flat_map(|uri| {
                     state
                         .decls(uri.clone())
@@ -809,7 +844,7 @@ impl LanguageServer for Backend {
                         })
                         .filter_map(|d| {
                             let url: &Url = uri;
-                            let Some(loc) = &d.loc else {return None};
+                            let Some(loc) = &d.loc else { return None };
 
                             #[allow(deprecated)]
                             Some(SymbolInformation {
@@ -850,13 +885,15 @@ impl LanguageServer for Backend {
             let tree = state.parse(uri.clone());
             let tree = tree.as_ref()?;
             let node = tree.root_node().named_descendant_for_position(position)?;
-            let source = state.source(uri.clone());
+            let Some(source) = state.files().get(&uri).map(|f| f.source()) else {
+                return None;
+            };
 
             match node.kind() {
                 "id" => state
                     .resolve(NodeLocation::from_node(uri, node))
                     .and_then(|d| {
-                        let Some(loc) = &d.loc else {return None};
+                        let Some(loc) = &d.loc else { return None };
                         Some(Location::new(loc.uri.as_ref().clone(), loc.range))
                     }),
                 "file" => {
@@ -872,7 +909,7 @@ impl LanguageServer for Backend {
                     load_to_file(
                         &file,
                         uri.as_ref(),
-                        state.files().as_ref(),
+                        &state.files().keys().collect(),
                         state.prefixes().as_ref(),
                     )
                     .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
@@ -890,11 +927,17 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
-            let Some(tree) = state.parse(uri.clone()) else { return Ok(None); };
+            let Some(source) = state.files().get(&uri).map(|f| f.source()) else {
+                return Ok(None);
+            };
+            let Some(tree) = state.parse(uri.clone()) else {
+                return Ok(None);
+            };
 
             // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-            let Some(line) = source.lines().nth(position.line as usize) else { return Ok(None); };
+            let Some(line) = source.lines().nth(position.line as usize) else {
+                return Ok(None);
+            };
 
             #[allow(clippy::cast_possible_truncation)]
             let line = if (line.len() + 1) as u32 > position.character {
@@ -918,9 +961,10 @@ impl LanguageServer for Backend {
                         character,
                         ..position
                     })
-                }) else {
+                })
+            else {
                 return Ok(None);
-                };
+            };
 
             #[allow(clippy::cast_possible_truncation)]
             let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
@@ -929,19 +973,29 @@ impl LanguageServer for Backend {
                 return Ok(None);
             };
 
-            let Some(f) = state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node)) else { return Ok(None) };
+            let Some(f) = state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node))
+            else {
+                return Ok(None);
+            };
 
             let (DeclKind::FuncDecl(signature)
-                | DeclKind::FuncDef(signature)
-                | DeclKind::EventDecl(signature)
-                | DeclKind::EventDef(signature)
-                | DeclKind::HookDecl(signature)
-                | DeclKind::HookDef(signature)) = &f.kind else { return Ok(None) };
+            | DeclKind::FuncDef(signature)
+            | DeclKind::EventDecl(signature)
+            | DeclKind::EventDef(signature)
+            | DeclKind::HookDecl(signature)
+            | DeclKind::HookDef(signature)) = &f.kind
+            else {
+                return Ok(None);
+            };
 
             // Recompute `tree` and `source` in the context of the function declaration.
-            let Some(loc) = &f.loc else { return Ok(None)};
-            let Some(tree) = state.parse(loc.uri.clone()) else { return Ok(None); };
-            let source = state.source(loc.uri.clone());
+            let Some(loc) = &f.loc else { return Ok(None) };
+            let Some(tree) = state.parse(loc.uri.clone()) else {
+                return Ok(None);
+            };
+            let Some(source) = state.files().get(&loc.uri).map(|f| f.source()) else {
+                return Ok(None);
+            };
 
             let label = format!(
                 "{}({})",
@@ -950,7 +1004,7 @@ impl LanguageServer for Backend {
                     .args
                     .iter()
                     .filter_map(|a| {
-                        let Some(loc) = &a.loc else { return None};
+                        let Some(loc) = &a.loc else { return None };
                         tree.root_node()
                             .named_descendant_for_point_range(loc.selection_range)?
                             .utf8_text(source.as_bytes())
@@ -1015,9 +1069,11 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+        let source = self.with_state(|state| state.files().get(&uri).map(|f| f.source()))?;
 
-        let Some(source) = source else{ return Ok(None); };
+        let Some(source) = source else {
+            return Ok(None);
+        };
 
         let range = match self.with_state(|state| state.parse(uri))? {
             Some(t) => t.root_node().range(),
@@ -1039,9 +1095,10 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
-
-        let Some(source) = source else{ return Ok(None); };
+        let source = self.with_state(|state| state.files().get(&uri).map(|f| f.source()))?;
+        let Some(source) = source else {
+            return Ok(None);
+        };
 
         let start = params.range.start;
         let end = params.range.end;
@@ -1105,7 +1162,7 @@ impl LanguageServer for Backend {
         })?;
 
         Ok(decl.and_then(|d| {
-            let Some(loc) = &d.loc else {return None};
+            let Some(loc) = &d.loc else { return None };
             Some(GotoDeclarationResponse::Scalar(Location::new(
                 loc.uri.as_ref().clone(),
                 loc.range,
@@ -1137,7 +1194,7 @@ impl LanguageServer for Backend {
             Some(
                 state
                     .files()
-                    .iter()
+                    .keys()
                     .flat_map(|f| {
                         state
                             .decls(f.clone())
@@ -1153,7 +1210,7 @@ impl LanguageServer for Backend {
                         )
                     })
                     .filter_map(|d| {
-                        let Some(loc) = &d.loc else {return None};
+                        let Some(loc) = &d.loc else { return None };
                         if d.id == decl.id {
                             Some(Location::new(loc.uri.as_ref().clone(), loc.range))
                         } else {
@@ -1165,6 +1222,23 @@ impl LanguageServer for Backend {
         })?;
 
         Ok(response.map(GotoImplementationResponse::from))
+    }
+
+    async fn did_delete_files(&self, params: DeleteFilesParams) {
+        let _ = self.with_state_mut(|state| {
+            let mut files = state.files();
+            let files = Arc::make_mut(&mut files);
+
+            let _: Vec<_> = params
+                .files
+                .into_iter()
+                .filter_map(|d| Url::parse(&d.uri).ok())
+                .map(Arc::new)
+                .map(|f| files.remove_entry(&f))
+                .collect();
+
+            state.set_files(Arc::new(files.clone()));
+        });
     }
 }
 
@@ -1196,7 +1270,7 @@ pub async fn run() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy, Default)]
 /// Custom `initializationOptions` clients can send.
 pub struct Options {
     check_for_updates: bool,
@@ -1213,7 +1287,6 @@ impl Options {
 #[cfg(test)]
 pub(crate) mod test {
     use std::{
-        collections::BTreeSet,
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
@@ -1224,9 +1297,10 @@ pub(crate) mod test {
     use serde_json::json;
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
-            PartialResultParams, Position, Range, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionParams, CompletionResponse, DeleteFilesParams, FileDelete, FormattingOptions,
+            HoverParams, InitializeParams, PartialResultParams, Position, Range,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -1236,24 +1310,12 @@ pub(crate) mod test {
 
     use super::Backend;
 
+    #[derive(Default)]
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
 
     impl TestDatabase {
-        pub(crate) fn new() -> Self {
-            let mut db = lsp::Database::default();
-            db.set_files(Arc::new(BTreeSet::new()));
-            db.set_prefixes(Arc::new(Vec::new()));
-
-            Self(db)
-        }
-
         pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            self.0.set_source(uri.clone(), Arc::new(source.to_string()));
-
-            let mut files = self.0.files();
-            let files = Arc::make_mut(&mut files);
-            files.insert(uri);
-            self.0.set_files(Arc::new(files.clone()));
+            self.0.set_file_source(uri, Arc::new(source.to_string()));
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)
@@ -1280,14 +1342,14 @@ pub(crate) mod test {
 
     #[test]
     fn debug_database() {
-        let db = TestDatabase::new();
+        let db = TestDatabase::default();
 
         assert_eq!(format!("{:?}", db.0), "Database");
     }
 
     #[tokio::test]
     async fn symbol() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
@@ -1321,7 +1383,7 @@ pub(crate) mod test {
 
     #[tokio::test]
     async fn completion() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
@@ -1373,7 +1435,7 @@ global GLOBAL::Y = 3;
 
     #[tokio::test]
     async fn hover_variable() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1398,7 +1460,7 @@ local x = f();
 
     #[tokio::test]
     async fn hover_definition() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1471,7 +1533,7 @@ local x = f();
 
     #[tokio::test]
     async fn hover_decl_in_func_parameters() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1497,7 +1559,7 @@ function f(x: X, y: Y) {
 
     #[tokio::test]
     async fn signature_help() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri_x.clone(),
@@ -1562,7 +1624,7 @@ global f: function(x: count, y: string): string;
 
     #[tokio::test]
     async fn goto_declaration() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1607,7 +1669,7 @@ event zeek_init() {}",
 
     #[tokio::test]
     async fn goto_definition() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1652,7 +1714,7 @@ event zeek_init() {}",
 
     #[tokio::test]
     async fn goto_implementation() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
         db.add_file(
             uri_evts.clone(),
@@ -1706,7 +1768,7 @@ event x::foo() {}",
     async fn formatting() {
         use super::DocumentFormattingParams;
 
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
         db.add_file(uri_ok.clone(), "event zeek_init(){}");
 
@@ -1741,7 +1803,7 @@ event x::foo() {}",
     async fn range_formatting() {
         use super::DocumentRangeFormattingParams;
 
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
         db.add_file(uri_ok.clone(), "module foo ;\n\nevent zeek_init(){}");
 
@@ -1775,7 +1837,7 @@ event x::foo() {}",
 
     #[tokio::test]
     async fn get_latest_release() {
-        let server = serve(TestDatabase::new());
+        let server = serve(TestDatabase::default());
         let _ = server.initialize(InitializeParams::default()).await;
 
         {
@@ -1798,5 +1860,63 @@ event x::foo() {}",
 
             assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
         }
+    }
+
+    #[tokio::test]
+    async fn did_delete_files() {
+        let mut db = TestDatabase::default();
+
+        let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(uri1.clone(), "module x;");
+
+        let uri2 = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        db.add_file(uri2.clone(), "module y;");
+
+        let uri3 = Arc::new(Url::from_file_path("/z.zeek").unwrap());
+        db.add_file(uri3.clone(), "module z;");
+
+        let server = serve(db);
+
+        // We started out with three file.
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 3))
+            .unwrap();
+
+        // Deleting no files does nothing.
+        server
+            .did_delete_files(DeleteFilesParams { files: vec![] })
+            .await;
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 3))
+            .unwrap();
+
+        // Can delete a single file.
+        server
+            .did_delete_files(DeleteFilesParams {
+                files: vec![FileDelete {
+                    uri: uri1.to_string(),
+                }],
+            })
+            .await;
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 2))
+            .unwrap();
+
+        // Can delete multiple files.
+        server
+            .did_delete_files(DeleteFilesParams {
+                files: vec![
+                    FileDelete {
+                        uri: uri2.to_string(),
+                    },
+                    FileDelete {
+                        uri: uri3.to_string(),
+                    },
+                ],
+            })
+            .await;
+        server
+            .with_state(|state| assert_eq!(state.files().len(), 0))
+            .unwrap();
     }
 }

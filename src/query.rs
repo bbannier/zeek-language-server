@@ -10,7 +10,7 @@ use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::parse::Parse;
+use crate::{parse::Parse, File};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -854,9 +854,13 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
 
     // Synthesize declarations for function arguments. Ideally the grammar would expose
     // these directly.
-    let Some(func_params) = node.named_child("func_params") else { return HashSet::new(); };
+    let Some(func_params) = node.named_child("func_params") else {
+        return HashSet::new();
+    };
 
-    let Some(formal_args) = func_params.named_child("formal_args") else { return HashSet::new(); };
+    let Some(formal_args) = func_params.named_child("formal_args") else {
+        return HashSet::new();
+    };
 
     formal_args
         .named_children("formal_arg")
@@ -956,16 +960,24 @@ pub trait Query: Parse {
 
 #[instrument(skip(db))]
 fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
-    let source = db.source(uri.clone());
-    let Some(tree) = db.parse(uri.clone()) else { return Arc::new(BTreeSet::new()); };
+    let Some(tree) = db.parse(uri.clone()) else {
+        return Arc::new(BTreeSet::new());
+    };
+    let Some(source) = db.files().get(&uri).map(|f| f.source()) else {
+        return Arc::new(BTreeSet::new());
+    };
 
     Arc::new(decls_(tree.root_node(), uri, source.as_bytes()))
 }
 
 #[instrument(skip(db))]
 fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
-    let Some(tree) = db.parse(uri.clone()) else { return Arc::new(Vec::new()); };
-    let source = db.source(uri);
+    let Some(tree) = db.parse(uri.clone()) else {
+        return Arc::new(Vec::new());
+    };
+    let Some(source) = db.files().get(&uri).map(|f| f.source()) else {
+        return Arc::new(Vec::new());
+    };
 
     Arc::new(
         loads_raw(tree.root_node(), &source)
@@ -1028,7 +1040,7 @@ mod test {
         lsp::{Database, TestDatabase},
         parse::Parse,
         query::Node,
-        Files,
+        File, Files,
     };
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{Position, Url};
@@ -1069,7 +1081,8 @@ mod test {
             let mut db = Database::default();
             let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-            db.set_source(uri.clone(), Arc::new(source.to_string()));
+            db.set_file_source(uri.clone(), Arc::new(source.to_string()));
+
             db.parse(uri)
         };
 
@@ -1089,8 +1102,8 @@ mod test {
     fn decls_() {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
-        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
 
+        db.set_file_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, uri.clone(), SOURCE.as_bytes());
@@ -1119,7 +1132,8 @@ mod test {
     fn decls_weird_modules() {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
-        db.set_source(
+
+        db.set_file_source(
             uri.clone(),
             Arc::new(
                 "module x;
@@ -1128,7 +1142,7 @@ global f1: function();
 global foo::f2: function();
 global GLOBAL::f3: function();
 }"
-                .into(),
+                .to_string(),
             ),
         );
 
@@ -1143,7 +1157,8 @@ global GLOBAL::f3: function();
     fn in_export() {
         let mut db = Database::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
-        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
+
+        db.set_file_source(uri.clone(), Arc::new(SOURCE.to_string()));
         let tree = db.parse(uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
@@ -1162,7 +1177,7 @@ global GLOBAL::f3: function();
 
     #[test]
     fn fn_param_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1175,7 +1190,7 @@ function f1(x: count, y: string) {
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone());
+        let source = db.files().get(&uri).map(|f| f.source()).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
@@ -1196,7 +1211,7 @@ function f1(x: count, y: string) {
 
     #[test]
     fn fn_like_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1209,7 +1224,7 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone());
+        let source = db.files().get(&uri).map(|f| f.source()).unwrap();
 
         assert_debug_snapshot!(super::decls_(root, uri, source.as_bytes()));
     }

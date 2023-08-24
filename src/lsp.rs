@@ -175,7 +175,9 @@ impl Backend {
     }
 
     async fn progress_end(&self, token: Option<ProgressToken>) {
-        let Some(token) = token else { return; };
+        let Some(token) = token else {
+            return;
+        };
 
         if let Some(client) = &self.client {
             let params = ProgressParams {
@@ -189,7 +191,9 @@ impl Backend {
     }
 
     async fn progress(&self, token: Option<ProgressToken>, message: Option<String>) {
-        let Some(token) = token else { return; };
+        let Some(token) = token else {
+            return;
+        };
 
         if let Some(client) = &self.client {
             let params = ProgressParams {
@@ -212,7 +216,9 @@ impl Backend {
             let diags = self.with_state(|state| {
                 state.file_changed(uri.clone());
 
-                let Some(tree) = state.parse(uri.clone()) else { return Vec::new(); };
+                let Some(tree) = state.parse(uri.clone()) else {
+                    return Vec::new();
+                };
 
                 tree.root_node()
                     .errors()
@@ -468,7 +474,9 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else { return; };
+        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else {
+            return;
+        };
 
         if let Ok(preloaded_decls) = self.with_state(|state| {
             let span = trace_span!("preloading");
@@ -552,7 +560,9 @@ impl LanguageServer for Backend {
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
 
-        let Ok(file) = uri.to_file_path() else { return; };
+        let Ok(file) = uri.to_file_path() else {
+            return;
+        };
 
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
@@ -566,7 +576,9 @@ impl LanguageServer for Backend {
             .ok()
             .flatten();
 
-        let Some(file_dir) = file.parent() else { return; };
+        let Some(file_dir) = file.parent() else {
+            return;
+        };
 
         let checks = if let Some(folder) = workspace_folder {
             zeek::check(&file, folder).await
@@ -621,10 +633,14 @@ impl LanguageServer for Backend {
             let source = state.source(uri.clone());
 
             let tree = state.parse(uri.clone());
-            let Some(tree) = tree.as_ref() else { return Ok(None); };
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
 
             let node = tree.root_node();
-            let Some(node) = node.named_descendant_for_position(params.position) else { return Ok(None); };
+            let Some(node) = node.named_descendant_for_position(params.position) else {
+                return Ok(None);
+            };
 
             let text = node.utf8_text(source.as_bytes()).map_err(|e| {
                 error!("could not get source text: {}", e);
@@ -708,7 +724,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let symbol = |d: &Decl| -> Option<DocumentSymbol> {
-            let Some(loc) = &d.loc else {return None};
+            let Some(loc) = &d.loc else { return None };
 
             #[allow(deprecated)]
             Some(DocumentSymbol {
@@ -727,7 +743,7 @@ impl LanguageServer for Backend {
                         fields
                             .iter()
                             .filter_map(|f| {
-                                let Some(loc) = &f.loc else {return None};
+                                let Some(loc) = &f.loc else { return None };
                                 Some(DocumentSymbol {
                                     name: f.id.clone(),
                                     range: loc.range,
@@ -809,7 +825,7 @@ impl LanguageServer for Backend {
                         })
                         .filter_map(|d| {
                             let url: &Url = uri;
-                            let Some(loc) = &d.loc else {return None};
+                            let Some(loc) = &d.loc else { return None };
 
                             #[allow(deprecated)]
                             Some(SymbolInformation {
@@ -856,7 +872,7 @@ impl LanguageServer for Backend {
                 "id" => state
                     .resolve(NodeLocation::from_node(uri, node))
                     .and_then(|d| {
-                        let Some(loc) = &d.loc else {return None};
+                        let Some(loc) = &d.loc else { return None };
                         Some(Location::new(loc.uri.as_ref().clone(), loc.range))
                     }),
                 "file" => {
@@ -891,10 +907,14 @@ impl LanguageServer for Backend {
 
         self.with_state(move |state| {
             let source = state.source(uri.clone());
-            let Some(tree) = state.parse(uri.clone()) else { return Ok(None); };
+            let Some(tree) = state.parse(uri.clone()) else {
+                return Ok(None);
+            };
 
             // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-            let Some(line) = source.lines().nth(position.line as usize) else { return Ok(None); };
+            let Some(line) = source.lines().nth(position.line as usize) else {
+                return Ok(None);
+            };
 
             #[allow(clippy::cast_possible_truncation)]
             let line = if (line.len() + 1) as u32 > position.character {
@@ -918,9 +938,10 @@ impl LanguageServer for Backend {
                         character,
                         ..position
                     })
-                }) else {
+                })
+            else {
                 return Ok(None);
-                };
+            };
 
             #[allow(clippy::cast_possible_truncation)]
             let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
@@ -929,18 +950,26 @@ impl LanguageServer for Backend {
                 return Ok(None);
             };
 
-            let Some(f) = state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node)) else { return Ok(None) };
+            let Some(f) = state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node))
+            else {
+                return Ok(None);
+            };
 
             let (DeclKind::FuncDecl(signature)
-                | DeclKind::FuncDef(signature)
-                | DeclKind::EventDecl(signature)
-                | DeclKind::EventDef(signature)
-                | DeclKind::HookDecl(signature)
-                | DeclKind::HookDef(signature)) = &f.kind else { return Ok(None) };
+            | DeclKind::FuncDef(signature)
+            | DeclKind::EventDecl(signature)
+            | DeclKind::EventDef(signature)
+            | DeclKind::HookDecl(signature)
+            | DeclKind::HookDef(signature)) = &f.kind
+            else {
+                return Ok(None);
+            };
 
             // Recompute `tree` and `source` in the context of the function declaration.
-            let Some(loc) = &f.loc else { return Ok(None)};
-            let Some(tree) = state.parse(loc.uri.clone()) else { return Ok(None); };
+            let Some(loc) = &f.loc else { return Ok(None) };
+            let Some(tree) = state.parse(loc.uri.clone()) else {
+                return Ok(None);
+            };
             let source = state.source(loc.uri.clone());
 
             let label = format!(
@@ -950,7 +979,7 @@ impl LanguageServer for Backend {
                     .args
                     .iter()
                     .filter_map(|a| {
-                        let Some(loc) = &a.loc else { return None};
+                        let Some(loc) = &a.loc else { return None };
                         tree.root_node()
                             .named_descendant_for_point_range(loc.selection_range)?
                             .utf8_text(source.as_bytes())
@@ -1017,7 +1046,9 @@ impl LanguageServer for Backend {
 
         let source = self.with_state(|state| Some(state.source(uri.clone())))?;
 
-        let Some(source) = source else{ return Ok(None); };
+        let Some(source) = source else {
+            return Ok(None);
+        };
 
         let range = match self.with_state(|state| state.parse(uri))? {
             Some(t) => t.root_node().range(),
@@ -1041,7 +1072,9 @@ impl LanguageServer for Backend {
 
         let source = self.with_state(|state| Some(state.source(uri.clone())))?;
 
-        let Some(source) = source else{ return Ok(None); };
+        let Some(source) = source else {
+            return Ok(None);
+        };
 
         let start = params.range.start;
         let end = params.range.end;
@@ -1105,7 +1138,7 @@ impl LanguageServer for Backend {
         })?;
 
         Ok(decl.and_then(|d| {
-            let Some(loc) = &d.loc else {return None};
+            let Some(loc) = &d.loc else { return None };
             Some(GotoDeclarationResponse::Scalar(Location::new(
                 loc.uri.as_ref().clone(),
                 loc.range,
@@ -1153,7 +1186,7 @@ impl LanguageServer for Backend {
                         )
                     })
                     .filter_map(|d| {
-                        let Some(loc) = &d.loc else {return None};
+                        let Some(loc) = &d.loc else { return None };
                         if d.id == decl.id {
                             Some(Location::new(loc.uri.as_ref().clone(), loc.range))
                         } else {

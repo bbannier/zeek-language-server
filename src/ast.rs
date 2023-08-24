@@ -103,7 +103,7 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
                 .into_iter()
                 .filter(|d| d.id == id.as_str() || d.fqid == id.as_str())
                 .filter(|d| {
-                    let Some(loc) = &d.loc else {return false};
+                    let Some(loc) = &d.loc else { return false };
                     loc.range.start <= node.range().start
                 }),
         );
@@ -207,7 +207,9 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         }
     }
 
-    let Some(loc) = &decl.loc else {return Some(decl)};
+    let Some(loc) = &decl.loc else {
+        return Some(decl);
+    };
     let uri = &loc.uri;
 
     let tree = db.parse(uri.clone())?;
@@ -237,7 +239,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
     // Perform additional unwrapping if needed.
     d.and_then(|d| {
-        let Some(loc) = &d.loc else {return Some(d)};
+        let Some(loc) = &d.loc else { return Some(d) };
 
         match &d.kind {
             // For function declarations produce the function's return type.
@@ -487,11 +489,11 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
 #[instrument(skip(db))]
 fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
     let Ok(path) = uri.to_file_path() else {
-        return Arc::new(Vec::new())
+        return Arc::new(Vec::new());
     };
 
     let Some(path) = path.parent() else {
-        return Arc::new(Vec::new())
+        return Arc::new(Vec::new());
     };
 
     let prefixes = db.prefixes();

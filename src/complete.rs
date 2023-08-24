@@ -21,11 +21,15 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 
     let source = state.source(uri.clone());
 
-    let Some(tree) = state.parse(uri.clone()) else { return None; };
+    let Some(tree) = state.parse(uri.clone()) else {
+        return None;
+    };
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
-    let Some(mut node) = root.descendant_for_position(position) else { return None; };
+    let Some(mut node) = root.descendant_for_position(position) else {
+        return None;
+    };
 
     let text = completion_text(node, &source);
 
@@ -199,7 +203,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
                     s.args
                         .iter()
                         .filter_map(|d| {
-                            let Some(loc) = &d.loc else {return None};
+                            let Some(loc) = &d.loc else { return None };
                             let tree = state.parse(loc.uri.clone())?;
                             let source = state.source(loc.uri.clone());
                             tree.root_node()

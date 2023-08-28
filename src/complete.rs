@@ -19,7 +19,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let source = state.source(uri.clone());
+    let source = state.source(uri.clone())?;
 
     let Some(tree) = state.parse(uri.clone()) else {
         return None;
@@ -205,7 +205,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
                         .filter_map(|d| {
                             let Some(loc) = &d.loc else { return None };
                             let tree = state.parse(loc.uri.clone())?;
-                            let source = state.source(loc.uri.clone());
+                            let source = state.source(loc.uri.clone())?;
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -236,7 +236,9 @@ fn complete_any(
     mut node: Node,
     uri: Arc<Url>,
 ) -> Vec<CompletionItem> {
-    let source = state.source(uri.clone());
+    let Some(source) = state.source(uri.clone()) else {
+        return Vec::new();
+    };
 
     let mut items = BTreeSet::new();
 

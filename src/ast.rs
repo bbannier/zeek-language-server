@@ -10,19 +10,16 @@ use tracing::{error, instrument};
 use crate::{
     parse::Parse,
     query::{self, Decl, DeclKind, NodeLocation, Query},
-    zeek, Files,
+    zeek,
 };
 
 #[salsa::query_group(AstStorage)]
-pub trait Ast: Files + Parse + Query {
+pub trait Ast: Parse + Query {
     #[salsa::input]
     fn workspace_folders(&self) -> Arc<Vec<Url>>;
 
     #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
-
-    #[salsa::input]
-    fn files(&self) -> Arc<BTreeSet<Arc<Url>>>;
 
     #[must_use]
     fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
@@ -64,7 +61,7 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
     let scope = tree
         .root_node()
         .named_descendant_for_point_range(scope.range)?;
-    let source = db.source(uri.clone());
+    let source = db.source(uri.clone())?;
 
     let node = scope;
 
@@ -284,7 +281,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     let node = tree
         .root_node()
         .named_descendant_for_point_range(location.range)?;
-    let source = db.source(uri.clone());
+    let source = db.source(uri.clone())?;
 
     match node.kind() {
         // Builtin types.
@@ -729,7 +726,7 @@ y$yx$f1;
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -797,7 +794,7 @@ x$f;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree.root_node();
@@ -830,7 +827,7 @@ x::x;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree.root_node();
@@ -863,7 +860,7 @@ y;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree.root_node();
@@ -896,7 +893,7 @@ x$x2;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -949,7 +946,7 @@ global c: connection;",
 
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         let c = tree
             .root_node()
@@ -979,7 +976,7 @@ function f(a: A) {
 
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         let g = tree
             .root_node()
@@ -1030,7 +1027,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1083,7 +1080,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1163,7 +1160,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1211,7 +1208,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1249,7 +1246,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         let db = db.0;
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         // Vector iteration.
         let i1 = root
@@ -1264,7 +1261,10 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         let i2 = root
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
-        assert_eq!(i2.utf8_text(db.source(uri.clone()).as_bytes()), Ok("i"));
+        assert_eq!(
+            i2.utf8_text(db.source(uri.clone()).unwrap().as_bytes()),
+            Ok("i")
+        );
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i2)));
 
         // Set iteration.
@@ -1311,7 +1311,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 

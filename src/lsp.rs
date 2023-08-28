@@ -53,7 +53,6 @@ pub(crate) use test::TestDatabase;
     crate::FilesStorage,
     crate::ClientStorage
 )]
-#[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
 }
@@ -62,6 +61,18 @@ impl Database {
     fn file_changed(&self, uri: Arc<Url>) {
         // Precompute decls in this file.
         let _d = self.decls(uri);
+    }
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        let mut db = Self {
+            storage: salsa::Storage::default(),
+        };
+
+        db.set_files(Arc::default());
+
+        db
     }
 }
 
@@ -455,7 +466,7 @@ impl LanguageServer for Backend {
 
                 // For added or changed files, updated their sources and track the files if needed.
                 for (uri, source) in changed {
-                    s.set_source(uri.clone(), source);
+                    s.set_unsafe_source(uri.clone(), source);
                     files.insert(uri);
                 }
 
@@ -513,7 +524,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(uri);
 
         let _set_files = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
+            state.set_unsafe_source(uri.clone(), Arc::new(source));
 
             let mut files = state.files();
             if !files.contains(&uri) {
@@ -548,7 +559,7 @@ impl LanguageServer for Backend {
         let source = changes.text.to_string();
 
         let _set_source = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
+            state.set_unsafe_source(uri.clone(), Arc::new(source));
         });
 
         if let Err(e) = self.file_changed(uri).await {
@@ -630,7 +641,9 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.source(uri.clone()) else {
+                return Ok(None);
+            };
 
             let tree = state.parse(uri.clone());
             let Some(tree) = tree.as_ref() else {
@@ -866,7 +879,7 @@ impl LanguageServer for Backend {
             let tree = state.parse(uri.clone());
             let tree = tree.as_ref()?;
             let node = tree.root_node().named_descendant_for_position(position)?;
-            let source = state.source(uri.clone());
+            let source = state.source(uri.clone())?;
 
             match node.kind() {
                 "id" => state
@@ -906,7 +919,9 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.source(uri.clone()) else {
+                return Ok(None);
+            };
             let Some(tree) = state.parse(uri.clone()) else {
                 return Ok(None);
             };
@@ -970,7 +985,9 @@ impl LanguageServer for Backend {
             let Some(tree) = state.parse(loc.uri.clone()) else {
                 return Ok(None);
             };
-            let source = state.source(loc.uri.clone());
+            let Some(source) = state.source(loc.uri.clone()) else {
+                return Ok(None);
+            };
 
             let label = format!(
                 "{}({})",
@@ -1044,7 +1061,7 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+        let source = self.with_state(|state| state.source(uri.clone()))?;
 
         let Some(source) = source else {
             return Ok(None);
@@ -1070,7 +1087,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+        let source = self.with_state(|state| state.source(uri.clone()))?;
 
         let Some(source) = source else {
             return Ok(None);
@@ -1281,7 +1298,8 @@ pub(crate) mod test {
         }
 
         pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            self.0.set_source(uri.clone(), Arc::new(source.to_string()));
+            self.0
+                .set_unsafe_source(uri.clone(), Arc::new(source.to_string()));
 
             let mut files = self.0.files();
             let files = Arc::make_mut(&mut files);

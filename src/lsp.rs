@@ -33,7 +33,7 @@ use tower_lsp::{
         InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
         OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
         ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind, TextDocumentItem,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
         TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
         WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
@@ -57,18 +57,24 @@ pub struct Database {
     storage: salsa::Storage<Self>,
 }
 
+pub enum SourceUpdate {
+    Update(Arc<Url>, Arc<String>),
+}
+
 impl Database {
-    // FIXME(bbannier): Accept a proper type here, not `TextDocumentItem`.
-    pub fn set_sources(&mut self, documents: &[TextDocumentItem]) {
+    pub fn set_sources(&mut self, updates: &[SourceUpdate]) {
         let mut files = self.files();
         let mut new_files = BTreeSet::new();
 
-        for d in documents {
-            let uri = Arc::new(d.uri.clone());
-            self.set_unsafe_source(uri.clone(), Arc::new(d.text.clone()));
+        for u in updates {
+            match u {
+                SourceUpdate::Update(uri, source) => {
+                    self.set_unsafe_source(uri.clone(), source.clone());
 
-            if !files.contains(&uri) {
-                new_files.insert(uri);
+                    if !files.contains(uri) {
+                        new_files.insert(uri.clone());
+                    }
+                }
             }
         }
 
@@ -543,7 +549,10 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri.clone());
 
         let _set_files = self.with_state_mut(|state| {
-            state.set_sources(&[params.text_document]);
+            state.set_sources(&[SourceUpdate::Update(
+                uri.clone(),
+                Arc::new(params.text_document.text),
+            )]);
         });
 
         // Reload implicit declarations since their result depends on the list of known files and
@@ -569,11 +578,9 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let _set_source = self.with_state_mut(|state| {
-            state.set_sources(&[TextDocumentItem::new(
-                uri.as_ref().clone(),
-                "zeek".to_string(),
-                params.text_document.version,
-                changes.text.clone(),
+            state.set_sources(&[SourceUpdate::Update(
+                uri.clone(),
+                Arc::new(changes.text.clone()),
             )]);
         });
 
@@ -1290,28 +1297,24 @@ pub(crate) mod test {
         lsp_types::{
             CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
             FormattingOptions, HoverParams, InitializeParams, PartialResultParams, Position, Range,
-            TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Url,
-            WorkDoneProgressParams, WorkspaceSymbolParams,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek, Files};
+    use crate::{ast::Ast, lsp, zeek};
 
-    use super::Backend;
+    use super::{Backend, SourceUpdate};
 
     #[derive(Default)]
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
 
     impl TestDatabase {
-        pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            self.0.set_sources(&[TextDocumentItem::new(
-                uri.as_ref().clone(),
-                "zeek".to_string(),
-                0,
-                source.to_string(),
-            )]);
+        pub(crate) fn add_file(&mut self, uri: Url, source: impl Into<String>) {
+            self.0
+                .set_sources(&[SourceUpdate::Update(Arc::new(uri), Arc::new(source.into()))]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)
@@ -1349,15 +1352,15 @@ pub(crate) mod test {
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
-            Arc::new(Url::from_file_path("/p1/a.zeek").unwrap()),
+            Url::from_file_path("/p1/a.zeek").unwrap(),
             "module mod_a; global A = 1;",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
+            Url::from_file_path("/p2/b.zeek").unwrap(),
             "module mod_b; global B = 2;",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/x/x.zeek").unwrap()),
+            Url::from_file_path("/x/x.zeek").unwrap(),
             "module mod_x; global X = 3;",
         );
 
@@ -1383,17 +1386,17 @@ pub(crate) mod test {
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
-            Arc::new(Url::from_file_path("/p1/a.zeek").unwrap()),
+            Url::from_file_path("/p1/a.zeek").unwrap(),
             "module mod_a; global A = 1;",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
+            Url::from_file_path("/p2/b.zeek").unwrap(),
             "module mod_b; global B = 2;",
         );
 
         let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            uri.as_ref().clone(),
             "module mod_x;
 @load a
 @load b
@@ -1432,7 +1435,7 @@ global GLOBAL::Y = 3;
     #[tokio::test]
     async fn hover_variable() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1445,7 +1448,7 @@ local x = f();
 
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                text_document: TextDocumentIdentifier::new(uri),
                 position: Position::new(3, 7),
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1457,7 +1460,7 @@ local x = f();
     #[tokio::test]
     async fn hover_definition() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1479,10 +1482,8 @@ local x = f();
         let prefix = Path::new("/prefix");
         db.add_prefix(prefix.to_str().unwrap());
         db.add_file(
-            Arc::new(
-                Url::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
-                    .unwrap(),
-            ),
+            Url::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
+                .unwrap(),
             "
             ##Declaration.
             global zeek_init: event();",
@@ -1494,7 +1495,7 @@ local x = f();
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        text_document: TextDocumentIdentifier::new(uri.clone()),
                         position: Position::new(7, 15),
                     },
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1506,7 +1507,7 @@ local x = f();
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        text_document: TextDocumentIdentifier::new(uri.clone()),
                         position: Position::new(10, 15),
                     },
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1518,7 +1519,7 @@ local x = f();
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        text_document: TextDocumentIdentifier::new(uri),
                         position: Position::new(13, 15),
                     },
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1530,7 +1531,7 @@ local x = f();
     #[tokio::test]
     async fn hover_decl_in_func_parameters() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1544,7 +1545,7 @@ function f(x: X, y: Y) {
 
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                text_document: TextDocumentIdentifier::new(uri),
                 position: Position::new(4, 4),
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1556,21 +1557,21 @@ function f(x: X, y: Y) {
     #[tokio::test]
     async fn signature_help() {
         let mut db = TestDatabase::default();
-        let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri_x = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri_x.clone(),
             "module x;
 global f: function(x: count, y: string): string;
 local x = f(",
         );
-        let uri_y = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        let uri_y = Url::from_file_path("/y.zeek").unwrap();
         db.add_file(
             uri_y.clone(),
             "module y;
 global f: function(x: count, y: string): string;
 local x = f(1,2,3",
         );
-        let uri_z = Arc::new(Url::from_file_path("/z.zeek").unwrap());
+        let uri_z = Url::from_file_path("/z.zeek").unwrap();
         db.add_file(
             uri_z.clone(),
             "module z;
@@ -1578,7 +1579,7 @@ local x = f(1,2,3",
 local x = ext::f(",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/ext.zeek").unwrap()),
+            Url::from_file_path("/ext.zeek").unwrap(),
             "module ext;
 export {
 global f: function(x: count, y: string): string;
@@ -1590,7 +1591,7 @@ global f: function(x: count, y: string): string;
         let params = super::SignatureHelpParams {
             context: None,
             text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri_x.as_ref().clone()),
+                TextDocumentIdentifier::new(uri_x),
                 Position::new(2, 12),
             ),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1600,7 +1601,7 @@ global f: function(x: count, y: string): string;
         let params = super::SignatureHelpParams {
             context: None,
             text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri_y.as_ref().clone()),
+                TextDocumentIdentifier::new(uri_y),
                 Position::new(2, 16),
             ),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1610,7 +1611,7 @@ global f: function(x: count, y: string): string;
         let params = super::SignatureHelpParams {
             context: None,
             text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri_z.as_ref().clone()),
+                TextDocumentIdentifier::new(uri_z),
                 Position::new(2, 17),
             ),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1621,7 +1622,7 @@ global f: function(x: count, y: string): string;
     #[tokio::test]
     async fn goto_declaration() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "module x;
@@ -1631,8 +1632,8 @@ event yeah(c:count) {}
 event zeek_init() {}",
         );
 
-        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
-        db.add_file(uri_evts.clone(), "global zeek_init: event();");
+        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        db.add_file(uri_evts, "global zeek_init: event();");
 
         let server = serve(db);
 
@@ -1640,7 +1641,7 @@ event zeek_init() {}",
             server
                 .goto_declaration(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(3, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1653,7 +1654,7 @@ event zeek_init() {}",
             server
                 .goto_declaration(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(4, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1666,7 +1667,7 @@ event zeek_init() {}",
     #[tokio::test]
     async fn goto_definition() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "module x;
@@ -1676,8 +1677,8 @@ event yeah(c:count) {}
 event zeek_init() {}",
         );
 
-        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
-        db.add_file(uri_evts.clone(), "global zeek_init: event();");
+        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        db.add_file(uri_evts, "global zeek_init: event();");
 
         let server = serve(db);
 
@@ -1685,7 +1686,7 @@ event zeek_init() {}",
             server
                 .goto_definition(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(3, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1698,7 +1699,7 @@ event zeek_init() {}",
             server
                 .goto_definition(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(4, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1711,14 +1712,14 @@ event zeek_init() {}",
     #[tokio::test]
     async fn goto_implementation() {
         let mut db = TestDatabase::default();
-        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
+        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
         db.add_file(
             uri_evts.clone(),
             "export {
 global zeek_init: event();",
         );
 
-        let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri_x = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri_x.clone(),
             "module x;
@@ -1736,7 +1737,7 @@ event x::foo() {}",
             server
                 .goto_implementation(super::GotoImplementationParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri_evts.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri_evts),
                         Position::new(1, 11)
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1749,7 +1750,7 @@ event x::foo() {}",
             server
                 .goto_implementation(super::GotoImplementationParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri_x.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri_x),
                         Position::new(2, 17)
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1765,17 +1766,17 @@ event x::foo() {}",
         use super::DocumentFormattingParams;
 
         let mut db = TestDatabase::default();
-        let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
+        let uri_ok = Url::from_file_path("/ok.zeek").unwrap();
         db.add_file(uri_ok.clone(), "event zeek_init(){}");
 
-        let uri_invalid = Arc::new(Url::from_file_path("/invalid.zeek").unwrap());
+        let uri_invalid = Url::from_file_path("/invalid.zeek").unwrap();
         db.add_file(uri_invalid.clone(), "event ssl");
 
         let server = serve(db);
 
         assert!(server
             .formatting(DocumentFormattingParams {
-                text_document: TextDocumentIdentifier::new(uri_ok.as_ref().clone(),),
+                text_document: TextDocumentIdentifier::new(uri_ok),
                 options: FormattingOptions::default(),
                 work_done_progress_params: WorkDoneProgressParams::default(),
             })
@@ -1785,7 +1786,7 @@ event x::foo() {}",
         assert_eq!(
             server
                 .formatting(DocumentFormattingParams {
-                    text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
+                    text_document: TextDocumentIdentifier::new(uri_invalid),
                     options: FormattingOptions::default(),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
@@ -1800,17 +1801,17 @@ event x::foo() {}",
         use super::DocumentRangeFormattingParams;
 
         let mut db = TestDatabase::default();
-        let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
+        let uri_ok = Url::from_file_path("/ok.zeek").unwrap();
         db.add_file(uri_ok.clone(), "module foo ;\n\nevent zeek_init(){}");
 
-        let uri_invalid = Arc::new(Url::from_file_path("/invalid.zeek").unwrap());
+        let uri_invalid = Url::from_file_path("/invalid.zeek").unwrap();
         db.add_file(uri_invalid.clone(), "event ssl");
 
         let server = serve(db);
 
         assert!(server
             .range_formatting(DocumentRangeFormattingParams {
-                text_document: TextDocumentIdentifier::new(uri_ok.as_ref().clone(),),
+                text_document: TextDocumentIdentifier::new(uri_ok),
                 options: FormattingOptions::default(),
                 range: Range::new(Position::new(0, 0), Position::new(1, 1)),
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1821,7 +1822,7 @@ event x::foo() {}",
         assert_eq!(
             server
                 .range_formatting(DocumentRangeFormattingParams {
-                    text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
+                    text_document: TextDocumentIdentifier::new(uri_invalid),
                     options: FormattingOptions::default(),
                     range: Range::new(Position::new(0, 0), Position::new(1, 1)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1865,7 +1866,7 @@ event x::foo() {}",
         let uri_unknown = Url::from_file_path("/unknown.zeek").unwrap();
         let uri = Url::from_file_path("/x.zeek").unwrap();
 
-        db.add_file(Arc::new(uri.clone()), "global x = 42;");
+        db.add_file(uri.clone(), "global x = 42;");
         let server = serve(db);
 
         // Nothing reported for unknown files.

@@ -354,8 +354,6 @@ fn completion_text<'a>(node: Node, source: &'a str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{
         CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
@@ -369,7 +367,7 @@ mod test {
     fn field_access() {
         let mut db = TestDatabase::default();
 
-        let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri1 = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri1.clone(),
             "type X: record { abc: count; };
@@ -378,7 +376,7 @@ mod test {
             ",
         );
 
-        let uri2 = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        let uri2 = Url::from_file_path("/y.zeek").unwrap();
         db.add_file(
             uri2.clone(),
             "type X: record { abc: count; };
@@ -391,7 +389,7 @@ mod test {
         {
             let params = CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position: Position::new(2, 16),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -423,7 +421,7 @@ mod test {
         {
             let params = CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position: Position::new(2, 17),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -455,7 +453,7 @@ mod test {
     #[test]
     fn field_access_chained() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -471,7 +469,7 @@ mod test {
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    TextDocumentIdentifier::new(uri),
                     Position::new(4, 16),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -485,7 +483,7 @@ mod test {
     fn field_access_partial() {
         let mut db = TestDatabase::default();
 
-        let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri1 = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri1.clone(),
             "type X: record { abc: count; };
@@ -494,7 +492,7 @@ mod test {
             ",
         );
 
-        let uri2 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri2 = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri2.clone(),
             "type X: record { abc: count; };
@@ -508,7 +506,7 @@ mod test {
             let position = Position::new(2, 17);
             let params = CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position,
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -529,7 +527,7 @@ mod test {
             let position = Position::new(2, 17);
             let params = CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position,
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -549,7 +547,7 @@ mod test {
     #[test]
     fn field_access_chained_partial() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -565,7 +563,7 @@ mod test {
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    TextDocumentIdentifier::new(uri),
                     Position::new(4, 17),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -578,7 +576,7 @@ mod test {
     #[test]
     fn referenced_field_access() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -594,7 +592,7 @@ mod test {
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    TextDocumentIdentifier::new(uri.clone()),
                     Position::new(5, 14),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -613,7 +611,7 @@ mod test {
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    TextDocumentIdentifier::new(uri),
                     Position::new(5, 14),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -628,23 +626,17 @@ mod test {
         let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
-        db.add_file(
-            Arc::new(Url::from_file_path("/p1/foo/a1.zeek").unwrap()),
-            "",
-        );
-        db.add_file(
-            Arc::new(Url::from_file_path("/p2/foo/b1.zeek").unwrap()),
-            "",
-        );
+        db.add_file(Url::from_file_path("/p1/foo/a1.zeek").unwrap(), "");
+        db.add_file(Url::from_file_path("/p2/foo/b1.zeek").unwrap(), "");
 
-        let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x/x.zeek").unwrap();
         db.add_file(uri.clone(), "@load f");
 
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position: Position::new(0, 6),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -657,7 +649,7 @@ mod test {
     #[test]
     fn event() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -677,7 +669,7 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri.clone()),
                     position: Position::new(7, 6),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -690,7 +682,7 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri.clone()),
                     position: Position::new(8, 10),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -703,7 +695,7 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position: Position::new(9, 6),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -716,7 +708,7 @@ hook h
     #[test]
     fn keyword() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -728,7 +720,7 @@ f",
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     position: Position::new(2, 0),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),

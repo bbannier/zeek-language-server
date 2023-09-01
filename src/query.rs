@@ -1078,7 +1078,7 @@ mod test {
             let mut db = TestDatabase::default();
             let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-            db.add_file(uri.clone(), source);
+            db.add_file((*uri).clone(), source);
             db.0.parse(uri)
         };
 
@@ -1098,7 +1098,7 @@ mod test {
     fn decls_() {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
-        db.add_file(uri.clone(), SOURCE);
+        db.add_file((*uri).clone(), SOURCE);
 
         let tree = db.0.parse(uri.clone()).expect("cannot parse");
 
@@ -1129,7 +1129,7 @@ mod test {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 export {
 global f1: function();
@@ -1149,7 +1149,7 @@ global GLOBAL::f3: function();
     fn in_export() {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
-        db.add_file(uri.clone(), SOURCE);
+        db.add_file((*uri).clone(), SOURCE);
         let tree = db.0.parse(uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
@@ -1171,7 +1171,7 @@ global GLOBAL::f3: function();
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 function f1(x: count, y: string) {
     # Inside.
@@ -1205,7 +1205,7 @@ function f1(x: count, y: string) {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "
 global fn: function(n: count): string;
 global ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);

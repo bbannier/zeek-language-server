@@ -64,7 +64,7 @@ mod test {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-        db.add_file(uri.clone(), SOURCE);
+        db.add_file((*uri).clone(), SOURCE);
 
         let tree = db.0.parse(uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());

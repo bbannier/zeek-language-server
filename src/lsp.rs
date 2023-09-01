@@ -10,7 +10,7 @@ use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -33,7 +33,7 @@ use tower_lsp::{
         InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
         OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
         ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind, TextDocumentItem,
         TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
         WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceSymbolParams,
@@ -58,6 +58,27 @@ pub struct Database {
 }
 
 impl Database {
+    // FIXME(bbannier): Accept a proper type here, not `TextDocumentItem`.
+    pub fn set_sources(&mut self, documents: &[TextDocumentItem]) {
+        let mut files = self.files();
+        let mut new_files = BTreeSet::new();
+
+        for d in documents {
+            let uri = Arc::new(d.uri.clone());
+            self.set_unsafe_source(uri.clone(), Arc::new(d.text.clone()));
+
+            if !files.contains(&uri) {
+                new_files.insert(uri);
+            }
+        }
+
+        if !new_files.is_empty() {
+            let files = Arc::make_mut(&mut files);
+            files.append(&mut new_files);
+            self.set_files(Arc::new(files.clone()));
+        }
+    }
+
     fn file_changed(&self, uri: Arc<Url>) {
         // Precompute decls in this file.
         let _d = self.decls(uri);
@@ -447,10 +468,8 @@ impl LanguageServer for Backend {
                 let changed = params
                     .changes
                     .into_par_iter()
-                    .filter_map(|change| {
-                        if change.typ == FileChangeType::DELETED {
-                            None
-                        } else {
+                    .filter_map(|change| match change.typ {
+                        FileChangeType::CREATED | FileChangeType::CHANGED => {
                             let uri = Arc::new(change.uri);
                             let source = match std::fs::read_to_string(uri.path()) {
                                 Ok(s) => Arc::new(s),
@@ -461,10 +480,12 @@ impl LanguageServer for Backend {
                             };
                             Some((uri, source))
                         }
+                        _ => None,
                     })
                     .collect::<BTreeMap<_, _>>();
 
                 // For added or changed files, updated their sources and track the files if needed.
+
                 for (uri, source) in changed {
                     s.set_unsafe_source(uri.clone(), source);
                     files.insert(uri);
@@ -519,19 +540,10 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let uri = params.text_document.uri;
-        let source = params.text_document.text;
-        let uri = Arc::new(uri);
+        let uri = Arc::new(params.text_document.uri.clone());
 
         let _set_files = self.with_state_mut(|state| {
-            state.set_unsafe_source(uri.clone(), Arc::new(source));
-
-            let mut files = state.files();
-            if !files.contains(&uri) {
-                let files = Arc::make_mut(&mut files);
-                files.insert(uri.clone());
-                state.set_files(Arc::new(files.clone()));
-            }
+            state.set_sources(&[params.text_document]);
         });
 
         // Reload implicit declarations since their result depends on the list of known files and
@@ -556,10 +568,13 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let source = changes.text.to_string();
-
         let _set_source = self.with_state_mut(|state| {
-            state.set_unsafe_source(uri.clone(), Arc::new(source));
+            state.set_sources(&[TextDocumentItem::new(
+                uri.as_ref().clone(),
+                "zeek".to_string(),
+                params.text_document.version,
+                changes.text.clone(),
+            )]);
         });
 
         if let Err(e) = self.file_changed(uri).await {
@@ -1275,8 +1290,8 @@ pub(crate) mod test {
         lsp_types::{
             CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
             FormattingOptions, HoverParams, InitializeParams, PartialResultParams, Position, Range,
-            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
-            WorkspaceSymbolParams,
+            TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Url,
+            WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -1291,13 +1306,12 @@ pub(crate) mod test {
 
     impl TestDatabase {
         pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            self.0
-                .set_unsafe_source(uri.clone(), Arc::new(source.to_string()));
-
-            let mut files = self.0.files();
-            let files = Arc::make_mut(&mut files);
-            files.insert(uri);
-            self.0.set_files(Arc::new(files.clone()));
+            self.0.set_sources(&[TextDocumentItem::new(
+                uri.as_ref().clone(),
+                "zeek".to_string(),
+                0,
+                source.to_string(),
+            )]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)

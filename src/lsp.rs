@@ -10,7 +10,6 @@ use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -58,13 +57,16 @@ pub struct Database {
 }
 
 pub enum SourceUpdate {
+    Remove(Arc<Url>),
     Update(Arc<Url>, Arc<String>),
 }
 
 impl Database {
-    pub fn set_sources(&mut self, updates: &[SourceUpdate]) {
+    pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
         let mut files = self.files();
-        let mut new_files = BTreeSet::new();
+        let files = Arc::make_mut(&mut files);
+
+        let mut needs_files_update = false;
 
         for u in updates {
             match u {
@@ -72,15 +74,22 @@ impl Database {
                     self.set_unsafe_source(uri.clone(), source.clone());
 
                     if !files.contains(uri) {
-                        new_files.insert(uri.clone());
+                        needs_files_update = true;
                     }
+
+                    files.insert(uri.clone());
+                }
+                SourceUpdate::Remove(uri) => {
+                    if files.contains(uri) {
+                        needs_files_update = true;
+                    }
+
+                    files.remove(uri);
                 }
             }
         }
 
-        if !new_files.is_empty() {
-            let files = Arc::make_mut(&mut files);
-            files.append(&mut new_files);
+        if needs_files_update {
             self.set_files(Arc::new(files.clone()));
         }
     }
@@ -451,56 +460,33 @@ impl LanguageServer for Backend {
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         use rayon::prelude::*;
 
-        let _update_files = self.with_state_mut(|s| {
-            {
-                let span = trace_span!("updating");
-                let _enter = span.enter();
-
-                // Create new list of files and update individual sources.
-                let mut files = s.files().as_ref().clone();
-
-                // Untrack deleted files.
-                for deleted in params.changes.iter().filter_map(|change| {
-                    if change.typ == FileChangeType::DELETED {
-                        Some(&change.uri)
-                    } else {
-                        None
+        {
+            let span = trace_span!("updating");
+            let _enter = span.enter();
+            let updates = params
+                .changes
+                .par_iter()
+                .filter_map(|c| match c.typ {
+                    FileChangeType::DELETED => Some(SourceUpdate::Remove(Arc::new(c.uri.clone()))),
+                    FileChangeType::CREATED | FileChangeType::CHANGED => {
+                        let source = match std::fs::read_to_string(c.uri.path()) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                warn!("failed to read '{}': {}", &c.uri, e);
+                                return None;
+                            }
+                        };
+                        Some(SourceUpdate::Update(
+                            Arc::new(c.uri.clone()),
+                            Arc::new(source),
+                        ))
                     }
-                }) {
-                    files.remove(deleted);
-                }
+                    _ => unreachable!(),
+                })
+                .collect::<Vec<_>>();
 
-                // Read sources of added or changed files.
-                let changed = params
-                    .changes
-                    .into_par_iter()
-                    .filter_map(|change| match change.typ {
-                        FileChangeType::CREATED | FileChangeType::CHANGED => {
-                            let uri = Arc::new(change.uri);
-                            let source = match std::fs::read_to_string(uri.path()) {
-                                Ok(s) => Arc::new(s),
-                                Err(e) => {
-                                    warn!("failed to read '{}': {}", &uri, e);
-                                    return None;
-                                }
-                            };
-                            Some((uri, source))
-                        }
-                        _ => None,
-                    })
-                    .collect::<BTreeMap<_, _>>();
-
-                // For added or changed files, updated their sources and track the files if needed.
-
-                for (uri, source) in changed {
-                    s.set_unsafe_source(uri.clone(), source);
-                    files.insert(uri);
-                }
-
-                // Commit new file list.
-                s.set_files(Arc::new(files));
-            }
-        });
+            let _update_files = self.with_state_mut(|s| s.update_sources(&updates));
+        }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
         // declarations quickly since they are on the critical part of getting the user to useful
@@ -549,7 +535,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri.clone());
 
         let _set_files = self.with_state_mut(|state| {
-            state.set_sources(&[SourceUpdate::Update(
+            state.update_sources(&[SourceUpdate::Update(
                 uri.clone(),
                 Arc::new(params.text_document.text),
             )]);
@@ -578,7 +564,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let _set_source = self.with_state_mut(|state| {
-            state.set_sources(&[SourceUpdate::Update(
+            state.update_sources(&[SourceUpdate::Update(
                 uri.clone(),
                 Arc::new(changes.text.clone()),
             )]);
@@ -1314,7 +1300,7 @@ pub(crate) mod test {
     impl TestDatabase {
         pub(crate) fn add_file(&mut self, uri: Url, source: impl Into<String>) {
             self.0
-                .set_sources(&[SourceUpdate::Update(Arc::new(uri), Arc::new(source.into()))]);
+                .update_sources(&[SourceUpdate::Update(Arc::new(uri), Arc::new(source.into()))]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)

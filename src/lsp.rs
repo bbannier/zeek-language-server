@@ -1274,9 +1274,10 @@ pub(crate) mod test {
     use serde_json::json;
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
-            PartialResultParams, Position, Range, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
+            FormattingOptions, HoverParams, InitializeParams, PartialResultParams, Position, Range,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -1849,5 +1850,39 @@ event x::foo() {}",
 
             assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
         }
+    }
+
+    #[tokio::test]
+    async fn document_symbol() {
+        let mut db = TestDatabase::new();
+
+        let uri_unknown = Url::from_file_path("/unknown.zeek").unwrap();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+
+        db.add_file(Arc::new(uri.clone()), "global x = 42;");
+        let server = serve(db);
+
+        // Nothing reported for unknown files.
+        assert_eq!(
+            Ok(Some(DocumentSymbolResponse::Nested(vec![]))),
+            server
+                .document_symbol(DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier::new(uri_unknown),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                })
+                .await
+        );
+
+        // Valid response for known file.
+        assert_debug_snapshot!(
+            server
+                .document_symbol(DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier::new(uri),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                })
+                .await
+        );
     }
 }

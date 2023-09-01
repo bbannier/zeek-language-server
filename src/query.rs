@@ -1075,7 +1075,7 @@ mod test {
     #[test]
     fn loads_raw() {
         let parse = |source: &str| {
-            let mut db = TestDatabase::new();
+            let mut db = TestDatabase::default();
             let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
             db.add_file(uri.clone(), source);
@@ -1096,7 +1096,7 @@ mod test {
 
     #[test]
     fn decls_() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file(uri.clone(), SOURCE);
 
@@ -1126,7 +1126,7 @@ mod test {
 
     #[test]
     fn decls_weird_modules() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1147,7 +1147,7 @@ global GLOBAL::f3: function();
 
     #[test]
     fn in_export() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file(uri.clone(), SOURCE);
         let tree = db.0.parse(uri).unwrap();
@@ -1168,7 +1168,7 @@ global GLOBAL::f3: function();
 
     #[test]
     fn fn_param_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -1202,7 +1202,7 @@ function f1(x: count, y: string) {
 
     #[test]
     fn fn_like_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),

@@ -61,7 +61,7 @@ mod test {
 
     #[test]
     fn can_parse() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
         db.add_file(uri.clone(), SOURCE);

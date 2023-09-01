@@ -367,7 +367,7 @@ mod test {
 
     #[test]
     fn field_access() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
 
         let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
@@ -454,7 +454,7 @@ mod test {
 
     #[test]
     fn field_access_chained() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -483,7 +483,7 @@ mod test {
 
     #[test]
     fn field_access_partial() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
 
         let uri1 = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
@@ -548,7 +548,7 @@ mod test {
 
     #[test]
     fn field_access_chained_partial() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -577,7 +577,7 @@ mod test {
 
     #[test]
     fn referenced_field_access() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -625,7 +625,7 @@ mod test {
 
     #[test]
     fn load() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
@@ -656,7 +656,7 @@ mod test {
 
     #[test]
     fn event() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),
@@ -715,7 +715,7 @@ hook h
 
     #[test]
     fn keyword() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             uri.clone(),

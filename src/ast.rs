@@ -394,7 +394,7 @@ fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
 #[instrument(skip(db))]
 fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
-    let mut files = db.loaded_files(url).as_ref().clone();
+    let mut files = (*db.loaded_files(url)).clone();
 
     loop {
         let mut new_files = Vec::new();
@@ -421,7 +421,7 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
 #[instrument(skip(db))]
 fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
-    let mut decls = db.decls(uri.clone()).as_ref().clone();
+    let mut decls = (*db.decls(uri.clone())).clone();
 
     for load in db.loaded_files_recursive(uri).as_ref() {
         for decl in &*db.decls(load.clone()) {

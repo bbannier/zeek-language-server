@@ -289,7 +289,7 @@ impl Backend {
             })?;
 
             client
-                .publish_diagnostics(uri.as_ref().clone(), diags, None)
+                .publish_diagnostics((*uri).clone(), diags, None)
                 .await;
         }
 
@@ -498,7 +498,7 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else {
+        let Ok(files) = self.with_state(|s| (*s.files()).clone()) else {
             return;
         };
 
@@ -894,7 +894,7 @@ impl LanguageServer for Backend {
                     .resolve(NodeLocation::from_node(uri, node))
                     .and_then(|d| {
                         let Some(loc) = &d.loc else { return None };
-                        Some(Location::new(loc.uri.as_ref().clone(), loc.range))
+                        Some(Location::new((*loc.uri).clone(), loc.range))
                     }),
                 "file" => {
                     let text = node
@@ -912,7 +912,7 @@ impl LanguageServer for Backend {
                         state.files().as_ref(),
                         state.prefixes().as_ref(),
                     )
-                    .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
+                    .map(|uri| Location::new((*uri).clone(), Range::default()))
                 }
                 _ => None,
             }
@@ -1142,7 +1142,7 @@ impl LanguageServer for Backend {
             match &decl.kind {
                 // We are done as we have found a declaration.
                 DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
-                    Some(decl.as_ref().clone())
+                    Some((*decl).clone())
                 }
                 // If we resolved to a definition, look for the declaration.
                 DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
@@ -1165,7 +1165,7 @@ impl LanguageServer for Backend {
         Ok(decl.and_then(|d| {
             let Some(loc) = &d.loc else { return None };
             Some(GotoDeclarationResponse::Scalar(Location::new(
-                loc.uri.as_ref().clone(),
+                (*loc.uri).clone(),
                 loc.range,
             )))
         }))
@@ -1213,7 +1213,7 @@ impl LanguageServer for Backend {
                     .filter_map(|d| {
                         let Some(loc) = &d.loc else { return None };
                         if d.id == decl.id {
-                            Some(Location::new(loc.uri.as_ref().clone(), loc.range))
+                            Some(Location::new((*loc.uri).clone(), loc.range))
                         } else {
                             None
                         }
@@ -1382,7 +1382,7 @@ pub(crate) mod test {
 
         let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
         db.add_file(
-            uri.as_ref().clone(),
+            (*uri).clone(),
             "module mod_x;
 @load a
 @load b
@@ -1397,7 +1397,7 @@ global GLOBAL::Y = 3;
         let result = server
             .completion(CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new((*uri).clone()),
                     position: Position::new(6, 0),
                 },
                 partial_result_params: PartialResultParams::default(),

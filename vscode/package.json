@@ -77,6 +77,16 @@
           ],
           "default": "null",
           "markdownDescription": "Check for updates of the server binary on startup. By default we check if `#zeekLanguageServer.path#` is set. This should only be needed if not using a server binary bundled with the extension."
+        },
+        "zeekLanguageServer.debugLogging": {
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "default": "error"
         }
       }
     },

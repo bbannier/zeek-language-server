@@ -97,3 +97,26 @@ jobs:
           npm install -g tree-sitter-cli
       - uses: actions/setup-python@v2
       - uses: pre-commit/action@v2.0.3
+
+  vscode:
+    name: Build vscode extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '15.x'
+      - run: |
+          cd vscode
+          npm install
+          npm install -g @vscode/vsce
+      - run: |
+          cd vscode
+          vsce package
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2.3.1
+        with:
+          path: vscode/*.vsix
+          name: vscode_extension.zip

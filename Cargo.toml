@@ -32,7 +32,7 @@ salsa = "0.16.1"
 semver = { version = "1.0.18", default-features = false }
 serde = { version = "1.0.188", default-features = false }
 serde_json = { default-features = false, version = "1.0.105" }
-tokio = { version = "1.32.0", features = ["io-std", "rt-multi-thread", "process", "macros"], default-features = false }
+tokio = { version = "1.32.0", features = ["io-std", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp = { version = "0.20.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.37" }
 tracing-appender = { version = "0.2.2", default_features = false }

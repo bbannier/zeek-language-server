@@ -552,13 +552,11 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        let changes = params.content_changes;
-        assert_eq!(
-            changes.len(),
-            1,
-            "more than one change received even though we only advertize full update mode"
-        );
-        let changes = changes.get(0).unwrap();
+        let Some(changes) = params.content_changes.get(0) else {
+            error!("more than one change received even though we only advertize full update mode");
+            return;
+        };
+
         assert!(changes.range.is_none(), "unexpected diff mode");
 
         let uri = Arc::new(params.text_document.uri);

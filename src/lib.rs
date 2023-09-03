@@ -1,3 +1,5 @@
+#![deny(clippy::unwrap_used)]
+
 use std::{collections::BTreeSet, sync::Arc};
 use tower_lsp::lsp_types::{ClientCapabilities, Url};
 use tracing::instrument;

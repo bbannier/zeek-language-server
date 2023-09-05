@@ -44,3 +44,6 @@ All configuration settings are under `zeekLanguageServer.*`.
   on startup. By default we check if `zeekLanguageServer.path` is set. This
   should only be needed if not using a server binary bundled with the
   extension.
+- `zeekLanguageServer.debugLogging`: Logging verbosity of the server. When
+  reporting bugs, please include a server log with `debug` verbosity if
+  possible.

@@ -335,8 +335,9 @@ impl Backend {
             .build()
             .ok()?;
 
-        let uri = uri
-            .unwrap_or("http://api.github.com/repos/bbannier/zeek-language-server/releases/latest");
+        let uri = uri.unwrap_or(
+            "https://api.github.com/repos/bbannier/zeek-language-server/releases/latest",
+        );
 
         let resp = client.get(uri).send().await.ok()?.text().await.ok()?;
 

@@ -44,30 +44,29 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
         .set_language(language_zeek())
         .expect("cannot set parser language");
 
-    let source = db.source(file);
+    let source = db.source(file)?;
     parser.parse(source.as_str(), None).map(Tree).map(Arc::new)
 }
 
 #[cfg(test)]
 mod test {
-    use tower_lsp::lsp_types::Url;
-
     use {
-        crate::{lsp::Database, parse::Parse, Files},
+        crate::{lsp::TestDatabase, parse::Parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
+        tower_lsp::lsp_types::Url,
     };
 
     const SOURCE: &str = "event zeek_init() {}";
 
     #[test]
     fn can_parse() {
-        let mut db = Database::default();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
+        db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.parse(uri);
+        let tree = db.0.parse(uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
     }

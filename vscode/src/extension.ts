@@ -278,6 +278,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     command:
       process.env.__ZEEK_LSP_SERVER_DEBUG ??
       (await new ZeekLanguageServer(context).getPath()),
+    args: [],
   };
 
   const env = {};
@@ -296,6 +297,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
     env["ZEEKPATH"] = zeekpath;
   } else {
     env["ZEEKPATH"] = process.env["ZEEKPATH"];
+  }
+
+  const debugLogging = configuration.get<string>("debugLogging");
+  if (debugLogging) {
+    serverExecutable.args.push("-f", debugLogging);
   }
 
   if (Object.keys(env).length > 0) {

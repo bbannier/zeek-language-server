@@ -9,12 +9,7 @@ use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp::{
     jsonrpc::{Error, Result},
     lsp_types::{
@@ -53,15 +48,67 @@ pub(crate) use test::TestDatabase;
     crate::FilesStorage,
     crate::ClientStorage
 )]
-#[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
 }
 
+pub enum SourceUpdate {
+    Remove(Arc<Url>),
+    Update(Arc<Url>, Arc<String>),
+}
+
 impl Database {
+    pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
+        let mut files = self.files();
+        let files = Arc::make_mut(&mut files);
+
+        let mut needs_files_update = false;
+
+        for u in updates {
+            match u {
+                SourceUpdate::Update(uri, source) => {
+                    self.set_unsafe_source(uri.clone(), source.clone());
+
+                    if !files.contains(uri) {
+                        needs_files_update = true;
+                    }
+
+                    files.insert(uri.clone());
+                }
+                SourceUpdate::Remove(uri) => {
+                    if files.contains(uri) {
+                        needs_files_update = true;
+                    }
+
+                    files.remove(uri);
+                }
+            }
+        }
+
+        if needs_files_update {
+            self.set_files(Arc::new(files.clone()));
+        }
+    }
+
     fn file_changed(&self, uri: Arc<Url>) {
         // Precompute decls in this file.
         let _d = self.decls(uri);
+    }
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        let mut db = Self {
+            storage: salsa::Storage::default(),
+        };
+
+        db.set_files(Arc::default());
+        db.set_prefixes(Arc::default());
+        db.set_workspace_folders(Arc::default());
+        db.set_capabilities(Arc::default());
+        db.set_client_options(Arc::new(Options::new()));
+
+        db
     }
 }
 
@@ -81,10 +128,10 @@ impl Debug for Database {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Backend {
     client: Option<tower_lsp::Client>,
-    state: Mutex<Database>,
+    state: tokio::sync::Mutex<Database>,
 }
 
 impl Backend {
@@ -111,23 +158,19 @@ impl Backend {
         self.client_message(MessageType::INFO, message).await;
     }
 
-    fn with_state<F, R>(&self, f: F) -> Result<R>
+    async fn with_state<F, R>(&self, f: F) -> Result<R>
     where
         F: FnOnce(Snapshot<Database>) -> R,
     {
-        let db = self
-            .state
-            .lock()
-            .map_err(|_| Error::internal_error())?
-            .snapshot();
+        let db = self.state.lock().await.snapshot();
         Ok(f(db))
     }
 
-    fn with_state_mut<F, R>(&self, f: F) -> Result<R>
+    async fn with_state_mut<F, R>(&self, f: F) -> Result<R>
     where
         F: FnOnce(&mut Database) -> R,
     {
-        let mut db = self.state.lock().map_err(|_| Error::internal_error())?;
+        let mut db = self.state.lock().await;
         Ok(f(&mut db))
     }
 
@@ -136,7 +179,7 @@ impl Backend {
         T: Into<String> + std::fmt::Display,
     {
         // Short circuit progress report if client doesn't support it.
-        if !self
+        if self
             .with_state(|s| {
                 s.capabilities()
                     .window
@@ -144,7 +187,8 @@ impl Backend {
                     .and_then(|w| w.work_done_progress)
                     .unwrap_or(false)
             })
-            .ok()?
+            .await
+            .is_err()
         {
             return None;
         }
@@ -213,32 +257,34 @@ impl Backend {
 
     async fn file_changed(&self, uri: Arc<Url>) -> Result<()> {
         if let Some(client) = &self.client {
-            let diags = self.with_state(|state| {
-                state.file_changed(uri.clone());
+            let diags = self
+                .with_state(|state| {
+                    state.file_changed(uri.clone());
 
-                let Some(tree) = state.parse(uri.clone()) else {
-                    return Vec::new();
-                };
+                    let Some(tree) = state.parse(uri.clone()) else {
+                        return Vec::new();
+                    };
 
-                tree.root_node()
-                    .errors()
-                    .into_iter()
-                    .map(|err| {
-                        Diagnostic::new(
-                            err.range(),
-                            Some(DiagnosticSeverity::WARNING),
-                            None,
-                            None,
-                            err.error(),
-                            None,
-                            None,
-                        )
-                    })
-                    .collect()
-            })?;
+                    tree.root_node()
+                        .errors()
+                        .into_iter()
+                        .map(|err| {
+                            Diagnostic::new(
+                                err.range(),
+                                Some(DiagnosticSeverity::WARNING),
+                                None,
+                                None,
+                                err.error(),
+                                None,
+                                None,
+                            )
+                        })
+                        .collect()
+                })
+                .await?;
 
             client
-                .publish_diagnostics(uri.as_ref().clone(), diags, None)
+                .publish_diagnostics((*uri).clone(), diags, None)
                 .await;
         }
 
@@ -255,7 +301,7 @@ impl Backend {
             .into_iter()
             .filter_map(|f| Url::from_file_path(f.path).ok());
 
-        let workspace_folders = self.with_state(|s| s.workspace_folders())?;
+        let workspace_folders = self.with_state(|s| s.workspace_folders()).await?;
 
         let workspace_files = workspace_folders
             .iter()
@@ -289,8 +335,9 @@ impl Backend {
             .build()
             .ok()?;
 
-        let uri = uri
-            .unwrap_or("http://api.github.com/repos/bbannier/zeek-language-server/releases/latest");
+        let uri = uri.unwrap_or(
+            "https://api.github.com/repos/bbannier/zeek-language-server/releases/latest",
+        );
 
         let resp = client.get(uri).send().await.ok()?.text().await.ok()?;
 
@@ -318,26 +365,24 @@ impl LanguageServer for Backend {
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
         self.with_state_mut(move |state| {
-            state.set_files(Arc::new(BTreeSet::new()));
-            state.set_prefixes(Arc::new(Vec::new()));
-
             state.set_workspace_folders(Arc::new(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
-
             state.set_client_options(Arc::new(
                 params
                     .initialization_options
                     .and_then(|options| serde_json::from_value(options).ok())
                     .unwrap_or_else(Options::new),
             ));
-        })?;
+        })
+        .await?;
 
         // Set system prefixes.
         match zeek::prefixes(None).await {
             Ok(prefixes) => {
                 self.with_state_mut(move |state| {
                     state.set_prefixes(Arc::new(prefixes));
-                })?;
+                })
+                .await?;
             }
             Err(e) => error!("{e}"),
         }
@@ -378,7 +423,11 @@ impl LanguageServer for Backend {
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
         // Check whether a newer release is available.
-        if self.with_state(|s| s.client_options().check_for_updates) == Ok(true) {
+        if self
+            .with_state(|s| s.client_options().check_for_updates)
+            .await
+            == Ok(true)
+        {
             if let Some(latest) = self.get_latest_release(None).await {
                 let current =
                     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| latest.clone());
@@ -413,56 +462,33 @@ impl LanguageServer for Backend {
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         use rayon::prelude::*;
 
-        let _update_files = self.with_state_mut(|s| {
-            {
-                let span = trace_span!("updating");
-                let _enter = span.enter();
-
-                // Create new list of files and update individual sources.
-                let mut files = s.files().as_ref().clone();
-
-                // Untrack deleted files.
-                for deleted in params.changes.iter().filter_map(|change| {
-                    if change.typ == FileChangeType::DELETED {
-                        Some(&change.uri)
-                    } else {
-                        None
+        {
+            let span = trace_span!("updating");
+            let _enter = span.enter();
+            let updates = params
+                .changes
+                .par_iter()
+                .filter_map(|c| match c.typ {
+                    FileChangeType::DELETED => Some(SourceUpdate::Remove(Arc::new(c.uri.clone()))),
+                    FileChangeType::CREATED | FileChangeType::CHANGED => {
+                        let source = match std::fs::read_to_string(c.uri.path()) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                warn!("failed to read '{}': {}", &c.uri, e);
+                                return None;
+                            }
+                        };
+                        Some(SourceUpdate::Update(
+                            Arc::new(c.uri.clone()),
+                            Arc::new(source),
+                        ))
                     }
-                }) {
-                    files.remove(deleted);
-                }
+                    _ => unreachable!(),
+                })
+                .collect::<Vec<_>>();
 
-                // Read sources of added or changed files.
-                let changed = params
-                    .changes
-                    .into_par_iter()
-                    .filter_map(|change| {
-                        if change.typ == FileChangeType::DELETED {
-                            None
-                        } else {
-                            let uri = Arc::new(change.uri);
-                            let source = match std::fs::read_to_string(uri.path()) {
-                                Ok(s) => Arc::new(s),
-                                Err(e) => {
-                                    warn!("failed to read '{}': {}", &uri, e);
-                                    return None;
-                                }
-                            };
-                            Some((uri, source))
-                        }
-                    })
-                    .collect::<BTreeMap<_, _>>();
-
-                // For added or changed files, updated their sources and track the files if needed.
-                for (uri, source) in changed {
-                    s.set_source(uri.clone(), source);
-                    files.insert(uri);
-                }
-
-                // Commit new file list.
-                s.set_files(Arc::new(files));
-            }
-        });
+            let _update_files = self.with_state_mut(|s| s.update_sources(&updates)).await;
+        }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
         // declarations quickly since they are on the critical part of getting the user to useful
@@ -474,27 +500,30 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let Ok(files) = self.with_state(|s| s.files().as_ref().clone()) else {
+        let Ok(files) = self.with_state(|s| (*s.files()).clone()).await else {
             return;
         };
 
-        if let Ok(preloaded_decls) = self.with_state(|state| {
-            let span = trace_span!("preloading");
-            let _enter = span.enter();
+        if let Ok(preloaded_decls) = self
+            .with_state(|state| {
+                let span = trace_span!("preloading");
+                let _enter = span.enter();
 
-            files
-                .iter()
-                .map(|f| {
-                    let f = f.clone();
-                    let db = state.snapshot();
-                    tokio::spawn(async move {
-                        let _x = db.decls(f.clone());
-                        let _x = db.loads(f.clone());
-                        let _x = db.loaded_files(f.clone());
+                files
+                    .iter()
+                    .map(|f| {
+                        let f = f.clone();
+                        let db = state.snapshot();
+                        tokio::spawn(async move {
+                            let _x = db.decls(f.clone());
+                            let _x = db.loads(f.clone());
+                            let _x = db.loaded_files(f.clone());
+                        })
                     })
-                })
-                .collect::<Vec<_>>()
-        }) {
+                    .collect::<Vec<_>>()
+            })
+            .await
+        {
             futures::future::join_all(preloaded_decls).await;
         }
 
@@ -508,20 +537,19 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let uri = params.text_document.uri;
-        let source = params.text_document.text;
-        let uri = Arc::new(uri);
+        let uri = Arc::new(params.text_document.uri.clone());
 
-        let _set_files = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
+        let _set_files = {
+            let uri = uri.clone();
 
-            let mut files = state.files();
-            if !files.contains(&uri) {
-                let files = Arc::make_mut(&mut files);
-                files.insert(uri.clone());
-                state.set_files(Arc::new(files.clone()));
-            }
-        });
+            self.with_state_mut(|state| {
+                state.update_sources(&[SourceUpdate::Update(
+                    uri,
+                    Arc::new(params.text_document.text),
+                )]);
+            })
+            .await
+        };
 
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
@@ -534,22 +562,23 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        let changes = params.content_changes;
-        assert_eq!(
-            changes.len(),
-            1,
-            "more than one change received even though we only advertize full update mode"
-        );
-        let changes = changes.get(0).unwrap();
+        let Some(changes) = params.content_changes.get(0) else {
+            error!("more than one change received even though we only advertize full update mode");
+            return;
+        };
+
         assert!(changes.range.is_none(), "unexpected diff mode");
 
         let uri = Arc::new(params.text_document.uri);
 
-        let source = changes.text.to_string();
+        let _set_source = {
+            let uri = uri.clone();
 
-        let _set_source = self.with_state_mut(|state| {
-            state.set_source(uri.clone(), Arc::new(source));
-        });
+            self.with_state_mut(|state| {
+                state.update_sources(&[SourceUpdate::Update(uri, Arc::new(changes.text.clone()))]);
+            })
+            .await
+        };
 
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
@@ -573,6 +602,7 @@ impl LanguageServer for Backend {
                     .get(0)
                     .and_then(|f| f.to_file_path().ok())
             })
+            .await
             .ok()
             .flatten();
 
@@ -630,7 +660,9 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.source(uri.clone()) else {
+                return Ok(None);
+            };
 
             let tree = state.parse(uri.clone());
             let Some(tree) = tree.as_ref() else {
@@ -713,7 +745,8 @@ impl LanguageServer for Backend {
             };
 
             Ok(Some(hover))
-        })?
+        })
+        .await?
     }
 
     #[instrument]
@@ -762,45 +795,47 @@ impl LanguageServer for Backend {
             })
         };
 
-        let modules = self.with_state(move |state| {
-            // Even though a valid source file can only contain a single module, one can still make
-            // declarations in other modules. Sort declarations by module so users get a clean view.
-            // Then show declarations under their module, or at the top-level if they aren't exported
-            // into a module.
-            let decls = state.decls(uri);
-            let mut decls = decls
-                .iter()
-                // Filter out top-level enum members since they are also exposed inside their enum here.
-                .filter(|d| d.kind != DeclKind::EnumMember)
-                .collect::<Vec<_>>();
-            decls.sort_by_key(|d| format!("{}", d.module));
-            let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
-                decls.into_iter().partition(|d| d.module != ModuleId::None);
+        let modules = self
+            .with_state(move |state| {
+                // Even though a valid source file can only contain a single module, one can still make
+                // declarations in other modules. Sort declarations by module so users get a clean view.
+                // Then show declarations under their module, or at the top-level if they aren't exported
+                // into a module.
+                let decls = state.decls(uri);
+                let mut decls = decls
+                    .iter()
+                    // Filter out top-level enum members since they are also exposed inside their enum here.
+                    .filter(|d| d.kind != DeclKind::EnumMember)
+                    .collect::<Vec<_>>();
+                decls.sort_by_key(|d| format!("{}", d.module));
+                let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
+                    decls.into_iter().partition(|d| d.module != ModuleId::None);
 
-            decls_w_mod
-                .into_iter()
-                .group_by(|d| &d.module)
-                .into_iter()
-                .map(|(m, decls)| {
-                    #[allow(deprecated)]
-                    DocumentSymbol {
-                        name: format!("{m}"),
-                        kind: SymbolKind::NAMESPACE,
-                        children: Some(decls.filter_map(symbol).collect()),
+                decls_w_mod
+                    .into_iter()
+                    .group_by(|d| &d.module)
+                    .into_iter()
+                    .map(|(m, decls)| {
+                        #[allow(deprecated)]
+                        DocumentSymbol {
+                            name: format!("{m}"),
+                            kind: SymbolKind::NAMESPACE,
+                            children: Some(decls.filter_map(symbol).collect()),
 
-                        // FIXME(bbannier): Weird ranges.
-                        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-                        selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                            // FIXME(bbannier): Weird ranges.
+                            range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                            selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
 
-                        deprecated: None,
+                            deprecated: None,
 
-                        detail: None,
-                        tags: None,
-                    }
-                })
-                .chain(decls_wo_mod.into_iter().filter_map(symbol))
-                .collect()
-        })?;
+                            detail: None,
+                            tags: None,
+                        }
+                    })
+                    .chain(decls_wo_mod.into_iter().filter_map(symbol))
+                    .collect()
+            })
+            .await?;
 
         Ok(Some(DocumentSymbolResponse::Nested(modules)))
     }
@@ -812,37 +847,40 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<SymbolInformation>>> {
         let query = params.query.to_lowercase();
 
-        let symbols = self.with_state(|state| {
-            let files = state.files();
-            files
-                .iter()
-                .flat_map(|uri| {
-                    state
-                        .decls(uri.clone())
-                        .iter()
-                        .filter(|d| {
-                            rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase()) > 0.0
-                        })
-                        .filter_map(|d| {
-                            let url: &Url = uri;
-                            let Some(loc) = &d.loc else { return None };
-
-                            #[allow(deprecated)]
-                            Some(SymbolInformation {
-                                name: d.fqid.clone(),
-                                kind: to_symbol_kind(&d.kind),
-
-                                location: Location::new(url.clone(), loc.range),
-                                container_name: Some(format!("{}", &d.module)),
-
-                                tags: None,
-                                deprecated: None,
+        let symbols = self
+            .with_state(|state| {
+                let files = state.files();
+                files
+                    .iter()
+                    .flat_map(|uri| {
+                        state
+                            .decls(uri.clone())
+                            .iter()
+                            .filter(|d| {
+                                rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase())
+                                    > 0.0
                             })
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect()
-        })?;
+                            .filter_map(|d| {
+                                let url: &Url = uri;
+                                let Some(loc) = &d.loc else { return None };
+
+                                #[allow(deprecated)]
+                                Some(SymbolInformation {
+                                    name: d.fqid.clone(),
+                                    kind: to_symbol_kind(&d.kind),
+
+                                    location: Location::new(url.clone(), loc.range),
+                                    container_name: Some(format!("{}", &d.module)),
+
+                                    tags: None,
+                                    deprecated: None,
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect()
+            })
+            .await?;
 
         Ok(Some(symbols))
     }
@@ -850,6 +888,7 @@ impl LanguageServer for Backend {
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         self.with_state(move |state| complete(&state, params))
+            .await
             .map_err(|_| Error::internal_error())
     }
 
@@ -862,40 +901,42 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let location = self.with_state(|state| {
-            let tree = state.parse(uri.clone());
-            let tree = tree.as_ref()?;
-            let node = tree.root_node().named_descendant_for_position(position)?;
-            let source = state.source(uri.clone());
+        let location = self
+            .with_state(|state| {
+                let tree = state.parse(uri.clone());
+                let tree = tree.as_ref()?;
+                let node = tree.root_node().named_descendant_for_position(position)?;
+                let source = state.source(uri.clone())?;
 
-            match node.kind() {
-                "id" => state
-                    .resolve(NodeLocation::from_node(uri, node))
-                    .and_then(|d| {
-                        let Some(loc) = &d.loc else { return None };
-                        Some(Location::new(loc.uri.as_ref().clone(), loc.range))
-                    }),
-                "file" => {
-                    let text = node
-                        .utf8_text(source.as_bytes())
-                        .map_err(|e| {
-                            error!("could not get source text: {}", e);
-                            Error::internal_error()
-                        })
-                        .ok()?;
+                match node.kind() {
+                    "id" => state
+                        .resolve(NodeLocation::from_node(uri, node))
+                        .and_then(|d| {
+                            let Some(loc) = &d.loc else { return None };
+                            Some(Location::new((*loc.uri).clone(), loc.range))
+                        }),
+                    "file" => {
+                        let text = node
+                            .utf8_text(source.as_bytes())
+                            .map_err(|e| {
+                                error!("could not get source text: {}", e);
+                                Error::internal_error()
+                            })
+                            .ok()?;
 
-                    let file = PathBuf::from(text);
-                    load_to_file(
-                        &file,
-                        uri.as_ref(),
-                        state.files().as_ref(),
-                        state.prefixes().as_ref(),
-                    )
-                    .map(|uri| Location::new(uri.as_ref().clone(), Range::default()))
+                        let file = PathBuf::from(text);
+                        load_to_file(
+                            &file,
+                            uri.as_ref(),
+                            state.files().as_ref(),
+                            state.prefixes().as_ref(),
+                        )
+                        .map(|uri| Location::new((*uri).clone(), Range::default()))
+                    }
+                    _ => None,
                 }
-                _ => None,
-            }
-        })?;
+            })
+            .await?;
 
         Ok(location.map(GotoDefinitionResponse::Scalar))
     }
@@ -906,7 +947,9 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         self.with_state(move |state| {
-            let source = state.source(uri.clone());
+            let Some(source) = state.source(uri.clone()) else {
+                return Ok(None);
+            };
             let Some(tree) = state.parse(uri.clone()) else {
                 return Ok(None);
             };
@@ -970,7 +1013,9 @@ impl LanguageServer for Backend {
             let Some(tree) = state.parse(loc.uri.clone()) else {
                 return Ok(None);
             };
-            let source = state.source(loc.uri.clone());
+            let Some(source) = state.source(loc.uri.clone()) else {
+                return Ok(None);
+            };
 
             let label = format!(
                 "{}({})",
@@ -1009,7 +1054,8 @@ impl LanguageServer for Backend {
                 active_signature: None,
                 active_parameter,
             }))
-        })?
+        })
+        .await?
     }
 
     #[instrument]
@@ -1035,7 +1081,9 @@ impl LanguageServer for Backend {
             folds
         }
 
-        let tree = self.with_state(|state| state.parse(Arc::new(params.text_document.uri)))?;
+        let tree = self
+            .with_state(|state| state.parse(Arc::new(params.text_document.uri)))
+            .await?;
 
         Ok(tree.map(|t| compute_folds(t.root_node(), false)))
     }
@@ -1044,13 +1092,13 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+        let source = self.with_state(|state| state.source(uri.clone())).await?;
 
         let Some(source) = source else {
             return Ok(None);
         };
 
-        let range = match self.with_state(|state| state.parse(uri))? {
+        let range = match self.with_state(|state| state.parse(uri)).await? {
             Some(t) => t.root_node().range(),
             None => return Ok(None),
         };
@@ -1070,7 +1118,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| Some(state.source(uri.clone())))?;
+        let source = self.with_state(|state| state.source(uri.clone())).await?;
 
         let Some(source) = source else {
             return Ok(None);
@@ -1107,40 +1155,44 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let decl = self.with_state(|state| {
-            let tree = state.parse(uri.clone());
-            let tree = tree.as_ref()?;
-            let node = tree.root_node().named_descendant_for_position(position)?;
+        let decl = self
+            .with_state(|state| {
+                let tree = state.parse(uri.clone());
+                let tree = tree.as_ref()?;
+                let node = tree.root_node().named_descendant_for_position(position)?;
 
-            let decl = state.resolve(NodeLocation::from_node(uri.clone(), node))?;
+                let decl = state.resolve(NodeLocation::from_node(uri.clone(), node))?;
 
-            match &decl.kind {
-                // We are done as we have found a declaration.
-                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
-                    Some(decl.as_ref().clone())
+                match &decl.kind {
+                    // We are done as we have found a declaration.
+                    DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
+                        Some((*decl).clone())
+                    }
+                    // If we resolved to a definition, look for the declaration.
+                    DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
+                        .decls(uri.clone())
+                        .iter()
+                        .chain(state.implicit_decls().iter())
+                        .chain(state.explicit_decls_recursive(uri).iter())
+                        .filter(|&d| {
+                            matches!(
+                                &d.kind,
+                                DeclKind::EventDecl(_)
+                                    | DeclKind::FuncDecl(_)
+                                    | DeclKind::HookDecl(_)
+                            )
+                        })
+                        .find(|&d| d.id == decl.id)
+                        .map(Clone::clone),
+                    _ => None,
                 }
-                // If we resolved to a definition, look for the declaration.
-                DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
-                    .decls(uri.clone())
-                    .iter()
-                    .chain(state.implicit_decls().iter())
-                    .chain(state.explicit_decls_recursive(uri).iter())
-                    .filter(|&d| {
-                        matches!(
-                            &d.kind,
-                            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
-                        )
-                    })
-                    .find(|&d| d.id == decl.id)
-                    .map(Clone::clone),
-                _ => None,
-            }
-        })?;
+            })
+            .await?;
 
         Ok(decl.and_then(|d| {
             let Some(loc) = &d.loc else { return None };
             Some(GotoDeclarationResponse::Scalar(Location::new(
-                loc.uri.as_ref().clone(),
+                (*loc.uri).clone(),
                 loc.range,
             )))
         }))
@@ -1155,47 +1207,49 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let response = self.with_state(|state| {
-            let tree = state.parse(uri.clone());
-            let tree = tree.as_ref()?;
-            let node = tree.root_node().named_descendant_for_position(position)?;
+        let response = self
+            .with_state(|state| {
+                let tree = state.parse(uri.clone());
+                let tree = tree.as_ref()?;
+                let node = tree.root_node().named_descendant_for_position(position)?;
 
-            let decl = state.resolve(NodeLocation::from_node(uri, node))?;
+                let decl = state.resolve(NodeLocation::from_node(uri, node))?;
 
-            match &decl.kind {
-                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {}
-                _ => return None,
-            }
+                match &decl.kind {
+                    DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {}
+                    _ => return None,
+                }
 
-            Some(
-                state
-                    .files()
-                    .iter()
-                    .flat_map(|f| {
-                        state
-                            .decls(f.clone())
-                            .as_ref()
-                            .clone()
-                            .into_iter()
-                            .collect::<Vec<_>>()
-                    })
-                    .filter(|d| {
-                        matches!(
-                            &d.kind,
-                            DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
-                        )
-                    })
-                    .filter_map(|d| {
-                        let Some(loc) = &d.loc else { return None };
-                        if d.id == decl.id {
-                            Some(Location::new(loc.uri.as_ref().clone(), loc.range))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        })?;
+                Some(
+                    state
+                        .files()
+                        .iter()
+                        .flat_map(|f| {
+                            state
+                                .decls(f.clone())
+                                .as_ref()
+                                .clone()
+                                .into_iter()
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|d| {
+                            matches!(
+                                &d.kind,
+                                DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
+                            )
+                        })
+                        .filter_map(|d| {
+                            let Some(loc) = &d.loc else { return None };
+                            if d.id == decl.id {
+                                Some(Location::new((*loc.uri).clone(), loc.range))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .await?;
 
         Ok(response.map(GotoImplementationResponse::from))
     }
@@ -1224,7 +1278,7 @@ pub async fn run() {
 
     let (service, socket) = LspService::new(|client| Backend {
         client: Some(client),
-        state: Mutex::default(),
+        ..Backend::default()
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
@@ -1246,9 +1300,8 @@ impl Options {
 #[cfg(test)]
 pub(crate) mod test {
     use std::{
-        collections::BTreeSet,
         path::{Path, PathBuf},
-        sync::{Arc, Mutex},
+        sync::Arc,
     };
 
     use insta::assert_debug_snapshot;
@@ -1257,36 +1310,26 @@ pub(crate) mod test {
     use serde_json::json;
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, FormattingOptions, HoverParams, InitializeParams,
-            PartialResultParams, Position, Range, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
+            FormattingOptions, HoverParams, InitializeParams, PartialResultParams, Position, Range,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek, Files};
+    use crate::{ast::Ast, lsp, zeek};
 
-    use super::Backend;
+    use super::{Backend, SourceUpdate};
 
+    #[derive(Default)]
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
 
     impl TestDatabase {
-        pub(crate) fn new() -> Self {
-            let mut db = lsp::Database::default();
-            db.set_files(Arc::new(BTreeSet::new()));
-            db.set_prefixes(Arc::new(Vec::new()));
-
-            Self(db)
-        }
-
-        pub(crate) fn add_file(&mut self, uri: Arc<Url>, source: &str) {
-            self.0.set_source(uri.clone(), Arc::new(source.to_string()));
-
-            let mut files = self.0.files();
-            let files = Arc::make_mut(&mut files);
-            files.insert(uri);
-            self.0.set_files(Arc::new(files.clone()));
+        pub(crate) fn add_file(&mut self, uri: Url, source: impl Into<String>) {
+            self.0
+                .update_sources(&[SourceUpdate::Update(Arc::new(uri), Arc::new(source.into()))]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)
@@ -1306,33 +1349,33 @@ pub(crate) mod test {
 
     pub(crate) fn serve(database: TestDatabase) -> Backend {
         Backend {
-            client: None,
-            state: Mutex::new(database.0),
+            state: tokio::sync::Mutex::new(database.0),
+            ..Backend::default()
         }
     }
 
     #[test]
     fn debug_database() {
-        let db = TestDatabase::new();
+        let db = TestDatabase::default();
 
         assert_eq!(format!("{:?}", db.0), "Database");
     }
 
     #[tokio::test]
     async fn symbol() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
-            Arc::new(Url::from_file_path("/p1/a.zeek").unwrap()),
+            Url::from_file_path("/p1/a.zeek").unwrap(),
             "module mod_a; global A = 1;",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
+            Url::from_file_path("/p2/b.zeek").unwrap(),
             "module mod_b; global B = 2;",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/x/x.zeek").unwrap()),
+            Url::from_file_path("/x/x.zeek").unwrap(),
             "module mod_x; global X = 3;",
         );
 
@@ -1354,21 +1397,21 @@ pub(crate) mod test {
 
     #[tokio::test]
     async fn completion() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
-            Arc::new(Url::from_file_path("/p1/a.zeek").unwrap()),
+            Url::from_file_path("/p1/a.zeek").unwrap(),
             "module mod_a; global A = 1;",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/p2/b.zeek").unwrap()),
+            Url::from_file_path("/p2/b.zeek").unwrap(),
             "module mod_b; global B = 2;",
         );
 
         let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module mod_x;
 @load a
 @load b
@@ -1383,7 +1426,7 @@ global GLOBAL::Y = 3;
         let result = server
             .completion(CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                    text_document: TextDocumentIdentifier::new((*uri).clone()),
                     position: Position::new(6, 0),
                 },
                 partial_result_params: PartialResultParams::default(),
@@ -1406,8 +1449,8 @@ global GLOBAL::Y = 3;
 
     #[tokio::test]
     async fn hover_variable() {
-        let mut db = TestDatabase::new();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1420,7 +1463,7 @@ local x = f();
 
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                text_document: TextDocumentIdentifier::new(uri),
                 position: Position::new(3, 7),
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1431,8 +1474,8 @@ local x = f();
 
     #[tokio::test]
     async fn hover_definition() {
-        let mut db = TestDatabase::new();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1454,10 +1497,8 @@ local x = f();
         let prefix = Path::new("/prefix");
         db.add_prefix(prefix.to_str().unwrap());
         db.add_file(
-            Arc::new(
-                Url::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
-                    .unwrap(),
-            ),
+            Url::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
+                .unwrap(),
             "
             ##Declaration.
             global zeek_init: event();",
@@ -1469,7 +1510,7 @@ local x = f();
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        text_document: TextDocumentIdentifier::new(uri.clone()),
                         position: Position::new(7, 15),
                     },
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1481,7 +1522,7 @@ local x = f();
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        text_document: TextDocumentIdentifier::new(uri.clone()),
                         position: Position::new(10, 15),
                     },
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1493,7 +1534,7 @@ local x = f();
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        text_document: TextDocumentIdentifier::new(uri),
                         position: Position::new(13, 15),
                     },
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1504,8 +1545,8 @@ local x = f();
 
     #[tokio::test]
     async fn hover_decl_in_func_parameters() {
-        let mut db = TestDatabase::new();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1519,7 +1560,7 @@ function f(x: X, y: Y) {
 
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),
+                text_document: TextDocumentIdentifier::new(uri),
                 position: Position::new(4, 4),
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1530,22 +1571,22 @@ function f(x: X, y: Y) {
 
     #[tokio::test]
     async fn signature_help() {
-        let mut db = TestDatabase::new();
-        let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri_x = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri_x.clone(),
             "module x;
 global f: function(x: count, y: string): string;
 local x = f(",
         );
-        let uri_y = Arc::new(Url::from_file_path("/y.zeek").unwrap());
+        let uri_y = Url::from_file_path("/y.zeek").unwrap();
         db.add_file(
             uri_y.clone(),
             "module y;
 global f: function(x: count, y: string): string;
 local x = f(1,2,3",
         );
-        let uri_z = Arc::new(Url::from_file_path("/z.zeek").unwrap());
+        let uri_z = Url::from_file_path("/z.zeek").unwrap();
         db.add_file(
             uri_z.clone(),
             "module z;
@@ -1553,7 +1594,7 @@ local x = f(1,2,3",
 local x = ext::f(",
         );
         db.add_file(
-            Arc::new(Url::from_file_path("/ext.zeek").unwrap()),
+            Url::from_file_path("/ext.zeek").unwrap(),
             "module ext;
 export {
 global f: function(x: count, y: string): string;
@@ -1565,7 +1606,7 @@ global f: function(x: count, y: string): string;
         let params = super::SignatureHelpParams {
             context: None,
             text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri_x.as_ref().clone()),
+                TextDocumentIdentifier::new(uri_x),
                 Position::new(2, 12),
             ),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1575,7 +1616,7 @@ global f: function(x: count, y: string): string;
         let params = super::SignatureHelpParams {
             context: None,
             text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri_y.as_ref().clone()),
+                TextDocumentIdentifier::new(uri_y),
                 Position::new(2, 16),
             ),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1585,7 +1626,7 @@ global f: function(x: count, y: string): string;
         let params = super::SignatureHelpParams {
             context: None,
             text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier::new(uri_z.as_ref().clone()),
+                TextDocumentIdentifier::new(uri_z),
                 Position::new(2, 17),
             ),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1595,8 +1636,8 @@ global f: function(x: count, y: string): string;
 
     #[tokio::test]
     async fn goto_declaration() {
-        let mut db = TestDatabase::new();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "module x;
@@ -1606,8 +1647,8 @@ event yeah(c:count) {}
 event zeek_init() {}",
         );
 
-        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
-        db.add_file(uri_evts.clone(), "global zeek_init: event();");
+        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        db.add_file(uri_evts, "global zeek_init: event();");
 
         let server = serve(db);
 
@@ -1615,7 +1656,7 @@ event zeek_init() {}",
             server
                 .goto_declaration(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(3, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1628,7 +1669,7 @@ event zeek_init() {}",
             server
                 .goto_declaration(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(4, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1640,8 +1681,8 @@ event zeek_init() {}",
 
     #[tokio::test]
     async fn goto_definition() {
-        let mut db = TestDatabase::new();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "module x;
@@ -1651,8 +1692,8 @@ event yeah(c:count) {}
 event zeek_init() {}",
         );
 
-        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
-        db.add_file(uri_evts.clone(), "global zeek_init: event();");
+        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        db.add_file(uri_evts, "global zeek_init: event();");
 
         let server = serve(db);
 
@@ -1660,7 +1701,7 @@ event zeek_init() {}",
             server
                 .goto_definition(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(3, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1673,7 +1714,7 @@ event zeek_init() {}",
             server
                 .goto_definition(super::GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(4, 8),
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1685,15 +1726,15 @@ event zeek_init() {}",
 
     #[tokio::test]
     async fn goto_implementation() {
-        let mut db = TestDatabase::new();
-        let uri_evts = Arc::new(Url::from_file_path("/events.bif.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
         db.add_file(
             uri_evts.clone(),
             "export {
 global zeek_init: event();",
         );
 
-        let uri_x = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri_x = Url::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri_x.clone(),
             "module x;
@@ -1711,7 +1752,7 @@ event x::foo() {}",
             server
                 .goto_implementation(super::GotoImplementationParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri_evts.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri_evts),
                         Position::new(1, 11)
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1724,7 +1765,7 @@ event x::foo() {}",
             server
                 .goto_implementation(super::GotoImplementationParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri_x.as_ref().clone()),
+                        TextDocumentIdentifier::new(uri_x),
                         Position::new(2, 17)
                     ),
                     partial_result_params: PartialResultParams::default(),
@@ -1739,18 +1780,18 @@ event x::foo() {}",
     async fn formatting() {
         use super::DocumentFormattingParams;
 
-        let mut db = TestDatabase::new();
-        let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri_ok = Url::from_file_path("/ok.zeek").unwrap();
         db.add_file(uri_ok.clone(), "event zeek_init(){}");
 
-        let uri_invalid = Arc::new(Url::from_file_path("/invalid.zeek").unwrap());
+        let uri_invalid = Url::from_file_path("/invalid.zeek").unwrap();
         db.add_file(uri_invalid.clone(), "event ssl");
 
         let server = serve(db);
 
         assert!(server
             .formatting(DocumentFormattingParams {
-                text_document: TextDocumentIdentifier::new(uri_ok.as_ref().clone(),),
+                text_document: TextDocumentIdentifier::new(uri_ok),
                 options: FormattingOptions::default(),
                 work_done_progress_params: WorkDoneProgressParams::default(),
             })
@@ -1760,7 +1801,7 @@ event x::foo() {}",
         assert_eq!(
             server
                 .formatting(DocumentFormattingParams {
-                    text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
+                    text_document: TextDocumentIdentifier::new(uri_invalid),
                     options: FormattingOptions::default(),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
@@ -1774,18 +1815,18 @@ event x::foo() {}",
     async fn range_formatting() {
         use super::DocumentRangeFormattingParams;
 
-        let mut db = TestDatabase::new();
-        let uri_ok = Arc::new(Url::from_file_path("/ok.zeek").unwrap());
+        let mut db = TestDatabase::default();
+        let uri_ok = Url::from_file_path("/ok.zeek").unwrap();
         db.add_file(uri_ok.clone(), "module foo ;\n\nevent zeek_init(){}");
 
-        let uri_invalid = Arc::new(Url::from_file_path("/invalid.zeek").unwrap());
+        let uri_invalid = Url::from_file_path("/invalid.zeek").unwrap();
         db.add_file(uri_invalid.clone(), "event ssl");
 
         let server = serve(db);
 
         assert!(server
             .range_formatting(DocumentRangeFormattingParams {
-                text_document: TextDocumentIdentifier::new(uri_ok.as_ref().clone(),),
+                text_document: TextDocumentIdentifier::new(uri_ok),
                 options: FormattingOptions::default(),
                 range: Range::new(Position::new(0, 0), Position::new(1, 1)),
                 work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1796,7 +1837,7 @@ event x::foo() {}",
         assert_eq!(
             server
                 .range_formatting(DocumentRangeFormattingParams {
-                    text_document: TextDocumentIdentifier::new(uri_invalid.as_ref().clone(),),
+                    text_document: TextDocumentIdentifier::new(uri_invalid),
                     options: FormattingOptions::default(),
                     range: Range::new(Position::new(0, 0), Position::new(1, 1)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1808,7 +1849,7 @@ event x::foo() {}",
 
     #[tokio::test]
     async fn get_latest_release() {
-        let server = serve(TestDatabase::new());
+        let server = serve(TestDatabase::default());
         let _ = server.initialize(InitializeParams::default()).await;
 
         {
@@ -1831,5 +1872,39 @@ event x::foo() {}",
 
             assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
         }
+    }
+
+    #[tokio::test]
+    async fn document_symbol() {
+        let mut db = TestDatabase::default();
+
+        let uri_unknown = Url::from_file_path("/unknown.zeek").unwrap();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+
+        db.add_file(uri.clone(), "global x = 42;");
+        let server = serve(db);
+
+        // Nothing reported for unknown files.
+        assert_eq!(
+            Ok(Some(DocumentSymbolResponse::Nested(vec![]))),
+            server
+                .document_symbol(DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier::new(uri_unknown),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                })
+                .await
+        );
+
+        // Valid response for known file.
+        assert_debug_snapshot!(
+            server
+                .document_symbol(DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier::new(uri),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                })
+                .await
+        );
     }
 }

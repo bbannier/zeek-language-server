@@ -960,9 +960,12 @@ pub trait Query: Parse {
 
 #[instrument(skip(db))]
 fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
-    let source = db.source(uri.clone());
+    let Some(source) = db.source(uri.clone()) else {
+        return Arc::default();
+    };
+
     let Some(tree) = db.parse(uri.clone()) else {
-        return Arc::new(BTreeSet::new());
+        return Arc::default();
     };
 
     Arc::new(decls_(tree.root_node(), uri, source.as_bytes()))
@@ -971,9 +974,12 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
 #[instrument(skip(db))]
 fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
     let Some(tree) = db.parse(uri.clone()) else {
-        return Arc::new(Vec::new());
+        return Arc::default();
     };
-    let source = db.source(uri);
+
+    let Some(source) = db.source(uri) else {
+        return Arc::default();
+    };
 
     Arc::new(
         loads_raw(tree.root_node(), &source)
@@ -1032,12 +1038,7 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
 mod test {
     use std::sync::Arc;
 
-    use crate::{
-        lsp::{Database, TestDatabase},
-        parse::Parse,
-        query::Node,
-        Files,
-    };
+    use crate::{lsp::TestDatabase, parse::Parse, query::Node, Files};
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{Position, Url};
 
@@ -1074,11 +1075,11 @@ mod test {
     #[test]
     fn loads_raw() {
         let parse = |source: &str| {
-            let mut db = Database::default();
+            let mut db = TestDatabase::default();
             let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
 
-            db.set_source(uri.clone(), Arc::new(source.to_string()));
-            db.parse(uri)
+            db.add_file((*uri).clone(), source);
+            db.0.parse(uri)
         };
 
         let loads = |source: &'static str| {
@@ -1095,11 +1096,11 @@ mod test {
 
     #[test]
     fn decls_() {
-        let mut db = Database::default();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
-        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
+        db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.parse(uri.clone()).expect("cannot parse");
+        let tree = db.0.parse(uri.clone()).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, uri.clone(), SOURCE.as_bytes());
 
@@ -1125,22 +1126,19 @@ mod test {
 
     #[test]
     fn decls_weird_modules() {
-        let mut db = Database::default();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
-        db.set_source(
-            uri.clone(),
-            Arc::new(
-                "module x;
+        db.add_file(
+            (*uri).clone(),
+            "module x;
 export {
 global f1: function();
 global foo::f2: function();
 global GLOBAL::f3: function();
-}"
-                .into(),
-            ),
+}",
         );
 
-        let decls = db.decls(uri);
+        let decls = db.0.decls(uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
 
@@ -1149,10 +1147,10 @@ global GLOBAL::f3: function();
 
     #[test]
     fn in_export() {
-        let mut db = Database::default();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
-        db.set_source(uri.clone(), Arc::new(SOURCE.to_string()));
-        let tree = db.parse(uri).unwrap();
+        db.add_file((*uri).clone(), SOURCE);
+        let tree = db.0.parse(uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
 
@@ -1170,10 +1168,10 @@ global GLOBAL::f3: function();
 
     #[test]
     fn fn_param_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 function f1(x: count, y: string) {
     # Inside.
@@ -1183,7 +1181,7 @@ function f1(x: count, y: string) {
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
@@ -1204,10 +1202,10 @@ function f1(x: count, y: string) {
 
     #[test]
     fn fn_like_decls() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "
 global fn: function(n: count): string;
 global ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);
@@ -1217,7 +1215,7 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         assert_debug_snapshot!(super::decls_(root, uri, source.as_bytes()));
     }

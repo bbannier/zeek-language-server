@@ -10,19 +10,16 @@ use tracing::{error, instrument};
 use crate::{
     parse::Parse,
     query::{self, Decl, DeclKind, NodeLocation, Query},
-    zeek, Files,
+    zeek,
 };
 
 #[salsa::query_group(AstStorage)]
-pub trait Ast: Files + Parse + Query {
+pub trait Ast: Parse + Query {
     #[salsa::input]
     fn workspace_folders(&self) -> Arc<Vec<Url>>;
 
     #[salsa::input]
     fn prefixes(&self) -> Arc<Vec<PathBuf>>;
-
-    #[salsa::input]
-    fn files(&self) -> Arc<BTreeSet<Arc<Url>>>;
 
     #[must_use]
     fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
@@ -64,7 +61,7 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
     let scope = tree
         .root_node()
         .named_descendant_for_point_range(scope.range)?;
-    let source = db.source(uri.clone());
+    let source = db.source(uri.clone())?;
 
     let node = scope;
 
@@ -284,7 +281,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     let node = tree
         .root_node()
         .named_descendant_for_point_range(location.range)?;
-    let source = db.source(uri.clone());
+    let source = db.source(uri.clone())?;
 
     match node.kind() {
         // Builtin types.
@@ -397,7 +394,7 @@ fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
 #[instrument(skip(db))]
 fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
-    let mut files = db.loaded_files(url).as_ref().clone();
+    let mut files = (*db.loaded_files(url)).clone();
 
     loop {
         let mut new_files = Vec::new();
@@ -424,7 +421,7 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
 #[instrument(skip(db))]
 fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
-    let mut decls = db.decls(uri.clone()).as_ref().clone();
+    let mut decls = (*db.decls(uri.clone())).clone();
 
     for load in db.loaded_files_recursive(uri).as_ref() {
         for decl in &*db.decls(load.clone()) {
@@ -644,22 +641,22 @@ mod test {
 
     #[test]
     fn loaded_files_recursive() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
 
         let a = Arc::new(Url::from_file_path("/tmp/a.zeek").unwrap());
         db.add_file(
-            a.clone(),
+            (*a).clone(),
             "@load b\n
              @load d;",
         );
 
-        let b = Arc::new(Url::from_file_path("/tmp/b.zeek").unwrap());
+        let b = Url::from_file_path("/tmp/b.zeek").unwrap();
         db.add_file(b, "@load c");
 
-        let c = Arc::new(Url::from_file_path("/tmp/c.zeek").unwrap());
+        let c = Url::from_file_path("/tmp/c.zeek").unwrap();
         db.add_file(c, "@load d");
 
-        let d = Arc::new(Url::from_file_path("/tmp/d.zeek").unwrap());
+        let d = Url::from_file_path("/tmp/d.zeek").unwrap();
         db.add_file(d, "");
 
         assert_debug_snapshot!(db.0.loaded_files_recursive(a));
@@ -667,23 +664,23 @@ mod test {
 
     #[test]
     fn loaded_files() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
 
         // Prefix file both in file directory and in prefix. This should appear exactly once.
         let pre1 = PathBuf::from_str("/tmp/p").unwrap();
-        let p1 = Arc::new(Url::from_file_path(pre1.join("p1/p1.zeek")).unwrap());
+        let p1 = Url::from_file_path(pre1.join("p1/p1.zeek")).unwrap();
         db.add_prefix(pre1);
         db.add_file(p1, "");
 
         // Prefix file in external directory.
         let pre2 = PathBuf::from_str("/p").unwrap();
-        let p2 = Arc::new(Url::from_file_path(pre2.join("p2/p2.zeek")).unwrap());
+        let p2 = Url::from_file_path(pre2.join("p2/p2.zeek")).unwrap();
         db.add_prefix(pre2);
         db.add_file(p2, "");
 
         let foo = Arc::new(Url::from_file_path("/tmp/foo.zeek").unwrap());
         db.add_file(
-            foo.clone(),
+            (*foo).clone(),
             "@load foo\n
              @load foo.zeek\n
              @load p1/p1\n
@@ -695,11 +692,11 @@ mod test {
 
     #[test]
     fn resolve() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
 
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 
 type X: record {
@@ -729,7 +726,7 @@ y$yx$f1;
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -784,11 +781,11 @@ y$yx$f1;
 
     #[test]
     fn resolve_initializer() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
 
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 type X: record { f: count &optional; };
 function fun(): X { return X(); }
@@ -797,7 +794,7 @@ x$f;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree.root_node();
@@ -810,11 +807,11 @@ x$f;",
 
     #[test]
     fn resolve_elsewhere() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/y.zeek").unwrap());
 
         db.add_file(
-            Arc::new(Url::from_file_path("/x.zeek").unwrap()),
+            Url::from_file_path("/x.zeek").unwrap(),
             "module x;
             export {
                 type X: record { f: count &optional; };
@@ -823,14 +820,14 @@ x$f;",
         );
 
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module y;
 @load ./x
 x::x;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree.root_node();
@@ -843,11 +840,11 @@ x::x;",
 
     #[test]
     fn resolve_same_module_elsewhere() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/y.zeek").unwrap());
 
         db.add_file(
-            Arc::new(Url::from_file_path("/x.zeek").unwrap()),
+            Url::from_file_path("/x.zeek").unwrap(),
             "module x;
             export {
                 type X: record { f: count &optional; };
@@ -856,14 +853,14 @@ x::x;",
         );
 
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 @load ./x
 y;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
 
         let node = tree.root_node();
@@ -876,16 +873,16 @@ y;",
 
     #[test]
     fn resolve_redef() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         db.add_file(
-            Arc::new(Url::from_file_path("/x.zeek").unwrap()),
+            Url::from_file_path("/x.zeek").unwrap(),
             "module x;
 type X: record { x1: count; };",
         );
 
         let uri = Arc::new(Url::from_file_path("/y.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module y;
 @load x
 redef record x::X += { x2: count; };
@@ -896,7 +893,7 @@ x$x2;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -931,16 +928,16 @@ x$x2;",
 
     #[test]
     fn redef_global_record() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
 
         db.add_file(
-            Arc::new(Url::from_file_path("/init-bare.zeek").unwrap()),
+            Url::from_file_path("/init-bare.zeek").unwrap(),
             "module GLOBAL;
 type connection: record { id: string; };",
         );
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 @load init-bare
 redef record connection += { name: string; };
@@ -949,7 +946,7 @@ global c: connection;",
 
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         let c = tree
             .root_node()
@@ -964,10 +961,10 @@ global c: connection;",
 
     #[test]
     fn redef_record_same_file() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 type A: record {};
 global g: A;
@@ -979,7 +976,7 @@ function f(a: A) {
 
         let db = db.snapshot();
         let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         let g = tree
             .root_node()
@@ -1015,10 +1012,10 @@ function f(a: A) {
 
     #[test]
     fn typ_fn_call() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "module x;
 type X1: record { f: count &optional; };
 type X2: record { f: count &optional; };
@@ -1030,7 +1027,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1062,10 +1059,10 @@ global x2 = f2();
 
     #[test]
     fn typ_var_decl() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "
             type B: record {
                 i: count;
@@ -1083,7 +1080,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1144,10 +1141,10 @@ global x2 = f2();
 
     #[test]
     fn typ_builtin() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "
             global x = 1;
             global y = x + 1;
@@ -1163,7 +1160,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1198,10 +1195,10 @@ global x2 = f2();
 
     #[test]
     fn typ_explicit() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "
             global a : count = 42;
 
@@ -1211,7 +1208,7 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
@@ -1234,10 +1231,10 @@ global x2 = f2();
 
     #[test]
     fn for_parameters_vec() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             r#"function f() {
 for (i in vector(1, 2, 3)) { i; }
 i;
@@ -1249,7 +1246,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         let db = db.0;
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
 
         // Vector iteration.
         let i1 = root
@@ -1264,7 +1261,10 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         let i2 = root
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
-        assert_eq!(i2.utf8_text(db.source(uri.clone()).as_bytes()), Ok("i"));
+        assert_eq!(
+            i2.utf8_text(db.source(uri.clone()).unwrap().as_bytes()),
+            Ok("i")
+        );
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i2)));
 
         // Set iteration.
@@ -1289,10 +1289,10 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
 
     #[test]
     fn enum_value_docs() {
-        let mut db = TestDatabase::new();
+        let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
-            uri.clone(),
+            (*uri).clone(),
             "
             export {
                     type E: enum {
@@ -1311,7 +1311,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone());
+        let source = db.source(uri.clone()).unwrap();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 

@@ -1,0 +1,40 @@
+---
+source: src/lsp.rs
+expression: "server.document_symbol(DocumentSymbolParams {\n            text_document: TextDocumentIdentifier::new(uri),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n        }).await"
+---
+Ok(
+    Some(
+        Nested(
+            [
+                DocumentSymbol {
+                    name: "x",
+                    detail: None,
+                    kind: Variable,
+                    tags: None,
+                    deprecated: None,
+                    range: Range {
+                        start: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 14,
+                        },
+                    },
+                    selection_range: Range {
+                        start: Position {
+                            line: 0,
+                            character: 7,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 8,
+                        },
+                    },
+                    children: None,
+                },
+            ],
+        ),
+    ),
+)

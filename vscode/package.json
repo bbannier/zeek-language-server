@@ -86,7 +86,8 @@
             "debug",
             "trace"
           ],
-          "default": "error"
+          "default": "error",
+          "markdownDescription": "Logging verbosity of the server. When reporting bugs, please include a server log with `debug` verbosity if possible."
         }
       }
     },

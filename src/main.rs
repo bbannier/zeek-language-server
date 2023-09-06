@@ -27,9 +27,7 @@ struct Args {
 }
 
 fn init_logging(args: &Args) -> Result<WorkerGuard> {
-    // let (writer, guard) = tracing_appender::non_blocking(std::io::stderr());
-    let file_appender = tracing_appender::rolling::daily("logs", "server.log");
-    let (writer, guard) = tracing_appender::non_blocking(file_appender);
+    let (writer, guard) = tracing_appender::non_blocking(std::io::stderr());
 
     let fmt = tracing_subscriber::fmt::layer()
         .with_writer(writer.with_max_level(args.filter))

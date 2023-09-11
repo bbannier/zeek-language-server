@@ -134,6 +134,11 @@ pub(crate) struct Backend {
     state: tokio::sync::Mutex<Database>,
 }
 
+enum ParseResult {
+    Ok,
+    HasDiagnostics,
+}
+
 impl Backend {
     async fn client_message<M>(&self, level: MessageType, message: M)
     where
@@ -255,7 +260,7 @@ impl Backend {
         }
     }
 
-    async fn file_changed(&self, uri: Arc<Url>) -> Result<()> {
+    async fn file_changed(&self, uri: Arc<Url>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
             let diags = self
                 .with_state(|state| {
@@ -283,12 +288,20 @@ impl Backend {
                 })
                 .await?;
 
+            let parse_result = if diags.is_empty() {
+                ParseResult::Ok
+            } else {
+                ParseResult::HasDiagnostics
+            };
+
             client
                 .publish_diagnostics((*uri).clone(), diags, None)
                 .await;
+
+            return Ok(parse_result);
         }
 
-        Ok(())
+        Ok(ParseResult::Ok)
     }
 
     async fn visible_files(&self) -> Result<Vec<Url>> {
@@ -345,6 +358,73 @@ impl Backend {
         let latest = semver::Version::parse(release.name.trim_matches('v')).ok()?;
 
         Some(latest)
+    }
+
+    /// This wrapper around `zeek::check` directly publishing diagnostics.
+    async fn check(&self, uri: Url, version: Option<i32>) {
+        // If we have not client to publish to there is no need to run checks.
+        let Some(client) = &self.client else {
+            return;
+        };
+
+        let Ok(file) = uri.to_file_path() else {
+            return;
+        };
+
+        // Figure out a directory to run the check from. If there is any workspace folder we just
+        // pick the first one (TODO: this might be incorrect if there are multiple folders given);
+        // else use the directory the file is in.
+        let workspace_folder = self
+            .with_state(|s| {
+                s.workspace_folders()
+                    .get(0)
+                    .and_then(|f| f.to_file_path().ok())
+            })
+            .await
+            .ok()
+            .flatten();
+
+        let checks = if let Some(folder) = workspace_folder {
+            zeek::check(&file, folder).await
+        } else {
+            let Some(file_dir) = file.parent() else {
+                return;
+            };
+            zeek::check(&file, file_dir).await
+        };
+
+        let checks = match checks {
+            Ok(xs) => xs,
+            Err(e) => {
+                self.warn_message(e).await;
+                return;
+            }
+        };
+
+        let diags = checks
+            .into_iter()
+            // Only look at diagnostics for the saved file.
+            // TODO(bbannier): We could look at all files here.
+            .filter(|c| c.file == file.to_string_lossy())
+            .map(|c| {
+                // Zeek positions index starting with one.
+                let line = if c.line == 0 { 0 } else { c.line - 1 };
+
+                let position = Position::new(line, 0);
+                // TODO(bbannier): More granular severity, distinguish between warnings and errors.
+                Diagnostic::new(
+                    Range::new(position, position),
+                    None,
+                    None,
+                    Some("zeek".to_string()),
+                    c.error,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+
+        client.publish_diagnostics(uri, diags, version).await;
     }
 }
 
@@ -555,9 +635,20 @@ impl LanguageServer for Backend {
         // is on the critical path for e.g., completion.
         let _implicit = self.with_state(|s| s.implicit_decls());
 
-        if let Err(e) = self.file_changed(uri).await {
-            error!("could not apply file change: {e}");
-        }
+        let file_changed = self.file_changed(uri).await;
+
+        match file_changed {
+            Err(e) => {
+                error!("could not apply file change: {e}");
+            }
+            Ok(ParseResult::Ok) => {
+                self.check(params.text_document.uri, Some(params.text_document.version))
+                    .await;
+            }
+            Ok(ParseResult::HasDiagnostics) => {
+                // Do not bother checking the file with zeek if it has parse errors.
+            }
+        };
     }
 
     #[instrument]
@@ -587,70 +678,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        let uri = params.text_document.uri;
-
-        let Ok(file) = uri.to_file_path() else {
-            return;
-        };
-
-        // Figure out a directory to run the check from. If there is any workspace folder we just
-        // pick the first one (TODO: this might be incorrect if there are multiple folders given);
-        // else use the directory the file is in.
-        let workspace_folder = self
-            .with_state(|s| {
-                s.workspace_folders()
-                    .get(0)
-                    .and_then(|f| f.to_file_path().ok())
-            })
-            .await
-            .ok()
-            .flatten();
-
-        let Some(file_dir) = file.parent() else {
-            return;
-        };
-
-        let checks = if let Some(folder) = workspace_folder {
-            zeek::check(&file, folder).await
-        } else {
-            zeek::check(&file, file_dir).await
-        };
-
-        let checks = match checks {
-            Ok(c) => c,
-            Err(e) => {
-                self.warn_message(format!("cannot run zeek for error checking: {e}"))
-                    .await;
-                return;
-            }
-        };
-
-        let diags = checks
-            .into_iter()
-            // Only look at diagnostics for the saved file.
-            // TODO(bbannier): We could look at all files here.
-            .filter(|c| c.file == file.to_string_lossy())
-            .map(|c| {
-                // Zeek positions index starting with one.
-                let line = if c.line == 0 { 0 } else { c.line - 1 };
-
-                let position = Position::new(line, 0);
-                // TODO(bbannier): More granular severity, distinguish between warnings and errors.
-                Diagnostic::new(
-                    Range::new(position, position),
-                    None,
-                    None,
-                    Some("zeek".to_string()),
-                    c.error,
-                    None,
-                    None,
-                )
-            })
-            .collect();
-
-        if let Some(client) = &self.client {
-            client.publish_diagnostics(uri, diags, None).await;
-        }
+        self.check(params.text_document.uri, None).await;
     }
 
     #[instrument]

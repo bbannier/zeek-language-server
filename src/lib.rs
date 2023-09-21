@@ -16,17 +16,17 @@ pub mod zeek;
 #[salsa::query_group(FilesStorage)]
 pub trait Files: salsa::Database {
     #[salsa::input]
-    fn unsafe_source(&self, uri: Arc<Url>) -> Arc<String>;
+    fn unsafe_source(&self, uri: Arc<Url>) -> Str;
 
     #[salsa::input]
     fn files(&self) -> Arc<BTreeSet<Arc<Url>>>;
 
     /// Gets the source code for a file if it is known.
-    fn source(&self, uri: Arc<Url>) -> Option<Arc<String>>;
+    fn source(&self, uri: Arc<Url>) -> Option<Str>;
 }
 
 #[instrument(skip(db))]
-pub fn source(db: &dyn Files, uri: Arc<Url>) -> Option<Arc<String>> {
+pub fn source(db: &dyn Files, uri: Arc<Url>) -> Option<Str> {
     // Check if we know the file. This reduces chances of us trying to get sources for a not
     // yet added uri.
     //
@@ -48,3 +48,5 @@ pub trait Client: salsa::Database {
     #[salsa::input]
     fn client_options(&self) -> Arc<lsp::Options>;
 }
+
+type Str = Arc<str>;

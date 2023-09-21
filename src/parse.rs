@@ -45,7 +45,10 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
         .expect("cannot set parser language");
 
     let source = db.source(file)?;
-    parser.parse(source.as_str(), None).map(Tree).map(Arc::new)
+    parser
+        .parse(source.as_bytes(), None)
+        .map(Tree)
+        .map(Arc::new)
 }
 
 #[cfg(test)]

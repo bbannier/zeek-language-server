@@ -10,7 +10,7 @@ use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::parse::Parse;
+use crate::{parse::Parse, Str};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -36,7 +36,7 @@ pub enum DeclKind {
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub struct Signature {
-    pub result: Option<String>,
+    pub result: Option<Str>,
     pub args: Vec<Decl>,
 }
 
@@ -87,12 +87,12 @@ impl Hash for Location {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Decl {
     pub module: ModuleId,
-    pub id: String,
-    pub fqid: String,
+    pub id: Str,
+    pub fqid: Str,
     pub kind: DeclKind,
     pub is_export: Option<bool>,
     pub loc: Option<Location>,
-    pub documentation: String,
+    pub documentation: Str,
 }
 
 impl PartialOrd for Decl {
@@ -498,12 +498,12 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                 .nodes_for_capture_index(c_fn_result)
                 .next()
                 .and_then(|n| n.utf8_text(source).ok())
-                .map(String::from);
+                .map(Into::into);
 
             let range = decl.range();
             let selection_range = id.range();
 
-            let id = {
+            let id: Str = {
                 // The grammar doesn't expose module ids in identifiers like `mod::f` directly, parse by hand.
                 let spl = id_written.splitn(2, "::").collect::<Vec<_>>();
 
@@ -511,10 +511,10 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                     // The module was part of the ID.
                     2 => {
                         module = compute_module_id(spl[0]);
-                        spl[1].to_string()
+                        spl[1].into()
                     }
                     // Just a plain local ID.
-                    1 => spl[0].to_string(),
+                    1 => spl[0].into(),
                     // This just looks plain wrong.
                     _ => {
                         debug!("unexpected empty id at {:?}", id.range());
@@ -533,11 +533,13 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                     "```zeek\n{source}\n```",
                     source = decl.utf8_text(source).ok()?
                 )
-            };
+            }
+            .as_str()
+            .into();
 
             let mut fqid = match &module {
                 ModuleId::Global | ModuleId::None => id.clone(),
-                ModuleId::String(m) => format!("{}::{}", &m, &id),
+                ModuleId::String(m) => format!("{}::{}", &m, &id).into(),
             };
 
             let signature = || -> Option<Signature> {
@@ -549,8 +551,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
 
                         Some(Decl {
                             module: ModuleId::None,
-                            id: arg_id.to_string(),
-                            fqid: arg_id.to_string(),
+                            id: arg_id.into(),
+                            fqid: arg_id.into(),
                             kind: DeclKind::Variable,
                             is_export: None,
                             loc: Some(Location {
@@ -558,7 +560,9 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                                 selection_range: arg.range(),
                                 uri: uri.clone(),
                             }),
-                            documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
+                            documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
+                                .as_str()
+                                .into(),
                         })
                     })
                     .collect();
@@ -568,7 +572,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                 })
             };
 
-            let extract_documentation = |n: Node| -> Option<String> {
+            let extract_documentation = |n: Node| -> Option<Str> {
                 let documentation = if let Some(docs) = zeekygen_comments(n, source) {
                     format!(
                         "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
@@ -581,7 +585,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                     )
                 };
 
-                Some(documentation)
+                Some(documentation.as_str().into())
             };
 
             let extract_fields = |decl: Node| {
@@ -603,8 +607,8 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                         let documentation = extract_documentation(c)?;
 
                         Some(Decl {
-                            id: id.to_string(),
-                            fqid: format!("{fqid}::{id}"),
+                            id: id.into(),
+                            fqid: format!("{fqid}::{id}").into(),
                             kind: DeclKind::Field,
                             loc: Some(Location {
                                 range: id_.range(),
@@ -631,14 +635,13 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
                         .into_iter()
                         .filter_map(|n| {
                             let id_ = n.named_child("id")?;
-                            let id = id_.utf8_text(source).ok()?;
+                            let id: Str = id_.utf8_text(source).ok()?.into();
 
                             // Enum values live in the parent scope.
                             let fqid = match &module_name {
-                                ModuleId::Global | ModuleId::None => id.to_string(),
-                                ModuleId::String(m) => format!("{m}::{id}"),
+                                ModuleId::Global | ModuleId::None => id.clone(),
+                                ModuleId::String(m) => format!("{m}::{id}").into(),
                             };
-                            let id = id.to_string();
 
                             let range = id_.range();
                             let selection_range = range;
@@ -724,10 +727,10 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
 
                             // Enum values live in the parent scope.
                             let fqid = match &module_name {
-                                ModuleId::Global | ModuleId::None => id.to_string(),
-                                ModuleId::String(m) => format!("{m}::{id}"),
+                                ModuleId::Global | ModuleId::None => id.into(),
+                                ModuleId::String(m) => format!("{m}::{id}").into(),
                             };
-                            let id = id.to_string();
+                            let id = id.into();
 
                             let documentation = extract_documentation(c)?;
 
@@ -871,8 +874,8 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
 
             Some(Decl {
                 module: ModuleId::None,
-                id: arg_id.to_string(),
-                fqid: arg_id.to_string(),
+                id: arg_id.into(),
+                fqid: arg_id.into(),
                 kind: DeclKind::Variable,
                 is_export: None,
                 loc: Some(Location {
@@ -880,7 +883,9 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
                     selection_range: arg.range(),
                     uri: uri.clone(),
                 }),
-                documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?),
+                documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
+                    .as_str()
+                    .into(),
             })
         })
         .collect()
@@ -910,7 +915,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
         .into_iter()
         .enumerate()
         .filter_map(|(i, n)| {
-            let id = n.utf8_text(source).ok()?.to_string();
+            let id: Str = n.utf8_text(source).ok()?.into();
             Some(Decl {
                 module: ModuleId::None,
                 id: id.clone(),
@@ -922,7 +927,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> 
                     selection_range: n.range(),
                     uri: uri.clone(),
                 }),
-                documentation: format!("Index {i} of `{init}`"),
+                documentation: format!("Index {i} of `{init}`").as_str().into(),
             })
         })
         .collect()

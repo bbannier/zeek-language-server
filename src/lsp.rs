@@ -3,7 +3,7 @@ use crate::{
     complete::complete,
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
-    zeek, Client, Files,
+    zeek, Client, Files, Str,
 };
 use itertools::Itertools;
 use salsa::{ParallelDatabase, Snapshot};
@@ -54,7 +54,7 @@ pub struct Database {
 
 pub enum SourceUpdate {
     Remove(Arc<Url>),
-    Update(Arc<Url>, Arc<String>),
+    Update(Arc<Url>, Str),
 }
 
 impl Database {
@@ -554,10 +554,7 @@ impl LanguageServer for Backend {
                                 return None;
                             }
                         };
-                        Some(SourceUpdate::Update(
-                            Arc::new(c.uri.clone()),
-                            Arc::new(source),
-                        ))
+                        Some(SourceUpdate::Update(Arc::new(c.uri.clone()), source.into()))
                     }
                     _ => unreachable!(),
                 })
@@ -618,7 +615,7 @@ impl LanguageServer for Backend {
         self.with_state_mut(|state| {
             state.update_sources(&[SourceUpdate::Update(
                 uri.clone(),
-                Arc::new(params.text_document.text),
+                params.text_document.text.into(),
             )]);
         })
         .await;
@@ -658,7 +655,7 @@ impl LanguageServer for Backend {
         self.with_state_mut(|state| {
             state.update_sources(&[SourceUpdate::Update(
                 uri.clone(),
-                Arc::new(changes.text.clone()),
+                changes.text.as_str().into(),
             )]);
         })
         .await;
@@ -741,7 +738,7 @@ impl LanguageServer for Backend {
                             contents.push(MarkedString::String(format!("Type: `{}`", typ.id)));
                         }
 
-                        contents.push(MarkedString::String(decl.documentation.clone()));
+                        contents.push(MarkedString::String(decl.documentation.to_string()));
                     }
                 }
                 "file" => {
@@ -781,7 +778,7 @@ impl LanguageServer for Backend {
 
             #[allow(deprecated)]
             Some(DocumentSymbol {
-                name: d.id.clone(),
+                name: d.id.to_string(),
                 range: loc.range,
                 selection_range: loc.selection_range,
                 kind: to_symbol_kind(&d.kind),
@@ -798,7 +795,7 @@ impl LanguageServer for Backend {
                             .filter_map(|f| {
                                 let Some(loc) = &f.loc else { return None };
                                 Some(DocumentSymbol {
-                                    name: f.id.clone(),
+                                    name: f.id.to_string(),
                                     range: loc.range,
                                     selection_range: loc.selection_range,
                                     deprecated: None,
@@ -886,7 +883,7 @@ impl LanguageServer for Backend {
 
                                 #[allow(deprecated)]
                                 Some(SymbolInformation {
-                                    name: d.fqid.clone(),
+                                    name: d.fqid.to_string(),
                                     kind: to_symbol_kind(&d.kind),
 
                                     location: Location::new(url.clone(), loc.range),
@@ -1011,8 +1008,7 @@ impl LanguageServer for Backend {
                 return Ok(None);
             };
 
-            let Some(f) = state.resolve_id(Arc::new(id.into()), NodeLocation::from_node(uri, node))
-            else {
+            let Some(f) = state.resolve_id(id.into(), NodeLocation::from_node(uri, node)) else {
                 return Ok(None);
             };
 
@@ -1056,7 +1052,7 @@ impl LanguageServer for Backend {
                     .args
                     .iter()
                     .map(|a| ParameterInformation {
-                        label: ParameterLabel::Simple(a.id.clone()),
+                        label: ParameterLabel::Simple(a.id.to_string()),
                         documentation: None,
                     })
                     .collect(),
@@ -1345,9 +1341,9 @@ pub(crate) mod test {
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
 
     impl TestDatabase {
-        pub(crate) fn add_file(&mut self, uri: Url, source: impl Into<String>) {
+        pub(crate) fn add_file(&mut self, uri: Url, source: impl AsRef<str>) {
             self.0
-                .update_sources(&[SourceUpdate::Update(Arc::new(uri), Arc::new(source.into()))]);
+                .update_sources(&[SourceUpdate::Update(Arc::new(uri), source.as_ref().into())]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)

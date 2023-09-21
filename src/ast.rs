@@ -10,7 +10,7 @@ use tracing::{error, instrument};
 use crate::{
     parse::Parse,
     query::{self, Decl, DeclKind, NodeLocation, Query},
-    zeek,
+    zeek, Str,
 };
 
 #[salsa::query_group(AstStorage)]
@@ -48,14 +48,14 @@ pub trait Ast: Parse + Query {
     fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>>;
 
     /// Resolve anidentifier in a scope.
-    fn resolve_id(&self, id: Arc<String>, scope: NodeLocation) -> Option<Arc<Decl>>;
+    fn resolve_id(&self, id: Str, scope: NodeLocation) -> Option<Arc<Decl>>;
 
     /// Gets decl for the builtin type `id`.
-    fn builtin_type(&self, id: Arc<String>) -> Arc<Decl>;
+    fn builtin_type(&self, id: Str) -> Arc<Decl>;
 }
 
 #[instrument(skip(db))]
-fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<Decl>> {
+fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
     let tree = db.parse(uri.clone())?;
     let scope = tree
@@ -98,7 +98,7 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
             // redefs in the same file are only in effect after they have been declared.
             query::decls_(scope, uri.clone(), source.as_bytes())
                 .into_iter()
-                .filter(|d| d.id == id.as_str() || d.fqid == id.as_str())
+                .filter(|d| d.id == id || d.fqid == id)
                 .filter(|d| {
                     let Some(loc) = &d.loc else { return false };
                     loc.range.start <= node.range().start
@@ -144,7 +144,7 @@ fn resolve_id(db: &dyn Ast, id: Arc<String>, scope: NodeLocation) -> Option<Arc<
             .iter()
             .chain(implicit_decls.iter())
             .chain(explicit_decls_recursive.iter())
-            .filter(|d| d.fqid == id.as_str())
+            .filter(|d| d.fqid == id)
             .collect::<Vec<_>>();
 
         // Prefer to return the decl instead of the definition for constructs which support both.
@@ -241,7 +241,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         match &d.kind {
             // For function declarations produce the function's return type.
             DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_id(
-                Arc::new(sig.result.clone()?),
+                sig.result.clone()?,
                 NodeLocation::from_node(loc.uri.clone(), node),
             ),
 
@@ -287,9 +287,9 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         // Builtin types.
         // NOTE: This is driven by what types the parser exposes, extend as possible.
         "ipv4" | "ipv6" | "hostname" | "hex" | "port" | "interval" | "string" | "floatp"
-        | "integer" => return Some(db.builtin_type(Arc::new(format!("<{}>", node.kind())))),
+        | "integer" => return Some(db.builtin_type(format!("<{}>", node.kind()).as_str().into())),
         "type" => {
-            let text = Arc::new(node.utf8_text(source.as_bytes()).ok()?.to_string());
+            let text: Str = node.utf8_text(source.as_bytes()).ok()?.into();
             return db
                 .resolve_id(text.clone(), location)
                 .or_else(|| Some(db.builtin_type(text)));
@@ -316,7 +316,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                     // Find the given id in the fields.
                     return fields
                         .iter()
-                        .find(|f| f.id == id)
+                        .find(|f| &*f.id == id)
                         .map(Clone::clone)
                         .map(Arc::new);
                 }
@@ -335,15 +335,15 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     }
 
     // Try to find a decl with name of the given node up the tree.
-    let id = node.utf8_text(source.as_bytes()).ok()?.to_string();
+    let id: Str = node.utf8_text(source.as_bytes()).ok()?.into();
 
-    if let Some(r) = db.resolve_id(Arc::new(id.clone()), location.clone()) {
+    if let Some(r) = db.resolve_id(id.clone(), location.clone()) {
         // If we have found something which can have separate declaration and definition
         // return the declaration if possible. At this point this must be in another file.
         match r.kind {
             DeclKind::FuncDef(_) | DeclKind::EventDef(_) | DeclKind::HookDef(_) => {
                 if let Some(decl) =
-                    db.resolve_id(Arc::new(id), NodeLocation::from_node(uri, tree.root_node()))
+                    db.resolve_id(id, NodeLocation::from_node(uri, tree.root_node()))
                 {
                     return Some(decl);
                 }
@@ -365,7 +365,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
             .and_then(|d| d.named_child("id"))
             .and_then(|id| id.utf8_text(source.as_bytes()).ok())
         {
-            if let Some(r) = db.resolve_id(Arc::new(format!("{module}::{id}")), location) {
+            if let Some(r) = db.resolve_id(format!("{module}::{id}").as_str().into(), location) {
                 return Some(r);
             }
         }
@@ -612,21 +612,21 @@ pub(crate) fn load_to_file(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn builtin_type(_: &dyn Ast, id: Arc<String>) -> Arc<Decl> {
+fn builtin_type(_: &dyn Ast, id: Str) -> Arc<Decl> {
     Arc::new(Decl {
         module: query::ModuleId::Global,
-        id: id.to_string(),
-        fqid: id.to_string(),
+        id: id.clone(),
+        fqid: id.clone(),
         kind: DeclKind::Type(Vec::new()),
         is_export: None,
         loc: None,
-        documentation: format!("Builtin type '{id}'"),
+        documentation: format!("Builtin type '{id}'").as_str().into(),
     })
 }
 
 #[cfg(test)]
 mod test {
-    use std::{path::PathBuf, str::FromStr, sync::Arc};
+    use std::{ops::Deref, path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{Position, Range, Url};
@@ -1036,12 +1036,13 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert_eq!(
-            &db.typ(
+            db.typ(
                 db.resolve(NodeLocation::from_node(uri.clone(), x1))
                     .unwrap()
             )
             .unwrap()
-            .id,
+            .id
+            .deref(),
             "X1"
         );
 
@@ -1050,9 +1051,10 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
         assert_eq!(
-            &db.typ(db.resolve(NodeLocation::from_node(uri, x2)).unwrap())
+            db.typ(db.resolve(NodeLocation::from_node(uri, x2)).unwrap())
                 .unwrap()
-                .id,
+                .id
+                .deref(),
             "X2"
         );
     }

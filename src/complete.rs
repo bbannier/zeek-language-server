@@ -255,7 +255,7 @@ fn complete_any(
             // module from the FQID.
             let fqid = match current_module {
                 Some(mid) => {
-                    let id = d.fqid.as_str();
+                    let id = &*d.fqid;
                     id.strip_prefix(&format!("{mid}::")).unwrap_or(id)
                 }
                 None => &d.fqid,
@@ -311,11 +311,11 @@ fn complete_any(
 
 fn to_completion_item(d: &Decl) -> CompletionItem {
     CompletionItem {
-        label: d.fqid.clone(),
+        label: d.fqid.to_string(),
         kind: Some(to_completion_item_kind(&d.kind)),
         documentation: Some(Documentation::MarkupContent(MarkupContent {
             kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-            value: d.documentation.clone(),
+            value: d.documentation.to_string(),
         })),
         ..CompletionItem::default()
     }

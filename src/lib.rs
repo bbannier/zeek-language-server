@@ -1,4 +1,5 @@
 #![deny(clippy::unwrap_used)]
+#![allow(clippy::missing_errors_doc)]
 
 use std::{collections::BTreeSet, sync::Arc};
 use tower_lsp::lsp_types::{ClientCapabilities, Url};

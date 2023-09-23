@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dev-dependencies]
+criterion = { version = "0.5.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
 insta = "1.31.0"
 tempfile = "3.8.0"
 wiremock = "0.5.19"
@@ -44,3 +45,7 @@ walkdir = "2.3.3"
 
 [workspace]
 members = ["crates/tree-sitter-zeek"]
+
+[[bench]]
+name = "criterion"
+harness = false

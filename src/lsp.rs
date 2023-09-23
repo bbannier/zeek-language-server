@@ -129,8 +129,8 @@ impl Debug for Database {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Backend {
-    client: Option<tower_lsp::Client>,
+pub struct Backend {
+    pub client: Option<tower_lsp::Client>,
     state: tokio::sync::Mutex<Database>,
 }
 
@@ -163,7 +163,7 @@ impl Backend {
         self.client_message(MessageType::INFO, message).await;
     }
 
-    async fn with_state<F, R>(&self, f: F) -> Result<R>
+    pub async fn with_state<F, R>(&self, f: F) -> Result<R>
     where
         F: FnOnce(Snapshot<Database>) -> R,
     {
@@ -171,7 +171,7 @@ impl Backend {
         Ok(f(db))
     }
 
-    async fn with_state_mut<F, R>(&self, f: F) -> Result<R>
+    pub async fn with_state_mut<F, R>(&self, f: F) -> Result<R>
     where
         F: FnOnce(&mut Database) -> R,
     {
@@ -304,7 +304,7 @@ impl Backend {
         Ok(ParseResult::Ok)
     }
 
-    async fn visible_files(&self) -> Result<Vec<Url>> {
+    pub async fn visible_files(&self) -> Result<Vec<Url>> {
         let system_files = zeek::system_files()
             .await
             .map_err(|e| {

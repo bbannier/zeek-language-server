@@ -134,7 +134,7 @@ pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct SystemFile {
+pub struct SystemFile {
     /// Full path of the file.
     pub path: PathBuf,
 
@@ -143,12 +143,13 @@ pub(crate) struct SystemFile {
 }
 
 impl SystemFile {
+    #[must_use]
     pub fn new(path: PathBuf, prefix: PathBuf) -> Self {
         Self { path, prefix }
     }
 }
 
-pub(crate) async fn system_files() -> Result<Vec<SystemFile>> {
+pub async fn system_files() -> Result<Vec<SystemFile>> {
     Ok(prefixes(None)
         .await?
         .into_iter()

@@ -33,6 +33,18 @@ mod server {
     }
 }
 
+mod zeek {
+    use zeek_language_server::zeek;
+
+    pub async fn system_files() {
+        zeek::system_files().await.unwrap();
+    }
+
+    pub async fn prefixes() {
+        zeek::prefixes(None).await.unwrap();
+    }
+}
+
 fn bench(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
@@ -42,6 +54,14 @@ fn bench(c: &mut Criterion) {
 
     c.bench_function("server::visible_files", |b| {
         b.to_async(&runtime).iter(|| server::visible_files())
+    });
+
+    c.bench_function("zeek::system_files", |b| {
+        b.to_async(&runtime).iter(|| zeek::system_files());
+    });
+
+    c.bench_function("zeek::prefixes", |b| {
+        b.to_async(&runtime).iter(|| zeek::prefixes());
     });
 }
 

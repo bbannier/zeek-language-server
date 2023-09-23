@@ -67,11 +67,15 @@ pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
             .map(|p| p.clean())
             .collect::<Vec<_>>()
     } else {
-        vec![
-            dir(ZeekDir::Script).await?,
-            dir(ZeekDir::Plugin).await?,
-            dir(ZeekDir::Site).await?,
-        ]
+        futures::future::join_all(
+            [ZeekDir::Script, ZeekDir::Plugin, ZeekDir::Site]
+                .into_iter()
+                .map(|d| tokio::spawn(async move { dir(d).await })),
+        )
+        .await
+        .into_iter()
+        .flatten()
+        .collect::<Result<_>>()?
     };
 
     // Minimize the list of prefixes so each prefix is seen at most once. Order still matters.

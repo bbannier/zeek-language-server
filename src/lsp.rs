@@ -71,17 +71,15 @@ impl Database {
                     self.set_unsafe_source(uri.clone(), source.clone());
 
                     if !files.contains(uri) {
+                        files.insert(uri.clone());
                         needs_files_update = true;
                     }
-
-                    files.insert(uri.clone());
                 }
                 SourceUpdate::Remove(uri) => {
                     if files.contains(uri) {
+                        files.remove(uri);
                         needs_files_update = true;
                     }
-
-                    files.remove(uri);
                 }
             }
         }

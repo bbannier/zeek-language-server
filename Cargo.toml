@@ -46,6 +46,10 @@ walkdir = "2.3.3"
 [workspace]
 members = ["crates/tree-sitter-zeek"]
 
+[profile.release]
+panic = "abort"
+strip = true
+
 [[bench]]
 name = "criterion"
 harness = false

@@ -428,14 +428,6 @@ impl Backend {
 impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        // Check prerequistes.
-        if let Err(e) = zeek::prefixes(None).await {
-            self.warn_message(format!(
-                "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
-            ))
-            .await;
-        }
-
         let workspace_folders = params
             .workspace_folders
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
@@ -452,7 +444,7 @@ impl LanguageServer for Backend {
         })
         .await;
 
-        // Set system prefixes.
+        // Check prerequistes and set system prefixes.
         match zeek::prefixes(None).await {
             Ok(prefixes) => {
                 self.with_state_mut(move |state| {
@@ -460,7 +452,12 @@ impl LanguageServer for Backend {
                 })
                 .await;
             }
-            Err(e) => error!("{e}"),
+            Err(e) => {
+                self.warn_message(format!(
+                    "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
+                ))
+                .await;
+            }
         }
 
         let has_zeek_format = zeek::has_format().await;

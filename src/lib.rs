@@ -1,7 +1,8 @@
 #![deny(clippy::unwrap_used)]
 #![allow(clippy::missing_errors_doc)]
 
-use std::{collections::BTreeSet, sync::Arc};
+use rustc_hash::FxHashSet;
+use std::sync::Arc;
 use tower_lsp::lsp_types::{ClientCapabilities, Url};
 use tracing::instrument;
 
@@ -19,7 +20,7 @@ pub trait Files: salsa::Database {
     fn unsafe_source(&self, uri: Arc<Url>) -> Str;
 
     #[salsa::input]
-    fn files(&self) -> Arc<BTreeSet<Arc<Url>>>;
+    fn files(&self) -> Arc<FxHashSet<Arc<Url>>>;
 
     /// Gets the source code for a file if it is known.
     fn source(&self, uri: Arc<Url>) -> Option<Str>;

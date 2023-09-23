@@ -2756,6 +2756,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rust-fuzzy-search",
+ "rustc-hash",
  "salsa",
  "semver",
  "serde",

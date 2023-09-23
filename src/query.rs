@@ -1,11 +1,6 @@
 use itertools::Itertools;
-use std::{
-    collections::{BTreeSet, HashSet, VecDeque},
-    fmt,
-    hash::Hash,
-    str::Utf8Error,
-    sync::Arc,
-};
+use rustc_hash::FxHashSet;
+use std::{collections::VecDeque, fmt, hash::Hash, str::Utf8Error, sync::Arc};
 use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
@@ -417,7 +412,7 @@ fn in_export(mut node: Node) -> bool {
 
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
+pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
     let signature = "((formal_args)? (type)?@fn_result)@signature";
     let signature = format!("[{signature} (func_params ({signature}))]");
     let typ = format!("[(type {signature}?) {signature}]?@typ");
@@ -428,7 +423,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> BTreeSet<Decl> {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
-            return BTreeSet::new();
+            return FxHashSet::default();
         }
     };
 
@@ -849,20 +844,20 @@ fn parent_module(mut node: Node, source: &[u8]) -> Option<ModuleId> {
 
 /// Extract declarations for function parameters on the given node.
 #[instrument]
-pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl> {
+pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
     match node.kind() {
         "func_decl" | "hook_decl" | "event_decl" => {}
-        _ => return HashSet::new(),
+        _ => return FxHashSet::default(),
     }
 
     // Synthesize declarations for function arguments. Ideally the grammar would expose
     // these directly.
     let Some(func_params) = node.named_child("func_params") else {
-        return HashSet::new();
+        return FxHashSet::default();
     };
 
     let Some(formal_args) = func_params.named_child("formal_args") else {
-        return HashSet::new();
+        return FxHashSet::default();
     };
 
     formal_args
@@ -893,22 +888,22 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> HashSet<Decl>
 
 /// Extract for loop parameters on the given node.
 // TODO(bbannier): Loop parameters should be visible in scopes above the current block.
-fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> HashSet<Decl> {
+fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
     if node.kind() != "for" {
-        return HashSet::new();
+        return FxHashSet::default();
     }
 
     let params = node.named_children("id");
 
     if params.is_empty() || params.len() > 2 {
-        return HashSet::new();
+        return FxHashSet::default();
     }
 
     let Some(init) = node
         .named_child("expr")
         .and_then(|n| n.utf8_text(source).ok())
     else {
-        return HashSet::new();
+        return FxHashSet::default();
     };
 
     params
@@ -957,14 +952,14 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[salsa::query_group(QueryStorage)]
 pub trait Query: Parse {
     #[must_use]
-    fn decls(&self, uri: Arc<Url>) -> Arc<BTreeSet<Decl>>;
+    fn decls(&self, uri: Arc<Url>) -> Arc<FxHashSet<Decl>>;
 
     #[must_use]
     fn loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
 }
 
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
+fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
     let Some(source) = db.source(uri.clone()) else {
         return Arc::default();
     };

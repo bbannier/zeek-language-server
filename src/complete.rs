@@ -1,4 +1,5 @@
-use std::{collections::BTreeSet, sync::Arc};
+use rustc_hash::FxHashSet;
+use std::sync::Arc;
 
 use crate::{
     ast::{self, Ast},
@@ -240,7 +241,7 @@ fn complete_any(
         return Vec::new();
     };
 
-    let mut items = BTreeSet::new();
+    let mut items = FxHashSet::default();
 
     let current_module = root
         .named_child("module_decl")

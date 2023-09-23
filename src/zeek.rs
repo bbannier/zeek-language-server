@@ -1,5 +1,5 @@
+use rustc_hash::FxHashSet;
 use std::{
-    collections::BTreeSet,
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Stdio,
@@ -80,7 +80,7 @@ pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
 
     // Minimize the list of prefixes so each prefix is seen at most once. Order still matters.
     let mut ys = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen = FxHashSet::default();
     for x in xs {
         if seen.contains(&x) {
             continue;

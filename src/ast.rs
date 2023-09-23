@@ -1,5 +1,5 @@
+use rustc_hash::FxHashSet;
 use std::{
-    collections::{BTreeSet, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -29,7 +29,7 @@ pub trait Ast: Parse + Query {
 
     /// Get the decls in uri and all files explicitly loaded by it.
     #[must_use]
-    fn explicit_decls_recursive(&self, url: Arc<Url>) -> Arc<BTreeSet<Decl>>;
+    fn explicit_decls_recursive(&self, url: Arc<Url>) -> Arc<FxHashSet<Decl>>;
 
     #[must_use]
     fn implicit_loads(&self) -> Arc<Vec<Arc<Url>>>;
@@ -420,7 +420,7 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 }
 
 #[instrument(skip(db))]
-fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<BTreeSet<Decl>> {
+fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
     let mut decls = (*db.decls(uri.clone())).clone();
 
     for load in db.loaded_files_recursive(uri).as_ref() {
@@ -468,7 +468,7 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
 
 #[instrument(skip(db))]
 fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
-    let mut decls = HashSet::new();
+    let mut decls = FxHashSet::default();
 
     for implicit_load in db.implicit_loads().as_ref() {
         decls.extend(
@@ -542,7 +542,7 @@ fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> 
     let loaded_decls = db.explicit_decls_recursive(scope.clone());
     let decls = db.decls(scope);
 
-    let all_decls: HashSet<_> = implicit_decls
+    let all_decls: FxHashSet<_> = implicit_decls
         .iter()
         .chain(loaded_decls.iter())
         .chain(decls.iter())
@@ -559,7 +559,7 @@ fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> 
 pub(crate) fn load_to_file(
     load: &Path,
     base: &Url,
-    files: &BTreeSet<Arc<Url>>,
+    files: &FxHashSet<Arc<Url>>,
     prefixes: &[PathBuf],
 ) -> Option<Arc<Url>> {
     let file_dir = base

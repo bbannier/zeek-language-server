@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.goto_implementation(super::GotoImplementationParams{text_document_position_params:\n                                                               TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri_evts.as_ref().clone()),\n                                                                                               Position::new(1,\n                                                                                                             11)),\n                                                           work_done_progress_params:\n                                                               Default::default(),\n                                                           partial_result_params:\n                                                               Default::default(),}).await"
+expression: "server.goto_implementation(super::GotoImplementationParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri_evts),\n                Position::new(1, 11)),\n            partial_result_params: PartialResultParams::default(),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
 ---
 Ok(
     Some(
@@ -20,11 +20,11 @@ Ok(
                     },
                     range: Range {
                         start: Position {
-                            line: 3,
+                            line: 4,
                             character: 0,
                         },
                         end: Position {
-                            line: 3,
+                            line: 4,
                             character: 20,
                         },
                     },
@@ -43,11 +43,11 @@ Ok(
                     },
                     range: Range {
                         start: Position {
-                            line: 4,
+                            line: 3,
                             character: 0,
                         },
                         end: Position {
-                            line: 4,
+                            line: 3,
                             character: 20,
                         },
                     },

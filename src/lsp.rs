@@ -6,6 +6,7 @@ use crate::{
     zeek, Client, Files, Str,
 };
 use itertools::Itertools;
+use rayon::prelude::*;
 use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
@@ -310,13 +311,13 @@ impl Backend {
                 error!("could not read system files: {e}");
                 Error::internal_error()
             })?
-            .into_iter()
+            .into_par_iter()
             .filter_map(|f| Url::from_file_path(f.path).ok());
 
         let workspace_folders = self.with_state(|s| s.workspace_folders()).await;
 
         let workspace_files = workspace_folders
-            .iter()
+            .par_iter()
             .filter_map(|f| f.to_file_path().ok())
             .flat_map(|dir| {
                 WalkDir::new(dir)
@@ -536,8 +537,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        use rayon::prelude::*;
-
         {
             let span = trace_span!("updating");
             let _enter = span.enter();

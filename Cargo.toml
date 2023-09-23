@@ -49,6 +49,8 @@ members = ["crates/tree-sitter-zeek"]
 [profile.release]
 panic = "abort"
 strip = true
+codegen-units = 1
+lto = "thin"
 
 [[bench]]
 name = "criterion"

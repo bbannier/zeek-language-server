@@ -535,30 +535,50 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        let progress_token = self.progress_begin("Indexing").await;
+
+        self.progress(
+            progress_token.clone(),
+            Some("refresing sources".to_string()),
+        )
+        .await;
+
         {
             let span = trace_span!("updating");
             let _enter = span.enter();
-            let updates = params
+
+            let (updates, removals): (Vec<_>, Vec<_>) = params
                 .changes
-                .par_iter()
-                .filter_map(|c| match c.typ {
-                    FileChangeType::DELETED => Some(SourceUpdate::Remove(Arc::new(c.uri.clone()))),
-                    FileChangeType::CREATED | FileChangeType::CHANGED => {
-                        let source = match std::fs::read_to_string(c.uri.path()) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                warn!("failed to read '{}': {}", &c.uri, e);
-                                return None;
-                            }
-                        };
-                        Some(SourceUpdate::Update(Arc::new(c.uri.clone()), source.into()))
-                    }
-                    _ => unreachable!(),
+                .into_par_iter()
+                .partition(|c| matches!(c.typ, FileChangeType::CREATED | FileChangeType::CHANGED));
+
+            let removals = removals
+                .into_par_iter()
+                .map(|c| SourceUpdate::Remove(Arc::new(c.uri)));
+
+            let updates = updates.into_iter().map(|c| {
+                tokio::spawn(async move {
+                    let source = match tokio::fs::read_to_string(c.uri.path()).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            warn!("failed to read '{}': {}", &c.uri, e);
+                            return None;
+                        }
+                    };
+
+                    Some(SourceUpdate::Update(Arc::new(c.uri), source.into()))
                 })
-                .collect::<Vec<_>>();
+            });
+            let updates = futures::future::join_all(updates).await;
+            let updates = updates
+                .into_par_iter()
+                .flat_map(std::result::Result::ok)
+                .flatten();
+
+            let changes = removals.chain(updates).collect::<Vec<_>>();
 
             // Update files.
-            self.with_state_mut(|s| s.update_sources(&updates)).await;
+            self.with_state_mut(|s| s.update_sources(&changes)).await;
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -566,8 +586,6 @@ impl LanguageServer for Backend {
         // completions right after server startup.
         //
         // We explicitly precompute per-file information here so we can parallelize this work.
-
-        let progress_token = self.progress_begin("Indexing").await;
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
@@ -587,7 +605,7 @@ impl LanguageServer for Backend {
                             tokio::spawn(async move {
                                 let _x = db.decls(f.clone());
                                 let _x = db.loads(f.clone());
-                                let _x = db.loaded_files(f.clone());
+                                let _x = db.loaded_files(f);
                             })
                         })
                         .collect::<Vec<_>>()

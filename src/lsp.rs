@@ -163,20 +163,20 @@ impl Backend {
         self.client_message(MessageType::INFO, message).await;
     }
 
-    pub async fn with_state<F, R>(&self, f: F) -> Result<R>
+    pub async fn with_state<F, R>(&self, f: F) -> R
     where
         F: FnOnce(Snapshot<Database>) -> R,
     {
         let db = self.state.lock().await.snapshot();
-        Ok(f(db))
+        f(db)
     }
 
-    pub async fn with_state_mut<F, R>(&self, f: F) -> Result<R>
+    pub async fn with_state_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut Database) -> R,
     {
         let mut db = self.state.lock().await;
-        Ok(f(&mut db))
+        f(&mut db)
     }
 
     async fn progress_begin<T>(&self, title: T) -> Option<ProgressToken>
@@ -184,7 +184,7 @@ impl Backend {
         T: Into<String> + std::fmt::Display,
     {
         // Short circuit progress report if client doesn't support it.
-        if self
+        if !self
             .with_state(|s| {
                 s.capabilities()
                     .window
@@ -193,7 +193,6 @@ impl Backend {
                     .unwrap_or(false)
             })
             .await
-            .is_err()
         {
             return None;
         }
@@ -286,7 +285,7 @@ impl Backend {
                         })
                         .collect()
                 })
-                .await?;
+                .await;
 
             let parse_result = if diags.is_empty() {
                 ParseResult::Ok
@@ -314,7 +313,7 @@ impl Backend {
             .into_iter()
             .filter_map(|f| Url::from_file_path(f.path).ok());
 
-        let workspace_folders = self.with_state(|s| s.workspace_folders()).await?;
+        let workspace_folders = self.with_state(|s| s.workspace_folders()).await;
 
         let workspace_files = workspace_folders
             .iter()
@@ -380,9 +379,7 @@ impl Backend {
                     .get(0)
                     .and_then(|f| f.to_file_path().ok())
             })
-            .await
-            .ok()
-            .flatten();
+            .await;
 
         let checks = if let Some(folder) = workspace_folder {
             zeek::check(&file, folder).await
@@ -454,7 +451,7 @@ impl LanguageServer for Backend {
                     .unwrap_or_else(Options::new),
             ));
         })
-        .await?;
+        .await;
 
         // Set system prefixes.
         match zeek::prefixes(None).await {
@@ -462,7 +459,7 @@ impl LanguageServer for Backend {
                 self.with_state_mut(move |state| {
                     state.set_prefixes(Arc::new(prefixes));
                 })
-                .await?;
+                .await;
             }
             Err(e) => error!("{e}"),
         }
@@ -506,7 +503,6 @@ impl LanguageServer for Backend {
         if self
             .with_state(|s| s.client_options().check_for_updates)
             .await
-            == Ok(true)
         {
             if let Some(latest) = self.get_latest_release(None).await {
                 let current =
@@ -567,7 +563,8 @@ impl LanguageServer for Backend {
                 })
                 .collect::<Vec<_>>();
 
-            let _update_files = self.with_state_mut(|s| s.update_sources(&updates)).await;
+            // Update files.
+            self.with_state_mut(|s| s.update_sources(&updates)).await;
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -580,30 +577,28 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let Ok(files) = self.with_state(|s| (*s.files()).clone()).await else {
-            return;
-        };
+        let files = self.with_state(|s| (*s.files()).clone()).await;
 
-        if let Ok(preloaded_decls) = self
-            .with_state(|state| {
-                let span = trace_span!("preloading");
-                let _enter = span.enter();
-
-                files
-                    .iter()
-                    .map(|f| {
-                        let f = f.clone();
-                        let db = state.snapshot();
-                        tokio::spawn(async move {
-                            let _x = db.decls(f.clone());
-                            let _x = db.loads(f.clone());
-                            let _x = db.loaded_files(f.clone());
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .await
         {
+            let preloaded_decls = self
+                .with_state(|state| {
+                    let span = trace_span!("preloading");
+                    let _enter = span.enter();
+
+                    files
+                        .iter()
+                        .map(|f| {
+                            let f = f.clone();
+                            let db = state.snapshot();
+                            tokio::spawn(async move {
+                                let _x = db.decls(f.clone());
+                                let _x = db.loads(f.clone());
+                                let _x = db.loaded_files(f.clone());
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await;
             futures::future::join_all(preloaded_decls).await;
         }
 
@@ -619,17 +614,14 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = Arc::new(params.text_document.uri.clone());
 
-        let _set_files = {
-            let uri = uri.clone();
-
-            self.with_state_mut(|state| {
-                state.update_sources(&[SourceUpdate::Update(
-                    uri,
-                    Arc::new(params.text_document.text),
-                )]);
-            })
-            .await
-        };
+        // Update source.
+        self.with_state_mut(|state| {
+            state.update_sources(&[SourceUpdate::Update(
+                uri.clone(),
+                Arc::new(params.text_document.text),
+            )]);
+        })
+        .await;
 
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
@@ -662,14 +654,14 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let _set_source = {
-            let uri = uri.clone();
-
-            self.with_state_mut(|state| {
-                state.update_sources(&[SourceUpdate::Update(uri, Arc::new(changes.text.clone()))]);
-            })
-            .await
-        };
+        // Update source.
+        self.with_state_mut(|state| {
+            state.update_sources(&[SourceUpdate::Update(
+                uri.clone(),
+                Arc::new(changes.text.clone()),
+            )]);
+        })
+        .await;
 
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
@@ -774,7 +766,7 @@ impl LanguageServer for Backend {
 
             Ok(Some(hover))
         })
-        .await?
+        .await
     }
 
     #[instrument]
@@ -863,7 +855,7 @@ impl LanguageServer for Backend {
                     .chain(decls_wo_mod.into_iter().filter_map(symbol))
                     .collect()
             })
-            .await?;
+            .await;
 
         Ok(Some(DocumentSymbolResponse::Nested(modules)))
     }
@@ -908,16 +900,14 @@ impl LanguageServer for Backend {
                     })
                     .collect()
             })
-            .await?;
+            .await;
 
         Ok(Some(symbols))
     }
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        self.with_state(move |state| complete(&state, params))
-            .await
-            .map_err(|_| Error::internal_error())
+        Ok(self.with_state(move |state| complete(&state, params)).await)
     }
 
     #[instrument]
@@ -964,7 +954,7 @@ impl LanguageServer for Backend {
                     _ => None,
                 }
             })
-            .await?;
+            .await;
 
         Ok(location.map(GotoDefinitionResponse::Scalar))
     }
@@ -1083,7 +1073,7 @@ impl LanguageServer for Backend {
                 active_parameter,
             }))
         })
-        .await?
+        .await
     }
 
     #[instrument]
@@ -1111,7 +1101,7 @@ impl LanguageServer for Backend {
 
         let tree = self
             .with_state(|state| state.parse(Arc::new(params.text_document.uri)))
-            .await?;
+            .await;
 
         Ok(tree.map(|t| compute_folds(t.root_node(), false)))
     }
@@ -1120,13 +1110,13 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| state.source(uri.clone())).await?;
+        let source = self.with_state(|state| state.source(uri.clone())).await;
 
         let Some(source) = source else {
             return Ok(None);
         };
 
-        let range = match self.with_state(|state| state.parse(uri)).await? {
+        let range = match self.with_state(|state| state.parse(uri)).await {
             Some(t) => t.root_node().range(),
             None => return Ok(None),
         };
@@ -1146,7 +1136,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.with_state(|state| state.source(uri.clone())).await?;
+        let source = self.with_state(|state| state.source(uri.clone())).await;
 
         let Some(source) = source else {
             return Ok(None);
@@ -1215,7 +1205,7 @@ impl LanguageServer for Backend {
                     _ => None,
                 }
             })
-            .await?;
+            .await;
 
         Ok(decl.and_then(|d| {
             let Some(loc) = &d.loc else { return None };
@@ -1277,7 +1267,7 @@ impl LanguageServer for Backend {
                         .collect::<Vec<_>>(),
                 )
             })
-            .await?;
+            .await;
 
         Ok(response.map(GotoImplementationResponse::from))
     }

@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
@@ -56,16 +56,16 @@ jobs:
             brew install zeek; \
           fi
       - name: Test
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        uses: actions-rs/cargo@v1
         with:
           command: test
       - name: Test all features
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: --all-features
       - name: Build
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: -C target-feature=+crt-static
         with:
@@ -84,7 +84,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal

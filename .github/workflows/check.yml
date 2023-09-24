@@ -96,7 +96,7 @@ jobs:
         run: |
           npm install -g tree-sitter-cli
       - uses: actions/setup-python@v2
-      - uses: pre-commit/action@v2.0.3
+      - uses: pre-commit/action@v3.0.0
 
   vscode:
     name: Build vscode extension

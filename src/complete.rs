@@ -112,7 +112,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 .lines()
                 .nth(usize::try_from(node.range().start.line).expect("too many lines"))
                 .and_then(|line| {
-                    let re = regex::Regex::new(r"^(\w+)\s+\w*").expect("invalid regexp");
+                    let re = regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp");
                     Some(re.captures(line)?.get(1)?.as_str())
                 }).map(|kind| complete_from_decls(state, uri.clone(), kind))
         } else {
@@ -663,6 +663,8 @@ export {
 event e
 function f
 hook h
+
+  event e
 ",
         );
 
@@ -696,8 +698,21 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
+                    text_document: TextDocumentIdentifier::new(uri.clone()),
                     position: Position::new(9, 6),
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        ));
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier::new(uri),
+                    position: Position::new(11, 8),
                 },
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),

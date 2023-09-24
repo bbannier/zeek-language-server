@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo" # See documentation for possible values
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm" # See documentation for possible values
+    directory: "/vscode"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions" # See documentation for possible values
+    directory: "/"
+    schedule:
+      interval: "weekly"

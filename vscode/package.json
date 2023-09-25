@@ -161,7 +161,7 @@
     "fix": "prettier --write . && eslint --ext=ts . --fix"
   },
   "dependencies": {
-    "got": "^12.1.2",
+    "got": "^13.0.0",
     "vscode-languageclient": "^7.0.0",
     "vscode-uri": "^3.0.3"
   },

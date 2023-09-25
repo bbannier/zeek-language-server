@@ -741,9 +741,10 @@ impl LanguageServer for Backend {
                             DeclKind::EnumMember => "enum member",
                             DeclKind::LoopIndex(_, _) => "loop index",
                         };
+
                         contents.push(MarkedString::String(format!(
                             "### {kind} `{id}`",
-                            id = decl.id
+                            id = decl.fqid
                         )));
 
                         if let Some(typ) = state.typ(decl.clone()) {
@@ -1451,10 +1452,10 @@ global GLOBAL::Y = 3;
 
         let result = server
             .completion(CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new((*uri).clone()),
-                    position: Position::new(6, 0),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new((*uri).clone()),
+                    Position::new(6, 0),
+                ),
                 partial_result_params: PartialResultParams::default(),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 context: None,
@@ -1488,10 +1489,10 @@ local x = f();
         let server = serve(db);
 
         let params = HoverParams {
-            text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri),
-                position: Position::new(3, 7),
-            },
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri),
+                Position::new(3, 7),
+            ),
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
 
@@ -1535,10 +1536,10 @@ local x = f();
         assert_debug_snapshot!(
             server
                 .hover(HoverParams {
-                    text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.clone()),
-                        position: Position::new(7, 15),
-                    },
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(7, 15),
+                    ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
@@ -1547,10 +1548,10 @@ local x = f();
         assert_debug_snapshot!(
             server
                 .hover(HoverParams {
-                    text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri.clone()),
-                        position: Position::new(10, 15),
-                    },
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(10, 15),
+                    ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
@@ -1559,10 +1560,10 @@ local x = f();
         assert_debug_snapshot!(
             server
                 .hover(HoverParams {
-                    text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier::new(uri),
-                        position: Position::new(13, 15),
-                    },
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri),
+                        Position::new(13, 15),
+                    ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
@@ -1585,14 +1586,66 @@ function f(x: X, y: Y) {
         let server = serve(db);
 
         let params = HoverParams {
-            text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier::new(uri),
-                position: Position::new(4, 4),
-            },
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri),
+                Position::new(4, 4),
+            ),
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
 
         assert_debug_snapshot!(server.hover(params).await);
+    }
+
+    #[tokio::test]
+    async fn hover_in_decl_fqid() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+export { const G = 42; }
+module foo;
+export { const X = 47; }
+const Y = 11;
+        ",
+        );
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(1, 15)
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default()
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(3, 15)
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default()
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri),
+                        Position::new(4, 6)
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default()
+                })
+                .await
+        );
     }
 
     #[tokio::test]

@@ -22,7 +22,7 @@ eyre = { default-features = false, version = "0.6.8", features = ["auto-install"
 futures = { default-features = false, version = "0.3.28" }
 itertools = "0.11.0"
 opentelemetry = { version = "0.18.0", features = ["trace", "rt-tokio"], optional = true }
-opentelemetry-jaeger = { version = "0.17.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
+opentelemetry-jaeger = { version = "0.18.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
 path-clean = "1.0.1"
 pyroscope = { version = "0.5.7", optional = true }
 rayon = "1.8.0"

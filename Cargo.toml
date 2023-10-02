@@ -8,7 +8,7 @@ license = "MIT"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
-insta = "1.32.0"
+insta = "1.33.0"
 tempfile = "3.8.0"
 wiremock = "0.5.19"
 

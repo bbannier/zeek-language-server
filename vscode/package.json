@@ -163,7 +163,7 @@
   "dependencies": {
     "got": "^13.0.0",
     "vscode-languageclient": "^9.0.1",
-    "vscode-uri": "^3.0.3"
+    "vscode-uri": "^3.0.8"
   },
   "devDependencies": {
     "@types/node": "^20.6.5",

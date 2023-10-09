@@ -21,18 +21,18 @@ use tower_lsp::{
         },
         CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
         DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
-        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
-        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
-        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
-        InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, MessageType,
-        OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceSymbolParams,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+        DocumentFormattingParams, DocumentRangeFormattingParams, DocumentSymbol,
+        DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange,
+        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+        Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -679,6 +679,13 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        self.check(params.text_document.uri, None).await;
+    }
+
+    #[instrument]
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        // If a file is closed it means the full state of the document
+        // is now on disk and we can run a check on it.
         self.check(params.text_document.uri, None).await;
     }
 

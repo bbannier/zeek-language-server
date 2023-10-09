@@ -3,7 +3,7 @@
   "displayName": "Zeek",
   "description": "Zeek language support for Visual Studio Code",
   "author": "Benjamin Bannier",
-  "version": "0.33.1",
+  "version": "0.33.2",
   "license": "MIT",
   "publisher": "bbannier",
   "preview": true,
@@ -170,11 +170,11 @@
     "@types/vscode": "^1.52.0",
     "@typescript-eslint/eslint-plugin": "^6.7.4",
     "@typescript-eslint/parser": "^6.7.4",
+    "@vscode/vsce": "^2.21.1",
     "esbuild": "^0.19.4",
     "eslint": "^8.51.0",
     "mocha": "^10.0.0",
     "prettier": "^3.0.3",
-    "typescript": "^5.2.2",
-    "@vscode/vsce": "^2.21.1"
+    "typescript": "^5.2.2"
   }
 }

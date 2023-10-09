@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "zeek-language-server"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "clap 4.4.6",
  "criterion",

@@ -44,15 +44,7 @@ pub struct Location {
 
 impl PartialOrd for Location {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match OrderedRange(self.range).partial_cmp(&OrderedRange(other.range)) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match OrderedRange(self.selection_range).partial_cmp(&OrderedRange(other.selection_range)) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self.uri.partial_cmp(&other.uri)
+        Some(self.cmp(other))
     }
 }
 
@@ -92,31 +84,7 @@ pub struct Decl {
 
 impl PartialOrd for Decl {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.module.partial_cmp(&other.module) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.id.partial_cmp(&other.id) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.fqid.partial_cmp(&other.fqid) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.kind.partial_cmp(&other.kind) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.is_export.partial_cmp(&other.is_export) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.loc.partial_cmp(&other.loc) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self.documentation.partial_cmp(&other.documentation)
+        Some(self.cmp(other))
     }
 }
 
@@ -150,11 +118,7 @@ impl Ord for Decl {
 struct OrderedRange(pub Range);
 impl PartialOrd for OrderedRange {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.0.start.partial_cmp(&other.0.start) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self.0.end.partial_cmp(&other.0.end)
+        Some(self.cmp(other))
     }
 }
 impl Ord for OrderedRange {

@@ -787,7 +787,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let symbol = |d: &Decl| -> Option<DocumentSymbol> {
-            let Some(loc) = &d.loc else { return None };
+            let loc = d.loc.as_ref()?;
 
             #[allow(deprecated)]
             Some(DocumentSymbol {
@@ -806,7 +806,7 @@ impl LanguageServer for Backend {
                         fields
                             .iter()
                             .filter_map(|f| {
-                                let Some(loc) = &f.loc else { return None };
+                                let loc = &f.loc.as_ref()?;
                                 Some(DocumentSymbol {
                                     name: f.id.to_string(),
                                     range: loc.range,
@@ -892,7 +892,7 @@ impl LanguageServer for Backend {
                             })
                             .filter_map(|d| {
                                 let url: &Url = uri;
-                                let Some(loc) = &d.loc else { return None };
+                                let loc = &d.loc.as_ref()?;
 
                                 #[allow(deprecated)]
                                 Some(SymbolInformation {
@@ -940,7 +940,7 @@ impl LanguageServer for Backend {
                     "id" => state
                         .resolve(NodeLocation::from_node(uri, node))
                         .and_then(|d| {
-                            let Some(loc) = &d.loc else { return None };
+                            let loc = &d.loc.as_ref()?;
                             Some(Location::new((*loc.uri).clone(), loc.range))
                         }),
                     "file" => {
@@ -1051,7 +1051,7 @@ impl LanguageServer for Backend {
                     .args
                     .iter()
                     .filter_map(|a| {
-                        let Some(loc) = &a.loc else { return None };
+                        let loc = &a.loc.as_ref()?;
                         tree.root_node()
                             .named_descendant_for_point_range(loc.selection_range)?
                             .utf8_text(source.as_bytes())
@@ -1217,7 +1217,7 @@ impl LanguageServer for Backend {
             .await;
 
         Ok(decl.and_then(|d| {
-            let Some(loc) = &d.loc else { return None };
+            let loc = &d.loc.as_ref()?;
             Some(GotoDeclarationResponse::Scalar(Location::new(
                 (*loc.uri).clone(),
                 loc.range,
@@ -1266,7 +1266,7 @@ impl LanguageServer for Backend {
                             )
                         })
                         .filter_map(|d| {
-                            let Some(loc) = &d.loc else { return None };
+                            let loc = &d.loc.as_ref()?;
                             if d.id == decl.id {
                                 Some(Location::new((*loc.uri).clone(), loc.range))
                             } else {

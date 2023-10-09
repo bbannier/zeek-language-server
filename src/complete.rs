@@ -204,7 +204,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
                     s.args
                         .iter()
                         .filter_map(|d| {
-                            let Some(loc) = &d.loc else { return None };
+                            let loc = &d.loc.as_ref()?;
                             let tree = state.parse(loc.uri.clone())?;
                             let source = state.source(loc.uri.clone())?;
                             tree.root_node()

@@ -169,7 +169,7 @@
     "@types/node": "^20.6.5",
     "@types/vscode": "^1.52.0",
     "@typescript-eslint/eslint-plugin": "^6.7.4",
-    "@typescript-eslint/parser": "^6.7.3",
+    "@typescript-eslint/parser": "^6.7.4",
     "esbuild": "^0.19.4",
     "eslint": "^8.50.0",
     "mocha": "^10.0.0",

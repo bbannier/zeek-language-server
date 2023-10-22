@@ -29,11 +29,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
@@ -43,12 +39,9 @@ jobs:
           npm install -g tree-sitter-cli
 
       - name: Build binaries
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505
+        run: cargo build --release --locked --target ${{ matrix.target }}
         env:
           RUSTFLAGS: -C target-feature=+crt-static
-        with:
-          command: build
-          args: --release --locked --target ${{ matrix.target }}
 
       - uses: actions/setup-node@v3
         with:

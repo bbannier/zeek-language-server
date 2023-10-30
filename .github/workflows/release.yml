@@ -43,7 +43,7 @@ jobs:
         env:
           RUSTFLAGS: -C target-feature=+crt-static
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: "15.x"
 
@@ -76,7 +76,7 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: "15.x"
       - run: |

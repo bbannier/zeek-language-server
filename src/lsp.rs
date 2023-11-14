@@ -19,20 +19,22 @@ use tower_lsp::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
             WorkDoneProgressCreate,
         },
-        CompletionOptions, CompletionParams, CompletionResponse, DeclarationCapability, Diagnostic,
-        DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-        DocumentFormattingParams, DocumentRangeFormattingParams, DocumentSymbol,
-        DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange,
-        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+        CodeAction, CodeActionKind, CodeActionParams, CodeActionProviderCapability,
+        CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
+        DeclarationCapability, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
+        DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentRangeFormattingParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent,
+        FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
         GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
         ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        Location, MarkedString, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
-        ProgressParams, ProgressParamsValue, ProgressToken, Range, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceSymbolParams,
+        Location, MarkedString, MessageType, NumberOrString, OneOf, ParameterInformation,
+        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
+        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
+        WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -268,21 +270,7 @@ impl Backend {
                         return Vec::new();
                     };
 
-                    tree.root_node()
-                        .errors()
-                        .into_iter()
-                        .map(|err| {
-                            Diagnostic::new(
-                                err.range(),
-                                Some(DiagnosticSeverity::WARNING),
-                                None,
-                                None,
-                                err.error(),
-                                None,
-                                None,
-                            )
-                        })
-                        .collect()
+                    tree_diagnostics(&tree.root_node())
                 })
                 .await;
 
@@ -484,6 +472,7 @@ impl LanguageServer for Backend {
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1287,6 +1276,56 @@ impl LanguageServer for Backend {
 
         Ok(response.map(GotoImplementationResponse::from))
     }
+
+    #[instrument]
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        // For now we only work on the first diagnostic on something missing in the source.
+        let Some(diag) = params
+            .context
+            .diagnostics
+            .iter()
+            .find(|d| d.code == Some(NumberOrString::Number(ERROR_CODE_IS_MISSING)))
+        else {
+            return Ok(None);
+        };
+
+        let uri = Arc::new(params.text_document.uri);
+        let Some(missing) = self
+            .with_state(|state| {
+                state.parse(uri.clone()).and_then(|t| {
+                    t.root_node().errors().into_iter().find_map(|err| {
+                        // Filter out `MISSING` nodes at the diagnostic.
+                        if err.is_missing() && err.range() == diag.range {
+                            // `kind` holds the fix for the `MISSING` error.
+                            Some(err.kind().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                })
+            })
+            .await
+        else {
+            return Ok(None);
+        };
+
+        let edit = Some(WorkspaceEdit::new(
+            [(
+                (*uri).clone(),
+                vec![{ TextEdit::new(diag.range, missing.clone()) }],
+            )]
+            .into_iter()
+            .collect(),
+        ));
+
+        Ok(Some(CodeActionResponse::from(vec![CodeAction {
+            title: format!("Insert missing '{missing}'"),
+            kind: Some(CodeActionKind::QUICKFIX),
+            edit,
+            ..CodeAction::default()
+        }
+        .into()])))
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1353,7 +1392,7 @@ pub(crate) mod test {
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, zeek};
+    use crate::{ast::Ast, lsp, parse::Parse, zeek};
 
     use super::{Backend, SourceUpdate};
 
@@ -1993,4 +2032,65 @@ event x::foo() {}",
                 .await
         );
     }
+
+    #[tokio::test]
+    async fn code_action() {
+        use super::{tree_diagnostics, CodeActionParams};
+        use tower_lsp::lsp_types::CodeActionContext;
+
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        let source = "global x = 42";
+        db.add_file((*uri).clone(), source);
+
+        let context =
+            db.0.parse(uri.clone())
+                .map(|t| CodeActionContext {
+                    diagnostics: tree_diagnostics(&t.root_node()),
+                    ..CodeActionContext::default()
+                })
+                .unwrap();
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .code_action(CodeActionParams {
+                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    range: Range::new(Position::new(0, 1), Position::new(0, 2)),
+                    context,
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                })
+                .await
+        );
+    }
+}
+
+const ERROR_CODE_IS_MISSING: i32 = 1;
+
+/// Extracts all errors in a AST.
+fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
+    tree.errors()
+        .into_iter()
+        .map(|err| {
+            let code = if err.is_missing() {
+                Some(ERROR_CODE_IS_MISSING)
+            } else {
+                None
+            }
+            .map(NumberOrString::Number);
+
+            Diagnostic::new(
+                err.range(),
+                Some(DiagnosticSeverity::WARNING),
+                code,
+                None,
+                err.error(),
+                None,
+                None,
+            )
+        })
+        .collect()
 }

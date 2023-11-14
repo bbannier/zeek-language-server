@@ -247,6 +247,11 @@ impl<'a> Node<'a> {
         }
     }
 
+    #[must_use]
+    pub fn is_missing(&self) -> bool {
+        self.0.is_missing()
+    }
+
     pub fn parent(&self) -> Option<Self> {
         self.0.parent().map(Into::into)
     }

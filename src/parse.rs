@@ -21,6 +21,12 @@ impl PartialEq for Tree {
     }
 }
 
+impl From<tree_sitter::Tree> for Tree {
+    fn from(value: tree_sitter::Tree) -> Self {
+        Self(value)
+    }
+}
+
 impl Eq for Tree {}
 
 impl Deref for Tree {

@@ -93,7 +93,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-node@v4
         with:
-          node-version: "15.x"
+          node-version: "16.x"
       - run: |
           cd vscode
           npm install

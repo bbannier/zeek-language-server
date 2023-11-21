@@ -25,7 +25,7 @@
   },
   "homepage": "https://github.com/bbannier/zeek-language-server",
   "engines": {
-    "vscode": "^1.52.0"
+    "vscode": "^1.82.0"
   },
   "activationEvents": [
     "onLanguage:zeek"
@@ -168,7 +168,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.9.2",
-    "@types/vscode": "^1.52.0",
+    "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^6.11.0",
     "@typescript-eslint/parser": "^6.11.0",
     "@vscode/vsce": "^2.22.0",

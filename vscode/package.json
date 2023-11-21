@@ -162,6 +162,7 @@
   },
   "dependencies": {
     "got": "^13.0.0",
+    "@types/got": "^9.6.12",
     "vscode-languageclient": "^9.0.1",
     "vscode-uri": "^3.0.8"
   },

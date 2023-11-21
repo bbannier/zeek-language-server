@@ -1,5 +1,4 @@
 import { inspect } from "util";
-import got from "got";
 import {
   ConfigurationTarget,
   ExtensionContext,
@@ -25,6 +24,7 @@ import {
 
 import { promisify } from "util";
 import { Utils } from "vscode-uri";
+import got = require("got");
 
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";

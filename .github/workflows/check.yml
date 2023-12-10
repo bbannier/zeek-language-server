@@ -65,6 +65,33 @@ jobs:
           name: zeek-language-server-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/zeek-language-server
 
+  benchmark:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install tree-sitter-cli
+        run: |
+          npm install -g tree-sitter-cli
+      - name: Install Zeek
+        run: |
+          if [[ ${{ matrix.name }} == *linux* ]]; then \
+            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_22.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
+            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
+            sudo apt-get update; \
+            sudo apt-get install -y zeek; \
+            sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
+          elif [[ ${{ matrix.name }} == *mac* ]]; then \
+            brew install zeek; \
+          fi
+
   pre-commit:
     name: Run pre-commit hooks
     runs-on: ubuntu-22.04

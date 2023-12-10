@@ -1,8 +1,5 @@
 use clap::Parser;
 
-#[cfg(feature = "profiling")]
-use pyroscope::PyroscopeAgent;
-
 use {
     eyre::Result,
     tracing::info,
@@ -56,11 +53,6 @@ fn init_logging(args: &Args) -> Result<WorkerGuard> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[cfg(feature = "profiling")]
-    let agent = PyroscopeAgent::builder("http://localhost:4040", env!("CARGO_PKG_NAME")).build()?;
-    #[cfg(feature = "profiling")]
-    agent.start()?;
-
     #[allow(unused)]
     let args = Args::parse();
 

@@ -15,7 +15,6 @@ wiremock = "0.5.22"
 [features]
 default = []
 telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry"]
-profiling = ["pyroscope"]
 
 [dependencies]
 clap = { version = "4.4.10", features = ["std", "derive", "help"], default-features = false }
@@ -25,7 +24,6 @@ itertools = "0.12.0"
 opentelemetry = { version = "0.18.0", features = ["trace", "rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.17.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
 path-clean = "1.0.1"
-pyroscope = { version = "0.5.7", optional = true }
 rayon = "1.8.0"
 regex = { default-features = false, version = "1.10.2" }
 reqwest = { version = "0.11.22", default-features = false }

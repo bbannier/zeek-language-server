@@ -87,6 +87,7 @@ jobs:
           sudo apt-get update; \
           sudo apt-get install -y zeek; \
           sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
+      - uses: boa-dev/criterion-compare-action@v3
 
   pre-commit:
     name: Run pre-commit hooks

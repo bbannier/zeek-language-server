@@ -75,7 +75,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          key: benchmark-cargo-${{ hashFiles('Cargo.lock') }}
 
       - name: Install tree-sitter-cli
         run: |

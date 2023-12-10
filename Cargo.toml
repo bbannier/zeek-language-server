@@ -57,3 +57,11 @@ lto = "thin"
 [[bench]]
 name = "criterion"
 harness = false
+
+[lib]
+bench = false
+
+[[bin]]
+name = "zeek-language-server"
+path = "src/main.rs"
+bench = false

@@ -81,7 +81,7 @@ jobs:
       - name: Install tree-sitter-cli
         run: |
           npm install -g tree-sitter-cli
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
       - uses: pre-commit/action@v3.0.0
 
   vscode:

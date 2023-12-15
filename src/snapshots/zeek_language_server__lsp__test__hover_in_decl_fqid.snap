@@ -11,6 +11,9 @@ Ok(
                         "### constant `G`",
                     ),
                     String(
+                        "Type: `<integer>`",
+                    ),
+                    String(
                         "```zeek\nconst G = 42;\n```",
                     ),
                 ],

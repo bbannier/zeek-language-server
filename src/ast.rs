@@ -216,7 +216,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         .named_descendant_for_point_range(loc.range)?;
 
     let d = match node.kind() {
-        "var_decl" | "formal_arg" => {
+        "var_decl" | "const_decl" | "formal_arg" => {
             let typ = node.named_children_not("nl").into_iter().nth(1)?;
 
             match typ.kind() {
@@ -1139,6 +1139,31 @@ global x2 = f2();
 
             assert_debug_snapshot!(db.typ(decl));
         }
+    }
+
+    #[test]
+    fn typ_const_decl() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "export {
+                const a = 42;
+             }",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let a = root
+            .named_descendant_for_position(Position::new(1, 22))
+            .unwrap();
+        assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri.clone(), a))
+            .and_then(|d| db.typ(d)));
     }
 
     #[test]

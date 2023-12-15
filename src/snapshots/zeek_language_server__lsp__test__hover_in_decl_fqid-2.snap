@@ -11,6 +11,9 @@ Ok(
                         "### constant `foo::X`",
                     ),
                     String(
+                        "Type: `<integer>`",
+                    ),
+                    String(
                         "```zeek\nconst X = 47;\n```",
                     ),
                 ],

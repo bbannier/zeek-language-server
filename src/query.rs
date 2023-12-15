@@ -114,6 +114,25 @@ impl Ord for Decl {
     }
 }
 
+#[allow(clippy::derived_hash_with_manual_eq)]
+impl Hash for Decl {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.module.hash(state);
+        self.id.hash(state);
+        self.kind.hash(state);
+        self.is_export.hash(state);
+        self.is_export.hash(state);
+        self.loc.hash(state);
+        self.documentation.hash(state);
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionCall {
+    pub f: NodeLocation,
+    pub args: Vec<NodeLocation>,
+}
+
 #[derive(PartialEq, Eq)]
 struct OrderedRange(pub Range);
 impl PartialOrd for OrderedRange {
@@ -161,19 +180,6 @@ impl Hash for NodeLocation {
         self.range.end.character.hash(state);
 
         self.uri.hash(state);
-    }
-}
-
-#[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for Decl {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.module.hash(state);
-        self.id.hash(state);
-        self.kind.hash(state);
-        self.is_export.hash(state);
-        self.is_export.hash(state);
-        self.loc.hash(state);
-        self.documentation.hash(state);
     }
 }
 
@@ -925,6 +931,9 @@ pub trait Query: Parse {
 
     #[must_use]
     fn loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
+
+    #[must_use]
+    fn function_calls(&self, uri: Arc<Url>) -> Arc<Vec<FunctionCall>>;
 }
 
 #[instrument(skip(db))]
@@ -954,6 +963,51 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
         loads_raw(tree.root_node(), &source)
             .iter()
             .map(ToString::to_string)
+            .collect(),
+    )
+}
+
+#[instrument(skip(db))]
+fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
+    let Some(tree) = db.parse(uri.clone()) else {
+        return Arc::default();
+    };
+
+    // Match things which look like function calls with arguments.
+    let query = match tree_sitter::Query::new(language_zeek(), "(expr (expr (id)) (expr_list))@fn")
+    {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return Arc::default();
+        }
+    };
+
+    let Some(source) = db.source(uri.clone()) else {
+        return Arc::default();
+    };
+
+    let c_fn = query
+        .capture_index_for_name("fn")
+        .expect("call should be captured");
+
+    Arc::new(
+        tree_sitter::QueryCursor::new()
+            .matches(&query, tree.root_node().0, source.as_bytes())
+            .filter_map(|c| {
+                let (f, args) = c.nodes_for_capture_index(c_fn).next().and_then(|n| {
+                    let n: Node = n.into();
+                    let args = n
+                        .named_child("expr_list")?
+                        .named_children("expr")
+                        .into_iter()
+                        .map(|a| NodeLocation::from_node(uri.clone(), a))
+                        .collect::<Vec<_>>();
+                    Some((NodeLocation::from_node(uri.clone(), n), args))
+                })?;
+
+                Some(FunctionCall { f, args })
+            })
             .collect(),
     )
 }

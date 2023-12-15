@@ -28,13 +28,14 @@ use tower_lsp::{
         FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
         GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
         ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        Location, MarkedString, MessageType, NumberOrString, OneOf, ParameterInformation,
-        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
-        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
-        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-        TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress, WorkDoneProgressBegin,
-        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
-        WorkspaceSymbolParams,
+        InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip, Location,
+        MarkedString, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf,
+        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
+        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
+        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
+        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
+        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -473,6 +474,7 @@ impl LanguageServer for Backend {
                 document_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1326,6 +1328,49 @@ impl LanguageServer for Backend {
         }
         .into()])))
     }
+
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = Arc::new(params.text_document.uri);
+
+        let function_params = self
+            .with_state(|state| {
+                let possible_call_ranges = state.function_calls(uri.clone());
+                possible_call_ranges
+                    .iter()
+                    .filter_map(|c| match &state.resolve(c.f.clone())?.kind {
+                        DeclKind::FuncDef(s)
+                        | DeclKind::FuncDecl(s)
+                        | DeclKind::HookDef(s)
+                        | DeclKind::HookDecl(s)
+                        | DeclKind::EventDef(s)
+                        | DeclKind::EventDecl(s) => Some(
+                            c.args
+                                .iter()
+                                .zip(s.args.iter())
+                                .map(|(p, a)| InlayHint {
+                                    position: p.range.start,
+                                    label: InlayHintLabel::String(format!("{}:", a.id)),
+                                    kind: Some(InlayHintKind::PARAMETER),
+                                    text_edits: None,
+                                    tooltip: Some(InlayHintTooltip::MarkupContent(MarkupContent {
+                                        kind: MarkupKind::Markdown,
+                                        value: a.documentation.to_string(),
+                                    })),
+                                    padding_left: None,
+                                    padding_right: Some(true),
+                                    data: None,
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                        _ => None,
+                    })
+                    .flatten()
+                    .collect()
+            })
+            .await;
+
+        Ok(Some(function_params))
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1384,9 +1429,9 @@ pub(crate) mod test {
     use tower_lsp::{
         lsp_types::{
             CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
-            FormattingOptions, HoverParams, InitializeParams, PartialResultParams, Position, Range,
-            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
-            WorkspaceSymbolParams,
+            FormattingOptions, HoverParams, InitializeParams, InlayHintParams, PartialResultParams,
+            Position, Range, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+            WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -2077,6 +2122,31 @@ event x::foo() {}",
                     context,
                     work_done_progress_params: WorkDoneProgressParams::default(),
                     partial_result_params: PartialResultParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn inlay_hint_function_params() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        let source = r#"
+        function f(x: count, y: string) {}
+        f(123, "abc");
+        "#;
+
+        db.add_file((*uri).clone(), source);
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .inlay_hint(InlayHintParams {
+                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    range: Range::new(Position::new(0, 0), Position::new(3, 0)),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );

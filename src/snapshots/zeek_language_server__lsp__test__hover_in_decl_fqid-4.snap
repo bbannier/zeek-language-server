@@ -1,0 +1,35 @@
+---
+source: src/lsp.rs
+expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n                Position::new(7, 7)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+---
+Ok(
+    Some(
+        Hover {
+            contents: Array(
+                [
+                    String(
+                        "### global `foo::r`",
+                    ),
+                    String(
+                        "Type: `foo::R`",
+                    ),
+                    String(
+                        "```zeek\nglobal r: R;\n```",
+                    ),
+                ],
+            ),
+            range: Some(
+                Range {
+                    start: Position {
+                        line: 7,
+                        character: 7,
+                    },
+                    end: Position {
+                        line: 7,
+                        character: 8,
+                    },
+                },
+            ),
+        },
+    ),
+)

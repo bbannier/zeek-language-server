@@ -744,7 +744,7 @@ impl LanguageServer for Backend {
                         )));
 
                         if let Some(typ) = state.typ(decl.clone()) {
-                            contents.push(MarkedString::String(format!("Type: `{}`", typ.id)));
+                            contents.push(MarkedString::String(format!("Type: `{}`", typ.fqid)));
                         }
 
                         contents.push(MarkedString::String(decl.documentation.to_string()));
@@ -1653,6 +1653,9 @@ export { const G = 42; }
 module foo;
 export { const X = 47; }
 const Y = 11;
+
+type R: record {};
+global r: R;
         ",
         );
         let server = serve(db);
@@ -1685,8 +1688,20 @@ const Y = 11;
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(4, 6)
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default()
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri),
+                        Position::new(7, 7)
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default()
                 })

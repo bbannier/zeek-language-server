@@ -222,7 +222,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             match typ.kind() {
                 "type" => db.resolve(NodeLocation::from_node(uri.clone(), typ)),
                 "initializer" => typ
-                    .named_child("init")
+                    .named_child("expr")
                     .and_then(|n| db.resolve(NodeLocation::from_node(uri.clone(), n))),
                 _ => None,
             }
@@ -295,7 +295,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 .or_else(|| Some(db.builtin_type(text)));
         }
 
-        "expr" | "init" => {
+        "expr" => {
             return node
                 .named_child_not("nl")
                 .and_then(|c| db.resolve(NodeLocation::from_node(uri.clone(), c)));

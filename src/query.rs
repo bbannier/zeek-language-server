@@ -974,8 +974,7 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
     };
 
     // Match things which look like function calls with arguments.
-    let query = match tree_sitter::Query::new(language_zeek(), "(expr (expr (id)) (expr_list))@fn")
-    {
+    let query = match tree_sitter::Query::new(language_zeek(), "(expr (id) (expr_list))@fn") {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);

@@ -2135,6 +2135,9 @@ event x::foo() {}",
         let source = r#"
         function f(x: count, y: string) {}
         f(123, "abc");
+
+        function g(x: count): count { return x; }
+        g(1) + g(1);
         "#;
 
         db.add_file((*uri).clone(), source);

@@ -286,14 +286,26 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     match node.kind() {
         // Builtin types.
         // NOTE: This is driven by what types the parser exposes, extend as possible.
-        "ipv4" | "ipv6" | "hostname" | "hex" | "port" | "interval" | "string" | "floatp"
-        | "integer" => return Some(db.builtin_type(format!("<{}>", node.kind()).as_str().into())),
+
+        // TODO(bbannier): the parser doesn't cleanly expose whether an integer is an `int` or a
+        // `count`, use a dummy type until we resolve it
+        "integer" => return Some(db.builtin_type(format!("<{}>", node.kind()).as_str().into())),
+
+        "hostname" => return Some(db.builtin_type("set[addr]".into())),
+        "floatp" => return Some(db.builtin_type("double".into())),
+        "ipv4" | "ipv6" => return Some(db.builtin_type("addr".into())),
+        "interval" | "port" | "string" => {
+            return Some(db.builtin_type(node.kind().to_string().into()))
+        }
+        "hex" => return Some(db.builtin_type("count".into())),
+
         "constant" => {
             match node.utf8_text(source.as_bytes()).ok()? {
-                "T" | "F" => return Some(db.builtin_type("<boolean>".into())),
+                "T" | "F" => return Some(db.builtin_type("bool".into())),
                 _ => return None,
             };
         }
+
         "type" => {
             let text: Str = node.utf8_text(source.as_bytes()).ok()?.into();
             return db

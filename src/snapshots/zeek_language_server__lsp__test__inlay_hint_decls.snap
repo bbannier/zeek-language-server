@@ -45,7 +45,7 @@ Ok(
                     character: 8,
                 },
                 label: String(
-                    ": <boolean>",
+                    ": bool",
                 ),
                 kind: Some(
                     Type,

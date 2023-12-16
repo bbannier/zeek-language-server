@@ -5,13 +5,13 @@ expression: "db.resolve(NodeLocation::from_range(uri.clone(),\n            Range
 Some(
     Decl {
         module: Global,
-        id: "<port>",
-        fqid: "<port>",
+        id: "port",
+        fqid: "port",
         kind: Type(
             [],
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type '<port>'",
+        documentation: "Builtin type 'port'",
     },
 )

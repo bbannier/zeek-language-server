@@ -288,6 +288,12 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         // NOTE: This is driven by what types the parser exposes, extend as possible.
         "ipv4" | "ipv6" | "hostname" | "hex" | "port" | "interval" | "string" | "floatp"
         | "integer" => return Some(db.builtin_type(format!("<{}>", node.kind()).as_str().into())),
+        "constant" => {
+            match node.utf8_text(source.as_bytes()).ok()? {
+                "T" | "F" => return Some(db.builtin_type("<boolean>".into())),
+                _ => return None,
+            };
+        }
         "type" => {
             let text: Str = node.utf8_text(source.as_bytes()).ok()?.into();
             return db

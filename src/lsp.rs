@@ -1332,7 +1332,9 @@ impl LanguageServer for Backend {
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let function_params = self
+        let mut hints = Vec::new();
+
+        let function_params: Vec<_> = self
             .with_state(|state| {
                 let possible_call_ranges = state.function_calls(uri.clone());
                 possible_call_ranges
@@ -1369,7 +1371,33 @@ impl LanguageServer for Backend {
             })
             .await;
 
-        Ok(Some(function_params))
+        let decls: Vec<_> = self
+            .with_state(|state| {
+                //
+                let decls = state.untyped_var_decls(uri.clone());
+                decls
+                    .iter()
+                    .filter_map(|d| {
+                        let t = state.typ(Arc::new(d.clone()))?;
+                        Some(InlayHint {
+                            position: d.loc.as_ref().map(|l| l.selection_range.end)?,
+                            label: InlayHintLabel::String(format!(": {}", t.id)),
+                            kind: Some(InlayHintKind::TYPE),
+                            text_edits: None,
+                            tooltip: None,
+                            padding_left: None,
+                            padding_right: None,
+                            data: None,
+                        })
+                    })
+                    .collect()
+            })
+            .await;
+
+        hints.extend(function_params);
+        hints.extend(decls);
+
+        Ok(Some(hints))
     }
 }
 
@@ -2149,6 +2177,36 @@ event x::foo() {}",
                 .inlay_hint(InlayHintParams {
                     text_document: TextDocumentIdentifier::new((*uri).clone()),
                     range: Range::new(Position::new(0, 0), Position::new(3, 0)),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn inlay_hint_decls() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        let source = r#"
+const x: count = 0;
+global x: count = 0;
+option x: bool = T;
+
+const x = 0;
+global x = 0;
+option x = T;
+        "#;
+
+        db.add_file((*uri).clone(), source);
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .inlay_hint(InlayHintParams {
+                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    range: Range::new(Position::new(0, 0), Position::new(5, 0)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await

@@ -216,7 +216,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         .named_descendant_for_point_range(loc.range)?;
 
     let d = match node.kind() {
-        "var_decl" | "const_decl" | "formal_arg" => {
+        "var_decl" | "const_decl" | "option_decl" | "formal_arg" => {
             let typ = node.named_children_not("nl").into_iter().nth(1)?;
 
             match typ.kind() {

@@ -934,6 +934,9 @@ pub trait Query: Parse {
 
     #[must_use]
     fn function_calls(&self, uri: Arc<Url>) -> Arc<Vec<FunctionCall>>;
+
+    #[must_use]
+    fn untyped_var_decls(&self, uri: Arc<Url>) -> Arc<Vec<Decl>>;
 }
 
 #[instrument(skip(db))]
@@ -1006,6 +1009,75 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
                 })?;
 
                 Some(FunctionCall { f, args })
+            })
+            .collect(),
+    )
+}
+
+#[instrument(skip(db))]
+fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
+    let Some(tree) = db.parse(uri.clone()) else {
+        return Arc::default();
+    };
+
+    // Match untyped var and const decls
+    let query = match tree_sitter::Query::new(
+        language_zeek(),
+        "[(const_decl) (option_decl) (var_decl)] @var",
+    ) {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return Arc::default();
+        }
+    };
+
+    let Some(source) = db.source(uri.clone()) else {
+        return Arc::default();
+    };
+
+    let source = source.as_bytes();
+
+    let c_var = query
+        .capture_index_for_name("var")
+        .expect("call should be captured");
+
+    Arc::new(
+        tree_sitter::QueryCursor::new()
+            .matches(&query, tree.root_node().0, source)
+            .filter_map(|m| {
+                let m: Node = m.nodes_for_capture_index(c_var).next()?.into();
+
+                // Reject decls which have a type.
+                if m.named_child("type").is_some() {
+                    return None;
+                }
+
+                let kind = match m.kind() {
+                    "const_decl" => DeclKind::Const,
+                    "var_decl" => DeclKind::Variable,
+                    "option_decl" => DeclKind::Option,
+                    _ => return None,
+                };
+
+                let empty: Str = "".into();
+
+                // Definite abuse of the Decl type since we really only transport out locations. We
+                // use `range` for the range of the decl, and `selection_range` for the range of
+                // the identifier.
+                Some(Decl {
+                    module: ModuleId::None,
+                    id: empty.clone(),
+                    fqid: empty.clone(),
+                    kind,
+                    is_export: None,
+                    loc: Some(Location {
+                        range: m.range(),
+                        selection_range: m.named_child("id")?.range(),
+                        uri: uri.clone(),
+                    }),
+                    documentation: empty.clone(),
+                })
             })
             .collect(),
     )

@@ -1189,7 +1189,10 @@ global x2 = f2();
             global p = 8080/tcp;
             global i3 = 10 mins;
             global s = \"str\";
-            global f = 0.1234;",
+            global f = 0.1234;
+            global b1 = T;
+            global b2 = F;
+            ",
         );
 
         let db = db.0;

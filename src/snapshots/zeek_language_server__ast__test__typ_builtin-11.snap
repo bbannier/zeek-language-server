@@ -1,0 +1,17 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_range(uri.clone(),\n            Range::new(pos, pos))).and_then(|d| db.typ(d))"
+---
+Some(
+    Decl {
+        module: Global,
+        id: "<boolean>",
+        fqid: "<boolean>",
+        kind: Type(
+            [],
+        ),
+        is_export: None,
+        loc: None,
+        documentation: "Builtin type '<boolean>'",
+    },
+)

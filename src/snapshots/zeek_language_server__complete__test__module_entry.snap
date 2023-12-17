@@ -24,7 +24,9 @@ Some(
                 preselect: None,
                 sort_text: None,
                 filter_text: None,
-                insert_text: None,
+                insert_text: Some(
+                    "BAR",
+                ),
                 insert_text_format: None,
                 insert_text_mode: None,
                 text_edit: None,

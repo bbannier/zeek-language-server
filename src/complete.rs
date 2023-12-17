@@ -130,9 +130,10 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         // We are just completing some arbitrary identifier at this point.
         Some(complete_any(state, root, node, uri))
     )
-    .map(|items| items.into_iter().filter(|i|
-            text.map_or(true, |t| rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0)
-            ).collect::<Vec<_>>())
+    .map(|items|
+        items.into_iter()
+            .filter(|i| text.map_or(true, |t| rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0))
+            .collect::<Vec<_>>())
     .map(CompletionResponse::from)
 }
 
@@ -315,15 +316,15 @@ fn complete_any(
                 None
             }
         }))
-        .filter(|item| {
+        .filter_map(|item| {
             // Filter down items so for `ns::id`-type identifiers we get more natural completions.
 
             // If there is no text to complete just return all results.
             let Some(text) = text_at_completion else {
-                return true;
+                return Some(item);
             };
             if text.is_empty() {
-                return true;
+                return Some(item);
             }
 
             let label = &item.label;
@@ -333,21 +334,31 @@ fn complete_any(
             // match items from the namespace.
             if let Some((t1, t2)) = text.split_once("::") {
                 let Some((l1, l2)) = label.split_once("::") else {
-                    return false;
+                    return None;
                 };
-                return t1 == l1
-                    && (t2.is_empty() || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0);
+
+                return (t1 == l1
+                    && (t2.is_empty() || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0))
+                    .then(|| CompletionItem {
+                        insert_text: if t2.is_empty() {
+                            Some(l2.to_string())
+                        } else {
+                            None
+                        },
+                        ..item.clone()
+                    });
             }
 
             // Require completion text and item to either both be namespaced or none. This
             // e.g., removes a lot of identifiers in modules if we just want to complete a
             // keyword.
-            text.contains("::") == label.contains("::")
-                // Else just fuzzymatch.
-                && rust_fuzzy_search::fuzzy_compare(
-                    &text.to_lowercase(),
-                    &label.to_lowercase(),
-                    ) > 0.0
+            (text.contains("::") == label.contains("::")
+                         // Else just fuzzymatch.
+                         && rust_fuzzy_search::fuzzy_compare(
+                             &text.to_lowercase(),
+                             &label.to_lowercase(),
+                             ) > 0.0)
+                .then_some(item)
         })
         .collect::<Vec<_>>()
 }

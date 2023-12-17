@@ -488,7 +488,7 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         // Check whether a newer release is available.
         if self
-            .with_state(|s| s.client_options().check_for_updates.unwrap_or(true))
+            .with_state(|s| s.client_options().check_for_updates)
             .await
         {
             if let Some(latest) = self.get_latest_release(None).await {
@@ -1336,11 +1336,7 @@ impl LanguageServer for Backend {
 
         let function_params: Vec<_> = self
             .with_state(|state| {
-                if !state
-                    .client_options()
-                    .inlay_hints_parameters
-                    .unwrap_or(true)
-                {
+                if !state.client_options().inlay_hints_parameters {
                     return Vec::default();
                 }
 
@@ -1381,7 +1377,7 @@ impl LanguageServer for Backend {
 
         let decls: Vec<_> = self
             .with_state(|state| {
-                if !state.client_options().inlay_hints_variables.unwrap_or(true) {
+                if !state.client_options().inlay_hints_variables {
                     return Vec::default();
                 }
 
@@ -1443,22 +1439,35 @@ pub async fn run() {
 #[derive(Deserialize, Debug, Clone, Copy)]
 /// Custom `initializationOptions` clients can send.
 pub struct Options {
-    check_for_updates: Option<bool>,
-    inlay_hints_parameters: Option<bool>,
-    inlay_hints_variables: Option<bool>,
+    #[serde(default = "Options::_default_check_for_updates")]
+    check_for_updates: bool,
+
+    #[serde(default = "Options::_default_inlay_hints_parameters")]
+    inlay_hints_parameters: bool,
+
+    #[serde(default = "Options::_default_inlay_hints_variables")]
+    inlay_hints_variables: bool,
 }
 
 impl Options {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
-            check_for_updates: Some(true),
-            inlay_hints_variables: Some(true),
-            inlay_hints_parameters: Some(true),
+            check_for_updates: true,
+            inlay_hints_variables: true,
+            inlay_hints_parameters: true,
         }
     }
 
-    const fn _true() -> bool {
-        true
+    const fn _default_check_for_updates() -> bool {
+        Self::new().check_for_updates
+    }
+
+    const fn _default_inlay_hints_parameters() -> bool {
+        Self::new().inlay_hints_parameters
+    }
+
+    const fn _default_inlay_hints_variables() -> bool {
+        Self::new().inlay_hints_variables
     }
 }
 
@@ -2237,23 +2246,23 @@ option x = T;
         let default = lsp::Options::new();
         let opts = vec![
             lsp::Options {
-                inlay_hints_variables: Some(false),
-                inlay_hints_parameters: Some(false),
+                inlay_hints_variables: false,
+                inlay_hints_parameters: false,
                 ..default
             },
             lsp::Options {
-                inlay_hints_variables: Some(true),
-                inlay_hints_parameters: Some(false),
+                inlay_hints_variables: true,
+                inlay_hints_parameters: false,
                 ..default
             },
             lsp::Options {
-                inlay_hints_variables: Some(false),
-                inlay_hints_parameters: Some(true),
+                inlay_hints_variables: false,
+                inlay_hints_parameters: true,
                 ..default
             },
             lsp::Options {
-                inlay_hints_variables: Some(true),
-                inlay_hints_parameters: Some(true),
+                inlay_hints_variables: true,
+                inlay_hints_parameters: true,
                 ..default
             },
         ];

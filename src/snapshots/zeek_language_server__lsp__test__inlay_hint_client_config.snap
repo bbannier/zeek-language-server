@@ -1,0 +1,9 @@
+---
+source: src/lsp.rs
+expression: "server.inlay_hint(InlayHintParams {\n            text_document: TextDocumentIdentifier::new((*uri).clone()),\n            range: Range::new(Position::new(0, 0), Position::new(5, 0)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+---
+Ok(
+    Some(
+        [],
+    ),
+)

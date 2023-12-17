@@ -488,7 +488,7 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         // Check whether a newer release is available.
         if self
-            .with_state(|s| s.client_options().check_for_updates)
+            .with_state(|s| s.client_options().check_for_updates.unwrap_or(true))
             .await
         {
             if let Some(latest) = self.get_latest_release(None).await {
@@ -1336,6 +1336,14 @@ impl LanguageServer for Backend {
 
         let function_params: Vec<_> = self
             .with_state(|state| {
+                if !state
+                    .client_options()
+                    .inlay_hints_parameters
+                    .unwrap_or(true)
+                {
+                    return Vec::default();
+                }
+
                 let possible_call_ranges = state.function_calls(uri.clone());
                 possible_call_ranges
                     .iter()
@@ -1373,7 +1381,10 @@ impl LanguageServer for Backend {
 
         let decls: Vec<_> = self
             .with_state(|state| {
-                //
+                if !state.client_options().inlay_hints_variables.unwrap_or(true) {
+                    return Vec::default();
+                }
+
                 let decls = state.untyped_var_decls(uri.clone());
                 decls
                     .iter()
@@ -1432,14 +1443,22 @@ pub async fn run() {
 #[derive(Deserialize, Debug, Clone, Copy)]
 /// Custom `initializationOptions` clients can send.
 pub struct Options {
-    check_for_updates: bool,
+    check_for_updates: Option<bool>,
+    inlay_hints_parameters: Option<bool>,
+    inlay_hints_variables: Option<bool>,
 }
 
 impl Options {
     fn new() -> Self {
         Self {
-            check_for_updates: true,
+            check_for_updates: Some(true),
+            inlay_hints_variables: Some(true),
+            inlay_hints_parameters: Some(true),
         }
+    }
+
+    const fn _true() -> bool {
+        true
     }
 }
 
@@ -1465,7 +1484,7 @@ pub(crate) mod test {
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, parse::Parse, zeek};
+    use crate::{ast::Ast, lsp, parse::Parse, zeek, Client};
 
     use super::{Backend, SourceUpdate};
 
@@ -2211,6 +2230,59 @@ option x = T;
                 })
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn inlay_hint_client_config() {
+        let default = lsp::Options::new();
+        let opts = vec![
+            lsp::Options {
+                inlay_hints_variables: Some(false),
+                inlay_hints_parameters: Some(false),
+                ..default
+            },
+            lsp::Options {
+                inlay_hints_variables: Some(true),
+                inlay_hints_parameters: Some(false),
+                ..default
+            },
+            lsp::Options {
+                inlay_hints_variables: Some(false),
+                inlay_hints_parameters: Some(true),
+                ..default
+            },
+            lsp::Options {
+                inlay_hints_variables: Some(true),
+                inlay_hints_parameters: Some(true),
+                ..default
+            },
+        ];
+
+        for options in opts {
+            let mut db = TestDatabase::default();
+            let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+            db.0.set_client_options(Arc::new(options));
+
+            let source = "
+global f: function(x: count);
+f(1);
+const x = 1;
+        ";
+
+            db.add_file((*uri).clone(), source);
+
+            let server = serve(db);
+
+            assert_debug_snapshot!(
+                server
+                    .inlay_hint(InlayHintParams {
+                        text_document: TextDocumentIdentifier::new((*uri).clone()),
+                        range: Range::new(Position::new(0, 0), Position::new(5, 0)),
+                        work_done_progress_params: WorkDoneProgressParams::default(),
+                    })
+                    .await
+            );
+        }
     }
 }
 

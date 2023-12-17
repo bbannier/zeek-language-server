@@ -108,7 +108,7 @@ impl Default for Database {
         db.set_prefixes(Arc::default());
         db.set_workspace_folders(Arc::default());
         db.set_capabilities(Arc::default());
-        db.set_client_options(Arc::new(Options::new()));
+        db.set_initialization_options(Arc::new(InitializationOptions::new()));
 
         db
     }
@@ -424,11 +424,11 @@ impl LanguageServer for Backend {
         self.with_state_mut(move |state| {
             state.set_workspace_folders(Arc::new(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
-            state.set_client_options(Arc::new(
+            state.set_initialization_options(Arc::new(
                 params
                     .initialization_options
                     .and_then(|options| serde_json::from_value(options).ok())
-                    .unwrap_or_else(Options::new),
+                    .unwrap_or_else(InitializationOptions::new),
             ));
         })
         .await;
@@ -488,7 +488,7 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         // Check whether a newer release is available.
         if self
-            .with_state(|s| s.client_options().check_for_updates)
+            .with_state(|s| s.initialization_options().check_for_updates)
             .await
         {
             if let Some(latest) = self.get_latest_release(None).await {
@@ -1336,7 +1336,7 @@ impl LanguageServer for Backend {
 
         let function_params: Vec<_> = self
             .with_state(|state| {
-                if !state.client_options().inlay_hints_parameters {
+                if !state.initialization_options().inlay_hints_parameters {
                     return Vec::default();
                 }
 
@@ -1377,7 +1377,7 @@ impl LanguageServer for Backend {
 
         let decls: Vec<_> = self
             .with_state(|state| {
-                if !state.client_options().inlay_hints_variables {
+                if !state.initialization_options().inlay_hints_variables {
                     return Vec::default();
                 }
 
@@ -1438,18 +1438,18 @@ pub async fn run() {
 
 #[derive(Deserialize, Debug, Clone, Copy)]
 /// Custom `initializationOptions` clients can send.
-pub struct Options {
-    #[serde(default = "Options::_default_check_for_updates")]
+pub struct InitializationOptions {
+    #[serde(default = "InitializationOptions::_default_check_for_updates")]
     check_for_updates: bool,
 
-    #[serde(default = "Options::_default_inlay_hints_parameters")]
+    #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
     inlay_hints_parameters: bool,
 
-    #[serde(default = "Options::_default_inlay_hints_variables")]
+    #[serde(default = "InitializationOptions::_default_inlay_hints_variables")]
     inlay_hints_variables: bool,
 }
 
-impl Options {
+impl InitializationOptions {
     const fn new() -> Self {
         Self {
             check_for_updates: true,
@@ -2243,24 +2243,24 @@ option x = T;
 
     #[tokio::test]
     async fn inlay_hint_client_config() {
-        let default = lsp::Options::new();
+        let default = lsp::InitializationOptions::new();
         let opts = vec![
-            lsp::Options {
+            lsp::InitializationOptions {
                 inlay_hints_variables: false,
                 inlay_hints_parameters: false,
                 ..default
             },
-            lsp::Options {
+            lsp::InitializationOptions {
                 inlay_hints_variables: true,
                 inlay_hints_parameters: false,
                 ..default
             },
-            lsp::Options {
+            lsp::InitializationOptions {
                 inlay_hints_variables: false,
                 inlay_hints_parameters: true,
                 ..default
             },
-            lsp::Options {
+            lsp::InitializationOptions {
                 inlay_hints_variables: true,
                 inlay_hints_parameters: true,
                 ..default
@@ -2270,7 +2270,7 @@ option x = T;
         for options in opts {
             let mut db = TestDatabase::default();
             let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
-            db.0.set_client_options(Arc::new(options));
+            db.0.set_initialization_options(Arc::new(options));
 
             let source = "
 global f: function(x: count);

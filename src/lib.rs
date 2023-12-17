@@ -48,7 +48,7 @@ pub trait Client: salsa::Database {
     fn capabilities(&self) -> Arc<ClientCapabilities>;
 
     #[salsa::input]
-    fn client_options(&self) -> Arc<lsp::Options>;
+    fn initialization_options(&self) -> Arc<lsp::InitializationOptions>;
 }
 
 type Str = Arc<str>;

@@ -62,34 +62,5 @@ Some(
             data: None,
             tags: None,
         },
-        CompletionItem {
-            label: "foo::FOO",
-            label_details: None,
-            kind: Some(
-                Constant,
-            ),
-            detail: None,
-            documentation: Some(
-                MarkupContent(
-                    MarkupContent {
-                        kind: Markdown,
-                        value: "```zeek\nconst FOO = 0;\n```",
-                    },
-                ),
-            ),
-            deprecated: None,
-            preselect: None,
-            sort_text: None,
-            filter_text: None,
-            insert_text: None,
-            insert_text_format: None,
-            insert_text_mode: None,
-            text_edit: None,
-            additional_text_edits: None,
-            command: None,
-            commit_characters: None,
-            data: None,
-            tags: None,
-        },
     ],
 )

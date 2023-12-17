@@ -326,19 +326,28 @@ fn complete_any(
                 return true;
             }
 
+            let label = &item.label;
+
             // The the completion text contains a `::` interpret it as a namespace and only show
             // completions from that namespace. The namespace needs to match exactly, but we fuzzy
             // match items from the namespace.
             if let Some((t1, t2)) = text.split_once("::") {
-                let Some((l1, l2)) = item.label.split_once("::") else {
+                let Some((l1, l2)) = label.split_once("::") else {
                     return false;
                 };
                 return t1 == l1
                     && (t2.is_empty() || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0);
             }
 
-            // Anything else just fuzzymatch.
-            rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &item.label.to_lowercase()) > 0.0
+            // Require completion text and item to either both be namespaced or none. This
+            // e.g., removes a lot of identifiers in modules if we just want to complete a
+            // keyword.
+            text.contains("::") == label.contains("::")
+                // Else just fuzzymatch.
+                && rust_fuzzy_search::fuzzy_compare(
+                    &text.to_lowercase(),
+                    &label.to_lowercase(),
+                    ) > 0.0
         })
         .collect::<Vec<_>>()
 }

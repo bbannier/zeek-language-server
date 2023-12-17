@@ -738,6 +738,7 @@ impl LanguageServer for Backend {
                             DeclKind::Field => "field",
                             DeclKind::EnumMember => "enum member",
                             DeclKind::LoopIndex(_, _) => "loop index",
+                            DeclKind::Module => "module",
                         };
 
                         contents.push(MarkedString::String(format!(
@@ -1422,6 +1423,7 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
         DeclKind::EventDecl(_) | DeclKind::EventDef(_) => SymbolKind::EVENT,
         DeclKind::Field => SymbolKind::FIELD,
         DeclKind::EnumMember => SymbolKind::ENUM_MEMBER,
+        DeclKind::Module => SymbolKind::MODULE,
     }
 }
 

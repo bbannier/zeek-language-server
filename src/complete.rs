@@ -369,6 +369,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::EventDecl(_) | DeclKind::EventDef(_) => CompletionItemKind::EVENT,
         DeclKind::Field => CompletionItemKind::FIELD,
         DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
+        DeclKind::Module => CompletionItemKind::MODULE,
     }
 }
 

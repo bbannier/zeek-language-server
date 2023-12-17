@@ -9,6 +9,7 @@ use crate::{parse::Parse, Str};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
+    Module,
     Global,
     Option,
     Const,

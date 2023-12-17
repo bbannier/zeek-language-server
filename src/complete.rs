@@ -390,9 +390,9 @@ fn completion_text<'a>(node: Node, source: &'a str) -> Option<&'a str> {
 mod test {
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{
-        CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
-        PartialResultParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-        WorkDoneProgressParams,
+        CompletionContext, CompletionItemKind, CompletionParams, CompletionResponse,
+        CompletionTriggerKind, PartialResultParams, Position, TextDocumentIdentifier,
+        TextDocumentPositionParams, Url, WorkDoneProgressParams,
     };
 
     use crate::{complete::complete, lsp::test::TestDatabase};
@@ -605,6 +605,50 @@ mod test {
                 context: None,
             },
         ));
+    }
+
+    #[test]
+    fn modules() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+            const X = T;
+            module foo;
+            export { const FOO = 0; }
+            module bar;
+            export { const BAR = 0; }
+            module baz;
+            foo
+            ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(7, 15)
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        )
+        .map(|response| {
+            // Filter out keywords since they only add noise for this test.
+            let CompletionResponse::Array(xs) = response else {
+                unreachable!("expected response with array");
+            };
+            xs.into_iter()
+                .filter(|x| {
+                    x.kind
+                        .map(|k| k != CompletionItemKind::KEYWORD)
+                        .unwrap_or(false)
+                })
+                .collect::<Vec<_>>()
+        }));
     }
 
     #[test]

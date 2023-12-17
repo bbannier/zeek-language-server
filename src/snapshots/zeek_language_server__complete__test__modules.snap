@@ -1,0 +1,66 @@
+---
+source: src/complete.rs
+expression: "complete(&db.0,\n        CompletionParams {\n            text_document_position: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n                Position::new(7, 15)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n            context: None,\n        }).map(|response|\n        {\n            let CompletionResponse::Array(xs) =\n                response else {\n                    unreachable!(\"expected response with array\");\n                };\n            xs.into_iter().filter(|x|\n                        {\n                            x.kind.map(|k|\n                                        k != CompletionItemKind::KEYWORD).unwrap_or(false)\n                        }).collect::<Vec<_>>()\n        })"
+---
+Some(
+    [
+        CompletionItem {
+            label: "FOO",
+            label_details: None,
+            kind: Some(
+                Constant,
+            ),
+            detail: None,
+            documentation: Some(
+                MarkupContent(
+                    MarkupContent {
+                        kind: Markdown,
+                        value: "```zeek\nconst FOO = 0;\n```",
+                    },
+                ),
+            ),
+            deprecated: None,
+            preselect: None,
+            sort_text: None,
+            filter_text: None,
+            insert_text: None,
+            insert_text_format: None,
+            insert_text_mode: None,
+            text_edit: None,
+            additional_text_edits: None,
+            command: None,
+            commit_characters: None,
+            data: None,
+            tags: None,
+        },
+        CompletionItem {
+            label: "foo::FOO",
+            label_details: None,
+            kind: Some(
+                Constant,
+            ),
+            detail: None,
+            documentation: Some(
+                MarkupContent(
+                    MarkupContent {
+                        kind: Markdown,
+                        value: "```zeek\nconst FOO = 0;\n```",
+                    },
+                ),
+            ),
+            deprecated: None,
+            preselect: None,
+            sort_text: None,
+            filter_text: None,
+            insert_text: None,
+            insert_text_format: None,
+            insert_text_mode: None,
+            text_edit: None,
+            additional_text_edits: None,
+            command: None,
+            commit_characters: None,
+            data: None,
+            tags: None,
+        },
+    ],
+)

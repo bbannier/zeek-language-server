@@ -460,7 +460,7 @@ impl LanguageServer for Backend {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec!["$".into()]),
+                    trigger_characters: Some(vec!["$".into(), ":".into()]),
                     ..CompletionOptions::default()
                 }),
                 declaration_provider: Some(DeclarationCapability::Simple(true)),

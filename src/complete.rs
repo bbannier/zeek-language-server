@@ -72,10 +72,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
             .map_or(false, |c| c == "$");
 
         let ends_in_dd = root
-            .descendant_for_position(Position::new(
-                    node.range().end.line,
-                    node.range().end.character,
-                    ))
+            .descendant_for_position(node.range().end)
             .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
             .map_or(false, |text| text.ends_with('$'));
 
@@ -90,6 +87,17 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         } else {
             None
         }
+    }).or_else(|| {
+        // If we are completing some identifier from a module got to the node containing the full
+        // identifier.
+        while node.utf8_text(source.as_bytes()) == Ok(":") {
+            let Some(p) = node.parent() else {
+                return None;
+            };
+            node = p;
+        }
+
+        None
     }).or_else(||
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
@@ -307,6 +315,31 @@ fn complete_any(
                 None
             }
         }))
+        .filter(|item| {
+            // Filter down items so for `ns::id`-type identifiers we get more natural completions.
+
+            // If there is no text to complete just return all results.
+            let Some(text) = text_at_completion else {
+                return true;
+            };
+            if text.is_empty() {
+                return true;
+            }
+
+            // The the completion text contains a `::` interpret it as a namespace and only show
+            // completions from that namespace. The namespace needs to match exactly, but we fuzzy
+            // match items from the namespace.
+            if let Some((t1, t2)) = text.split_once("::") {
+                let Some((l1, l2)) = item.label.split_once("::") else {
+                    return false;
+                };
+                return t1 == l1
+                    && (t2.is_empty() || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0);
+            }
+
+            // Anything else just fuzzymatch.
+            rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &item.label.to_lowercase()) > 0.0
+        })
         .collect::<Vec<_>>()
 }
 
@@ -572,6 +605,34 @@ mod test {
                 context: None,
             },
         ));
+    }
+
+    #[test]
+    fn module_entry() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+            const X = T;
+            module foo;
+            export { const BAR = 0; }
+            foo::
+            ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(4, 17)
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            }
+        ))
     }
 
     #[test]

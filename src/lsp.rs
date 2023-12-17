@@ -1436,7 +1436,7 @@ pub async fn run() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 /// Custom `initializationOptions` clients can send.
 pub struct InitializationOptions {
     #[serde(default = "InitializationOptions::_default_check_for_updates")]
@@ -2292,6 +2292,57 @@ const x = 1;
                     .await
             );
         }
+    }
+
+    #[test]
+    fn deserialize_initialization_options() {
+        use lsp::InitializationOptions;
+        use serde_json::json;
+
+        assert_eq!(
+            InitializationOptions::new(),
+            InitializationOptions {
+                check_for_updates: true,
+                inlay_hints_variables: true,
+                inlay_hints_parameters: true
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(json!({})).unwrap(),
+            InitializationOptions::new()
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(json!({"check_for_updates": false}))
+                .unwrap(),
+            InitializationOptions {
+                check_for_updates: false,
+                ..InitializationOptions::new()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(
+                json!({"inlay_hints_parameters": false})
+            )
+            .unwrap(),
+            InitializationOptions {
+                inlay_hints_parameters: false,
+                ..InitializationOptions::new()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(
+                json!({"inlay_hints_variables": false})
+            )
+            .unwrap(),
+            InitializationOptions {
+                inlay_hints_variables: false,
+                ..InitializationOptions::new()
+            }
+        );
     }
 }
 

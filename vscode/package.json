@@ -27,9 +27,6 @@
   "engines": {
     "vscode": "^1.82.0"
   },
-  "activationEvents": [
-    "onLanguage:zeek"
-  ],
   "main": "./out/extension",
   "icon": "images/icon.png",
   "contributes": {

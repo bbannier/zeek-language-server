@@ -4,6 +4,15 @@ expression: decls
 ---
 [
     Decl {
+        module: None,
+        id: "x",
+        fqid: "x",
+        kind: Module,
+        is_export: None,
+        loc: None,
+        documentation: "```zeek\nx\n```",
+    },
+    Decl {
         module: String(
             "x",
         ),

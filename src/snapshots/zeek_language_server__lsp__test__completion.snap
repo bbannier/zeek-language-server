@@ -1411,6 +1411,35 @@ expression: result
         tags: None,
     },
     CompletionItem {
+        label: "mod_a",
+        label_details: None,
+        kind: Some(
+            Module,
+        ),
+        detail: None,
+        documentation: Some(
+            MarkupContent(
+                MarkupContent {
+                    kind: Markdown,
+                    value: "```zeek\nmod_a\n```",
+                },
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
         label: "mod_a::A",
         label_details: None,
         kind: Some(
@@ -1440,6 +1469,35 @@ expression: result
         tags: None,
     },
     CompletionItem {
+        label: "mod_b",
+        label_details: None,
+        kind: Some(
+            Module,
+        ),
+        detail: None,
+        documentation: Some(
+            MarkupContent(
+                MarkupContent {
+                    kind: Markdown,
+                    value: "```zeek\nmod_b\n```",
+                },
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
         label: "mod_b::B",
         label_details: None,
         kind: Some(
@@ -1451,6 +1509,35 @@ expression: result
                 MarkupContent {
                     kind: Markdown,
                     value: "```zeek\nglobal B = 2;\n```",
+                },
+            ),
+        ),
+        deprecated: None,
+        preselect: None,
+        sort_text: None,
+        filter_text: None,
+        insert_text: None,
+        insert_text_format: None,
+        insert_text_mode: None,
+        text_edit: None,
+        additional_text_edits: None,
+        command: None,
+        commit_characters: None,
+        data: None,
+        tags: None,
+    },
+    CompletionItem {
+        label: "mod_x",
+        label_details: None,
+        kind: Some(
+            Module,
+        ),
+        detail: None,
+        documentation: Some(
+            MarkupContent(
+                MarkupContent {
+                    kind: Markdown,
+                    value: "```zeek\nmod_x\n```",
                 },
             ),
         ),

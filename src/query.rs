@@ -776,6 +776,39 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
         .collect()
 }
 
+#[instrument]
+#[must_use]
+fn modules(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
+    let query = match tree_sitter::Query::new(language_zeek(), "(module_decl (id)@id)") {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return FxHashSet::default();
+        }
+    };
+
+    let c_id = query
+        .capture_index_for_name("id")
+        .expect("id should be captured");
+
+    tree_sitter::QueryCursor::new()
+        .matches(&query, node.0, source)
+        .filter_map(|c| {
+            let node_id = c.nodes_for_capture_index(c_id).next()?;
+            let id = node_id.utf8_text(source).ok()?;
+            Some(Decl {
+                module: ModuleId::None,
+                id: id.into(),
+                fqid: id.into(),
+                kind: DeclKind::Module,
+                is_export: None,
+                loc: None,
+                documentation: format!("```zeek\n{id}\n```").as_str().into(),
+            })
+        })
+        .collect()
+}
+
 /// Helper to compute a module ID from a given string.
 fn compute_module_id(id: &str) -> ModuleId {
     match id {
@@ -950,7 +983,10 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
         return Arc::default();
     };
 
-    Arc::new(decls_(tree.root_node(), uri, source.as_bytes()))
+    let decls = decls_(tree.root_node(), uri.clone(), source.as_bytes());
+    let modules = modules(tree.root_node(), uri, source.as_bytes());
+
+    Arc::new(decls.into_iter().chain(modules.into_iter()).collect())
 }
 
 #[instrument(skip(db))]

@@ -315,6 +315,13 @@ export async function activate(context: ExtensionContext): Promise<void> {
     checkForUpdates = path.length > 0;
   }
 
+  const inlayHintsVariables = configuration.get<boolean>(
+    "inlayHints.variables.enabled",
+  );
+  const inlayHintsParameters = configuration.get<boolean>(
+    "inlayHints.parameters.enabled",
+  );
+
   const serverOptions: ServerOptions = {
     run: serverExecutable,
     debug: serverExecutable,
@@ -322,7 +329,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "zeek" }],
-    initializationOptions: { check_for_updates: checkForUpdates },
+    initializationOptions: {
+      check_for_updates: checkForUpdates,
+      inlay_hints_parameters: inlayHintsParameters,
+      inlay_hints_variables: inlayHintsVariables,
+    },
   };
 
   CLIENT = new LanguageClient(

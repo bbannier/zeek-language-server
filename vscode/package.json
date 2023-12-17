@@ -85,6 +85,16 @@
           ],
           "default": "error",
           "markdownDescription": "Logging verbosity of the server. When reporting bugs, please include a server log with `debug` verbosity if possible."
+        },
+        "zeekLanguageServer.inlayHints.parameters.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Whether to show inlay hints for function call parameters"
+        },
+        "zeekLanguageServer.inlayHints.variables.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Whether to show inlay hints for variable declarations"
         }
       }
     },

@@ -40,7 +40,7 @@ fn init_logging(args: &Args) -> Result<WorkerGuard> {
             .with_endpoint(&args.collector_endpoint)
             .with_service_name(env!("CARGO_BIN_NAME"))
             .with_reqwest()
-            .install_batch(opentelemetry::runtime::Tokio)?;
+            .install_batch(opentelemetry_sdk::runtime::Tokio)?;
 
         #[cfg(feature = "telemetry")]
         let registry = registry.with(tracing_opentelemetry::layer().with_tracer(tracer));

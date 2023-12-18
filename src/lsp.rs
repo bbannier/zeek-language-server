@@ -7,6 +7,7 @@ use crate::{
 };
 use itertools::Itertools;
 use rayon::prelude::*;
+use rustc_hash::FxHashSet;
 use salsa::{ParallelDatabase, Snapshot};
 use semver::Version;
 use serde::Deserialize;
@@ -31,10 +32,10 @@ use tower_lsp::{
         InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip, Location,
         MarkedString, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf,
         ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions,
-        SignatureHelpParams, SignatureInformation, SymbolInformation, SymbolKind,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgress,
-        WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        ProgressToken, Range, ReferenceParams, ServerCapabilities, ServerInfo, SignatureHelp,
+        SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
+        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
         WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
@@ -475,6 +476,7 @@ impl LanguageServer for Backend {
                 document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1407,6 +1409,111 @@ impl LanguageServer for Backend {
 
         Ok(Some(hints))
     }
+
+    #[instrument]
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        /// Helper to compute all sources reachable from a given file.
+        fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
+            let mut loads = FxHashSet::default();
+            loads.extend(db.implicit_loads().iter().cloned());
+            loads.extend(db.loaded_files(f).iter().cloned());
+
+            let mut recursive_loads = FxHashSet::default();
+            for l in &loads {
+                recursive_loads.extend(db.loaded_files_recursive(l.clone()).iter().cloned());
+            }
+            loads.extend(recursive_loads.into_iter());
+
+            loads
+        }
+
+        let uri = Arc::new(params.text_document_position.text_document.uri);
+        let position = params.text_document_position.position;
+
+        // TODO(bbannier): respect `params.context.include_declaration`.
+
+        let db = self.with_state(|state| state.snapshot()).await;
+
+        let tree = db.parse(uri.clone());
+        let Some(tree) = tree.as_ref() else {
+            return Ok(None);
+        };
+        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+            return Ok(None);
+        };
+        let Some(decl) = db.resolve(NodeLocation::from_node(uri.clone(), node)) else {
+            return Ok(None);
+        };
+
+        let Some(decl_loc) = decl.loc.as_ref() else {
+            return Ok(None);
+        };
+        let decl_uri = &decl_loc.uri;
+
+        let files = if decl.is_export == Some(true) {
+            all_sources(uri.clone(), &db)
+                .into_iter()
+                .chain(std::iter::once(uri.clone()).collect::<FxHashSet<_>>())
+                .collect()
+        } else {
+            std::iter::once(uri.clone()).collect::<FxHashSet<_>>()
+        };
+
+        let locs = {
+            let locs = files
+                .into_iter()
+                .filter(|f| {
+                    // If the file we look at does not load the file with the decl, no references to it
+                    // can exist.
+                    f == decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
+                })
+                .map(|f| {
+                    let db = db.snapshot();
+                    let decl = decl.clone();
+                    tokio::spawn(async move {
+                        Some(
+                            db.ids(f.clone())
+                                .iter()
+                                .filter_map(|loc| {
+                                    // Prefilter ids so that they at least somewhere contain the text
+                                    // of the decl.
+                                    let tree = db.parse(loc.uri.clone())?;
+                                    let source = db.source(loc.uri.clone())?;
+                                    let txt = tree
+                                        .root_node()
+                                        .named_descendant_for_point_range(loc.range)?
+                                        .utf8_text(source.as_bytes())
+                                        .ok()?;
+                                    if !txt.contains(decl.id.as_ref()) {
+                                        return None;
+                                    }
+
+                                    db.resolve(loc.clone()).and_then(|resolved| {
+                                        if resolved != decl {
+                                            return None;
+                                        }
+
+                                        Some(Location {
+                                            uri: loc.uri.as_ref().clone(),
+                                            range: loc.range,
+                                        })
+                                    })
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                })
+                .collect_vec();
+            let locs = futures::future::join_all(locs).await;
+            locs.into_iter()
+                .filter_map(std::result::Result::ok)
+                .flatten()
+                .flatten()
+                .collect_vec()
+        };
+
+        Ok(Some(locs))
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1488,8 +1595,8 @@ pub(crate) mod test {
         lsp_types::{
             CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
             FormattingOptions, HoverParams, InitializeParams, InlayHintParams, PartialResultParams,
-            Position, Range, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-            WorkDoneProgressParams, WorkspaceSymbolParams,
+            Position, Range, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
+            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -2344,6 +2451,79 @@ const x = 1;
                 inlay_hints_variables: false,
                 ..InitializationOptions::new()
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn references() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        let source = r#"
+@load ./strings
+module foo;
+export {
+const x = 123;
+}
+const y = x;
+const z = x;
+levenshtein_distance("", "");
+            "#;
+
+        db.add_file((*uri).clone(), source);
+        db.add_file(
+            Url::from_file_path("/strings.zeek").unwrap(),
+            "function levenshtein_distance(a: string, b: string): count { return 0; }",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new((*uri).clone()),
+                        Position::new(8, 1), // On `levenshtein_distance`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new((*uri).clone()),
+                        Position::new(7, 6), // On `z`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new((*uri).clone()),
+                        Position::new(4, 6), // On first `x`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                })
+                .await
         );
     }
 }

@@ -15,8 +15,8 @@ mod server {
         lsp_types::{
             CompletionContext, CompletionParams, CompletionTriggerKind,
             DidChangeWatchedFilesParams, DidOpenTextDocumentParams, FileChangeType, FileEvent,
-            InitializeParams, InitializedParams, PartialResultParams, Position,
-            TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+            InitializeParams, InitializedParams, PartialResultParams, Position, ReferenceContext,
+            ReferenceParams, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
             WorkDoneProgressParams,
         },
         LanguageServer,
@@ -100,6 +100,112 @@ mod server {
         });
     }
 
+    fn bench_reference(c: &mut Criterion) {
+        let runtime = super::runtime();
+
+        let (db, uri) = runtime.block_on(async {
+            let db = Backend::default();
+            let _ = db
+                .initialize(InitializeParams {
+                    initialization_options: Some(json!({"check_for_updates": false})),
+                    ..InitializeParams::default()
+                })
+                .await;
+
+            // This triggers indexing.
+            db.initialized(InitializedParams {}).await;
+
+            let uri = Url::from_file_path("/x.zeek").unwrap();
+
+            db.did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem::new(
+                    uri.clone(),
+                    "zeek".to_string(),
+                    0,
+                    r#"
+module foo;
+export {
+const x = 123;
+}
+const y = x;
+const z = x;
+levenshtein_distance("", "");
+"#
+                    .to_string(),
+                ),
+            })
+            .await;
+
+            (db, uri)
+        });
+
+        // FIXME(bbannier): these benchmarks are somewhat pointless since we cannot invalidate the cache.
+
+        c.bench_function("server::reference::levenshtein_distance", |b| {
+            b.to_async(&runtime).iter(|| async {
+                db.references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(7, 0), // On `levenshtein_distance`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                })
+                .await
+            })
+        });
+
+        c.bench_function("server::reference::unexported_var", |b| {
+            b.to_async(&runtime).iter(|| async {
+                db.references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(6, 6), // On `z`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                })
+                .await
+            })
+        });
+
+        c.bench_function("server::reference::exported_var", |b| {
+            b.to_async(&runtime).iter(|| async {
+                let x = db
+                    .references(ReferenceParams {
+                        text_document_position: TextDocumentPositionParams::new(
+                            TextDocumentIdentifier::new(uri.clone()),
+                            Position::new(3, 6), // On first `x`.
+                        ),
+                        work_done_progress_params: WorkDoneProgressParams::default(),
+                        partial_result_params: PartialResultParams::default(),
+                        context: ReferenceContext {
+                            include_declaration: true,
+                        },
+                    })
+                    .await;
+                let Ok(x) = x else {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    return;
+                };
+                let Some(x) = x else {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                    return;
+                };
+                if x.is_empty() {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                    return;
+                };
+            })
+        });
+    }
+
     fn bench(c: &mut Criterion) {
         let runtime = super::runtime();
 
@@ -112,7 +218,7 @@ mod server {
         });
     }
 
-    criterion_group!(server, bench, bench_completion);
+    criterion_group!(server, bench, bench_completion, bench_reference);
 }
 
 mod zeek {

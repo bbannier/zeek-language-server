@@ -971,6 +971,9 @@ pub trait Query: Parse {
 
     #[must_use]
     fn untyped_var_decls(&self, uri: Arc<Url>) -> Arc<Vec<Decl>>;
+
+    #[must_use]
+    fn ids(&self, uri: Arc<Url>) -> Arc<Vec<NodeLocation>>;
 }
 
 #[instrument(skip(db))]
@@ -1115,6 +1118,42 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
                     }),
                     documentation: empty.clone(),
                 })
+            })
+            .collect(),
+    )
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
+    let Some(tree) = db.parse(uri.clone()) else {
+        return Arc::default();
+    };
+
+    // Match any id.
+    let query = match tree_sitter::Query::new(language_zeek(), "(id)@id") {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return Arc::default();
+        }
+    };
+
+    let Some(source) = db.source(uri.clone()) else {
+        return Arc::default();
+    };
+
+    let source = source.as_bytes();
+
+    let c_id = query
+        .capture_index_for_name("id")
+        .expect("id should be captured");
+
+    Arc::new(
+        tree_sitter::QueryCursor::new()
+            .matches(&query, tree.root_node().0, source)
+            .filter_map(|m| {
+                let m = m.nodes_for_capture_index(c_id).next()?;
+                Some(NodeLocation::from_node(uri.clone(), m.into()))
             })
             .collect(),
     )

@@ -1,0 +1,79 @@
+---
+source: src/lsp.rs
+expression: "server.references(ReferenceParams {\n            text_document_position: TextDocumentPositionParams::new(TextDocumentIdentifier::new((*uri).clone()),\n                Position::new(4, 6)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n            context: ReferenceContext { include_declaration: true },\n        }).await"
+---
+Ok(
+    Some(
+        [
+            Location {
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+                range: Range {
+                    start: Position {
+                        line: 4,
+                        character: 6,
+                    },
+                    end: Position {
+                        line: 4,
+                        character: 7,
+                    },
+                },
+            },
+            Location {
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+                range: Range {
+                    start: Position {
+                        line: 6,
+                        character: 10,
+                    },
+                    end: Position {
+                        line: 6,
+                        character: 11,
+                    },
+                },
+            },
+            Location {
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+                range: Range {
+                    start: Position {
+                        line: 7,
+                        character: 10,
+                    },
+                    end: Position {
+                        line: 7,
+                        character: 11,
+                    },
+                },
+            },
+        ],
+    ),
+)

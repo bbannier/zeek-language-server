@@ -27,6 +27,12 @@ The server interprets the following `initializationOptions`:
   Whether to show inlay hints for function call parameters
 - `inlay_hints_variables` (default: `true`):
   Whether to show inlay hints for variable declarations
+- `references` (default: `false`):
+  Whether to enable _Go To References_.
+
+  **WARNING**: Since typically Zeek scripts have incomplete `@load` statements
+  the provided list is very likely incomplete. Use a tool like `grep` to search
+  for all references of an identifier.
 
 ### Editor setup
 

@@ -321,6 +321,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const inlayHintsParameters = configuration.get<boolean>(
     "inlayHints.parameters.enabled",
   );
+  const references = configuration.get<boolean>("references.enabled");
 
   const serverOptions: ServerOptions = {
     run: serverExecutable,
@@ -333,6 +334,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       check_for_updates: checkForUpdates,
       inlay_hints_parameters: inlayHintsParameters,
       inlay_hints_variables: inlayHintsVariables,
+      references,
     },
   };
 

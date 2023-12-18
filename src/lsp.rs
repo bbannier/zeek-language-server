@@ -450,6 +450,10 @@ impl LanguageServer for Backend {
             }
         }
 
+        let enable_references = self
+            .with_state(|state| state.initialization_options().references)
+            .await;
+
         let has_zeek_format = zeek::has_format().await;
 
         Ok(InitializeResult {
@@ -476,7 +480,7 @@ impl LanguageServer for Backend {
                 document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(enable_references)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1541,6 +1545,7 @@ pub async fn run() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 /// Custom `initializationOptions` clients can send.
 pub struct InitializationOptions {
@@ -1552,6 +1557,9 @@ pub struct InitializationOptions {
 
     #[serde(default = "InitializationOptions::_default_inlay_hints_variables")]
     inlay_hints_variables: bool,
+
+    #[serde(default = "InitializationOptions::_default_references")]
+    references: bool,
 }
 
 impl InitializationOptions {
@@ -1560,6 +1568,7 @@ impl InitializationOptions {
             check_for_updates: true,
             inlay_hints_variables: true,
             inlay_hints_parameters: true,
+            references: false,
         }
     }
 
@@ -1573,6 +1582,10 @@ impl InitializationOptions {
 
     const fn _default_inlay_hints_variables() -> bool {
         Self::new().inlay_hints_variables
+    }
+
+    const fn _default_references() -> bool {
+        Self::new().references
     }
 }
 
@@ -2409,7 +2422,8 @@ const x = 1;
             InitializationOptions {
                 check_for_updates: true,
                 inlay_hints_variables: true,
-                inlay_hints_parameters: true
+                inlay_hints_parameters: true,
+                references: false,
             }
         );
 
@@ -2445,6 +2459,14 @@ const x = 1;
             .unwrap(),
             InitializationOptions {
                 inlay_hints_variables: false,
+                ..InitializationOptions::new()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(json!({"references": true})).unwrap(),
+            InitializationOptions {
+                references: true,
                 ..InitializationOptions::new()
             }
         );

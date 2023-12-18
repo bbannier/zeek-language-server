@@ -180,7 +180,7 @@
     "@typescript-eslint/parser": "^6.13.2",
     "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.19.9",
-    "eslint": "^8.55.0",
+    "eslint": "^8.56.0",
     "mocha": "^10.0.0",
     "prettier": "^3.1.1",
     "typescript": "^5.3.3"

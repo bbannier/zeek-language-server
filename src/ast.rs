@@ -267,7 +267,9 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             }
 
             // Return the actual type for variable declarations.
-            DeclKind::Global | DeclKind::Variable | DeclKind::LoopIndex(_, _) => db.typ(d),
+            DeclKind::Const | DeclKind::Global | DeclKind::Variable | DeclKind::LoopIndex(_, _) => {
+                db.typ(d)
+            }
 
             // Other kinds we return directly.
             _ => Some(d),
@@ -1165,6 +1167,7 @@ global x2 = f2();
             (*uri).clone(),
             "export {
                 const a = 42;
+                const b = a;
              }",
         );
 
@@ -1179,6 +1182,14 @@ global x2 = f2();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(db
             .resolve(NodeLocation::from_node(uri.clone(), a))
+            .and_then(|d| db.typ(d)));
+
+        let b = root
+            .named_descendant_for_position(Position::new(2, 22))
+            .unwrap();
+        assert_eq!(b.utf8_text(source.as_bytes()).unwrap(), "b");
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri.clone(), b))
             .and_then(|d| db.typ(d)));
     }
 

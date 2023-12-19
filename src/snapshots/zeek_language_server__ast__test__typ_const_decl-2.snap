@@ -1,0 +1,17 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_node(uri.clone(), b)).and_then(|d| db.typ(d))"
+---
+Some(
+    Decl {
+        module: Global,
+        id: "<integer>",
+        fqid: "<integer>",
+        kind: Type(
+            [],
+        ),
+        is_export: None,
+        loc: None,
+        documentation: "Builtin type '<integer>'",
+    },
+)

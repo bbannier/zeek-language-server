@@ -29,6 +29,8 @@ The server interprets the following `initializationOptions`:
   Whether to show inlay hints for variable declarations
 - `references` (default: `false`):
   Whether to enable _Go To References_.
+- `rename` (default: `false`):
+  Whether to enable _Rename_.
 
   **WARNING**: Since typically Zeek scripts have incomplete `@load` statements
   the provided list is very likely incomplete. Use a tool like `grep` to search

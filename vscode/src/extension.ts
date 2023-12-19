@@ -322,6 +322,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     "inlayHints.parameters.enabled",
   );
   const references = configuration.get<boolean>("references.enabled");
+  const rename = configuration.get<boolean>("rename.enabled");
 
   const serverOptions: ServerOptions = {
     run: serverExecutable,
@@ -335,6 +336,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       inlay_hints_parameters: inlayHintsParameters,
       inlay_hints_variables: inlayHintsVariables,
       references,
+      rename,
     },
   };
 

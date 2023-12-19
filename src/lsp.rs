@@ -450,8 +450,8 @@ impl LanguageServer for Backend {
             }
         }
 
-        let enable_references = self
-            .with_state(|state| state.initialization_options().references)
+        let initialization_options = self
+            .with_state(|state| state.initialization_options())
             .await;
 
         let has_zeek_format = zeek::has_format().await;
@@ -480,8 +480,8 @@ impl LanguageServer for Backend {
                 document_range_formatting_provider: Some(OneOf::Left(has_zeek_format)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(enable_references)),
-                rename_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(initialization_options.references)),
+                rename_provider: Some(OneOf::Left(initialization_options.rename)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1530,6 +1530,9 @@ pub struct InitializationOptions {
 
     #[serde(default = "InitializationOptions::_default_references")]
     references: bool,
+
+    #[serde(default = "InitializationOptions::_default_rename")]
+    rename: bool,
 }
 
 impl InitializationOptions {
@@ -1539,6 +1542,7 @@ impl InitializationOptions {
             inlay_hints_variables: true,
             inlay_hints_parameters: true,
             references: false,
+            rename: false,
         }
     }
 
@@ -1556,6 +1560,10 @@ impl InitializationOptions {
 
     const fn _default_references() -> bool {
         Self::new().references
+    }
+
+    const fn _default_rename() -> bool {
+        Self::new().rename
     }
 }
 
@@ -2395,6 +2403,7 @@ const x = 1;
                 inlay_hints_variables: true,
                 inlay_hints_parameters: true,
                 references: false,
+                rename: false,
             }
         );
 
@@ -2438,6 +2447,14 @@ const x = 1;
             serde_json::from_value::<InitializationOptions>(json!({"references": true})).unwrap(),
             InitializationOptions {
                 references: true,
+                ..InitializationOptions::new()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(json!({"rename": true})).unwrap(),
+            InitializationOptions {
+                rename: true,
                 ..InitializationOptions::new()
             }
         );

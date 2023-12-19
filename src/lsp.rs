@@ -1454,25 +1454,22 @@ impl LanguageServer for Backend {
         };
         let decl_uri = &decl_loc.uri;
 
-        let files: FxHashSet<_> = all_sources(uri.clone(), &db)
-            .into_iter()
-            .chain(std::iter::once(uri.clone()).collect::<FxHashSet<_>>())
-            .collect();
-
         let locs = {
-            let locs = files
-                .into_iter()
+            let locs = db
+                .files()
+                .iter()
                 .filter(|f| {
                     // If the file we look at does not load the file with the decl, no references to it
                     // can exist.
-                    f == decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
+                    f == &decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
                 })
                 .map(|f| {
                     let db = db.snapshot();
                     let decl = decl.clone();
+                    let f = f.clone();
                     tokio::spawn(async move {
                         Some(
-                            db.ids(f.clone())
+                            db.ids(f)
                                 .iter()
                                 .filter_map(|loc| {
                                     // Prefilter ids so that they at least somewhere contain the text

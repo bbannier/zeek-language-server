@@ -1416,21 +1416,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        /// Helper to compute all sources reachable from a given file.
-        fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
-            let mut loads = FxHashSet::default();
-            loads.extend(db.implicit_loads().iter().cloned());
-            loads.extend(db.loaded_files(f).iter().cloned());
-
-            let mut recursive_loads = FxHashSet::default();
-            for l in &loads {
-                recursive_loads.extend(db.loaded_files_recursive(l.clone()).iter().cloned());
-            }
-            loads.extend(recursive_loads.into_iter());
-
-            loads
-        }
-
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
@@ -1445,71 +1430,18 @@ impl LanguageServer for Backend {
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = db.resolve(NodeLocation::from_node(uri.clone(), node)) else {
+        let Some(decl) = db.resolve(NodeLocation::from_node(uri, node)) else {
             return Ok(None);
         };
 
-        let Some(decl_loc) = decl.loc.as_ref() else {
-            return Ok(None);
-        };
-        let decl_uri = &decl_loc.uri;
+        let references = references(db, decl).await;
 
-        let locs = {
-            let locs = db
-                .files()
-                .iter()
-                .filter(|f| {
-                    // If the file we look at does not load the file with the decl, no references to it
-                    // can exist.
-                    f == &decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
-                })
-                .map(|f| {
-                    let db = db.snapshot();
-                    let decl = decl.clone();
-                    let f = f.clone();
-                    tokio::spawn(async move {
-                        Some(
-                            db.ids(f)
-                                .iter()
-                                .filter_map(|loc| {
-                                    // Prefilter ids so that they at least somewhere contain the text
-                                    // of the decl.
-                                    let tree = db.parse(loc.uri.clone())?;
-                                    let source = db.source(loc.uri.clone())?;
-                                    let txt = tree
-                                        .root_node()
-                                        .named_descendant_for_point_range(loc.range)?
-                                        .utf8_text(source.as_bytes())
-                                        .ok()?;
-                                    if !txt.contains(decl.id.as_ref()) {
-                                        return None;
-                                    }
-
-                                    db.resolve(loc.clone()).and_then(|resolved| {
-                                        if resolved != decl {
-                                            return None;
-                                        }
-
-                                        Some(Location {
-                                            uri: loc.uri.as_ref().clone(),
-                                            range: loc.range,
-                                        })
-                                    })
-                                })
-                                .collect::<Vec<_>>(),
-                        )
-                    })
-                })
-                .collect_vec();
-            let locs = futures::future::join_all(locs).await;
-            locs.into_iter()
-                .filter_map(std::result::Result::ok)
-                .flatten()
-                .flatten()
-                .collect_vec()
-        };
-
-        Ok(Some(locs))
+        Ok(Some(
+            references
+                .into_iter()
+                .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
+                .collect::<Vec<_>>(),
+        ))
     }
 }
 
@@ -2567,5 +2499,80 @@ fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
                 None,
             )
         })
+        .collect()
+}
+
+async fn references(db: Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+    /// Helper to compute all sources reachable from a given file.
+    fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
+        let mut loads = FxHashSet::default();
+        loads.extend(db.implicit_loads().iter().cloned());
+        loads.extend(db.loaded_files(f).iter().cloned());
+
+        let mut recursive_loads = FxHashSet::default();
+        for l in &loads {
+            recursive_loads.extend(db.loaded_files_recursive(l.clone()).iter().cloned());
+        }
+        loads.extend(recursive_loads.into_iter());
+
+        loads
+    }
+
+    let Some(decl_loc) = decl.loc.as_ref() else {
+        return FxHashSet::default();
+    };
+    let decl_uri = &decl_loc.uri;
+
+    let locs: Vec<_> = {
+        let locs: Vec<_> = db
+            .files()
+            .iter()
+            .filter(|f| {
+                // If the file we look at does not load the file with the decl, no references to it
+                // can exist.
+                f == &decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
+            })
+            .map(|f| {
+                let db = db.snapshot();
+                let decl = decl.clone();
+                let f = f.clone();
+                tokio::spawn(async move {
+                    Some(
+                        db.ids(f)
+                            .iter()
+                            .filter_map(|loc| {
+                                // Prefilter ids so that they at least somewhere contain the text
+                                // of the decl.
+                                let tree = db.parse(loc.uri.clone())?;
+                                let source = db.source(loc.uri.clone())?;
+                                let txt = tree
+                                    .root_node()
+                                    .named_descendant_for_point_range(loc.range)?
+                                    .utf8_text(source.as_bytes())
+                                    .ok()?;
+                                if !txt.contains(decl.id.as_ref()) {
+                                    return None;
+                                }
+
+                                db.resolve(loc.clone()).and_then(|resolved| {
+                                    if resolved != decl {
+                                        return None;
+                                    }
+
+                                    Some(loc.clone())
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+            })
+            .collect();
+        futures::future::join_all(locs).await
+    };
+
+    locs.into_iter()
+        .filter_map(std::result::Result::ok)
+        .flatten()
+        .flatten()
         .collect()
 }

@@ -27,14 +27,14 @@ opentelemetry_sdk = { version = "0.21.1", features = ["rt-tokio"], default-featu
 path-clean = "1.0.1"
 rayon = "1.8.0"
 regex = { default-features = false, version = "1.10.2" }
-reqwest = { version = "0.11.22", default-features = false }
+reqwest = { version = "0.11.23", default-features = false }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "1.1.0"
 salsa = "0.16.1"
 semver = { version = "1.0.20", default-features = false }
 serde = { version = "1.0.193", default-features = false }
 serde_json = { default-features = false, version = "1.0.108" }
-tokio = { version = "1.35.0", features = ["fs", "io-std", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
+tokio = { version = "1.35.1", features = ["fs", "io-std", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp = { version = "0.20.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.40" }
 tracing-appender = { version = "0.2.3", default-features = false }

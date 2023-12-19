@@ -32,11 +32,11 @@ use tower_lsp::{
         InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip, Location,
         MarkedString, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf,
         ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ReferenceParams, ServerCapabilities, ServerInfo, SignatureHelp,
-        SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
-        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
-        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
+        ProgressToken, Range, ReferenceParams, RenameParams, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -481,6 +481,7 @@ impl LanguageServer for Backend {
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(enable_references)),
+                rename_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1443,6 +1444,46 @@ impl LanguageServer for Backend {
                 .collect::<Vec<_>>(),
         ))
     }
+
+    #[instrument]
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = Arc::new(params.text_document_position.text_document.uri);
+        let position = params.text_document_position.position;
+
+        let db = self.with_state(|state| state.snapshot()).await;
+
+        let tree = db.parse(uri.clone());
+        let Some(tree) = tree.as_ref() else {
+            return Ok(None);
+        };
+        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+            return Ok(None);
+        };
+        let Some(decl) = db.resolve(NodeLocation::from_node(uri.clone(), node)) else {
+            return Ok(None);
+        };
+
+        let references = references(db, decl).await;
+
+        let new_name = params.new_name;
+
+        let changes = references
+            .into_iter()
+            .group_by(|r| (*r.uri).clone())
+            .into_iter()
+            .map(|(uri, g)| {
+                let edits = g
+                    // Send edits ordered from the back so we do not invalidate following positions.
+                    .sorted_by_key(|l| l.range.start)
+                    .rev()
+                    .map(|l| TextEdit::new(l.range, new_name.clone()))
+                    .collect();
+                (uri, edits)
+            })
+            .collect();
+
+        Ok(Some(WorkspaceEdit::new(changes)))
+    }
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1533,8 +1574,9 @@ pub(crate) mod test {
         lsp_types::{
             CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
             FormattingOptions, HoverParams, InitializeParams, InlayHintParams, PartialResultParams,
-            Position, Range, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            Position, Range, ReferenceContext, ReferenceParams, RenameParams,
+            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+            WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -2469,6 +2511,43 @@ levenshtein_distance("", "");
                     context: ReferenceContext {
                         include_declaration: true,
                     },
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn rename() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        let source = r#"
+@load ./strings
+module foo;
+export {
+const x = 123;
+}
+const y = x;
+const z = x;
+            "#;
+
+        db.add_file((*uri).clone(), source);
+        db.add_file(
+            Url::from_file_path("/strings.zeek").unwrap(),
+            "function levenshtein_distance(a: string, b: string): count { return 0; }",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .rename(RenameParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new((*uri).clone()),
+                        Position::new(7, 10),
+                    ),
+                    new_name: "ABC".into(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );

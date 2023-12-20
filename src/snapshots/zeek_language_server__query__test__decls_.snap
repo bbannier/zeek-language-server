@@ -7,106 +7,6 @@ expression: root_decls
         module: String(
             "bar",
         ),
-        id: "fun",
-        fqid: "bar::fun",
-        kind: FuncDef(
-            Signature {
-                result: Some(
-                    Id(
-                        "string",
-                    ),
-                ),
-                args: [
-                    Decl {
-                        module: None,
-                        id: "x",
-                        fqid: "x",
-                        kind: Variable,
-                        is_export: None,
-                        loc: Some(
-                            Location {
-                                range: Range {
-                                    start: Position {
-                                        line: 20,
-                                        character: 27,
-                                    },
-                                    end: Position {
-                                        line: 20,
-                                        character: 28,
-                                    },
-                                },
-                                selection_range: Range {
-                                    start: Position {
-                                        line: 20,
-                                        character: 27,
-                                    },
-                                    end: Position {
-                                        line: 20,
-                                        character: 35,
-                                    },
-                                },
-                                uri: Url {
-                                    scheme: "file",
-                                    cannot_be_a_base: false,
-                                    username: "",
-                                    password: None,
-                                    host: None,
-                                    port: None,
-                                    path: "/foo/bar.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
-                            },
-                        ),
-                        documentation: "```zeek\nx: count\n```",
-                    },
-                ],
-            },
-        ),
-        is_export: Some(
-            false,
-        ),
-        loc: Some(
-            Location {
-                range: Range {
-                    start: Position {
-                        line: 20,
-                        character: 14,
-                    },
-                    end: Position {
-                        line: 20,
-                        character: 59,
-                    },
-                },
-                selection_range: Range {
-                    start: Position {
-                        line: 20,
-                        character: 23,
-                    },
-                    end: Position {
-                        line: 20,
-                        character: 26,
-                    },
-                },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
-            },
-        ),
-        documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
-    },
-    Decl {
-        module: String(
-            "bar",
-        ),
         id: "Y",
         fqid: "Y",
         kind: RedefRecord(
@@ -195,6 +95,104 @@ expression: root_decls
             },
         ),
         documentation: "```zeek\nredef record Y += {\n                  ## A new field.\n                  y2: count &optional;\n              };\n```",
+    },
+    Decl {
+        module: String(
+            "bar",
+        ),
+        id: "fun",
+        fqid: "bar::fun",
+        kind: FuncDecl(
+            Signature {
+                result: Some(
+                    String,
+                ),
+                args: [
+                    Decl {
+                        module: None,
+                        id: "x",
+                        fqid: "x",
+                        kind: Variable,
+                        is_export: None,
+                        loc: Some(
+                            Location {
+                                range: Range {
+                                    start: Position {
+                                        line: 19,
+                                        character: 35,
+                                    },
+                                    end: Position {
+                                        line: 19,
+                                        character: 36,
+                                    },
+                                },
+                                selection_range: Range {
+                                    start: Position {
+                                        line: 19,
+                                        character: 35,
+                                    },
+                                    end: Position {
+                                        line: 19,
+                                        character: 43,
+                                    },
+                                },
+                                uri: Url {
+                                    scheme: "file",
+                                    cannot_be_a_base: false,
+                                    username: "",
+                                    password: None,
+                                    host: None,
+                                    port: None,
+                                    path: "/foo/bar.zeek",
+                                    query: None,
+                                    fragment: None,
+                                },
+                            },
+                        ),
+                        documentation: "```zeek\nx: count\n```",
+                    },
+                ],
+            },
+        ),
+        is_export: Some(
+            false,
+        ),
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 19,
+                        character: 14,
+                    },
+                    end: Position {
+                        line: 19,
+                        character: 53,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 19,
+                        character: 21,
+                    },
+                    end: Position {
+                        line: 19,
+                        character: 24,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/foo/bar.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            },
+        ),
+        documentation: "```zeek\nglobal fun: function(x: count): string;\n```",
     },
     Decl {
         module: String(
@@ -441,12 +439,10 @@ expression: root_decls
         ),
         id: "fun",
         fqid: "bar::fun",
-        kind: FuncDecl(
+        kind: FuncDef(
             Signature {
                 result: Some(
-                    Id(
-                        "string",
-                    ),
+                    String,
                 ),
                 args: [
                     Decl {
@@ -459,22 +455,22 @@ expression: root_decls
                             Location {
                                 range: Range {
                                     start: Position {
-                                        line: 19,
-                                        character: 35,
+                                        line: 20,
+                                        character: 27,
                                     },
                                     end: Position {
-                                        line: 19,
-                                        character: 36,
+                                        line: 20,
+                                        character: 28,
                                     },
                                 },
                                 selection_range: Range {
                                     start: Position {
-                                        line: 19,
-                                        character: 35,
+                                        line: 20,
+                                        character: 27,
                                     },
                                     end: Position {
-                                        line: 19,
-                                        character: 43,
+                                        line: 20,
+                                        character: 35,
                                     },
                                 },
                                 uri: Url {
@@ -502,22 +498,22 @@ expression: root_decls
             Location {
                 range: Range {
                     start: Position {
-                        line: 19,
+                        line: 20,
                         character: 14,
                     },
                     end: Position {
-                        line: 19,
-                        character: 53,
+                        line: 20,
+                        character: 59,
                     },
                 },
                 selection_range: Range {
                     start: Position {
-                        line: 19,
-                        character: 21,
+                        line: 20,
+                        character: 23,
                     },
                     end: Position {
-                        line: 19,
-                        character: 24,
+                        line: 20,
+                        character: 26,
                     },
                 },
                 uri: Url {
@@ -533,6 +529,6 @@ expression: root_decls
                 },
             },
         ),
-        documentation: "```zeek\nglobal fun: function(x: count): string;\n```",
+        documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
     },
 }

@@ -33,6 +33,25 @@ pub enum DeclKind {
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub enum Type {
     Id(Str),
+    Addr,
+    Any,
+    Bool,
+    Count,
+    Double,
+    Int,
+    Interval,
+    String,
+    Subnet,
+    Pattern,
+    Port,
+    Table(Vec<Str>, Str),
+    Set(Vec<Str>),
+    Time,
+    Timer,
+    List(Str),
+    Vector(Str),
+    File(Str),
+    Opaque(Str),
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
@@ -473,8 +492,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
             let fn_result = c
                 .nodes_for_capture_index(c_fn_result)
                 .next()
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(|txt| Type::Id(txt.into()));
+                .and_then(|n| self::typ(n.into(), source));
 
             let range = decl.range();
             let selection_range = id.range();
@@ -779,6 +797,75 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
         .chain(fn_param_decls(node, uri.clone(), source).into_iter())
         .chain(loop_param_decls(node, &uri, source).into_iter())
         .collect()
+}
+
+#[instrument]
+#[must_use]
+pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
+    let typ: Node = n.0.child(0)?.into();
+    let typ_txt = typ.utf8_text(source).ok()?;
+    Some(match typ_txt {
+        "addr" => Type::Addr,
+        "any" => Type::Any,
+        "bool" => Type::Bool,
+        "count" => Type::Count,
+        "double" => Type::Double,
+        "int" => Type::Int,
+        "interval" => Type::Interval,
+        "string" => Type::String,
+        "subnet" => Type::Subnet,
+        "pattern" => Type::Pattern,
+        "port" => Type::Port,
+        "table" => {
+            let children = typ.parent()?.named_children("type");
+            let y = children
+                .last()
+                .and_then(|x| x.utf8_text(source).map(Into::into).ok())?;
+            assert!(!children.is_empty());
+            let xs = children
+                .iter()
+                .take(children.len() - 1) // If we have `y` this never underflows.
+                .map(|x| x.utf8_text(source).map(Into::into))
+                .collect::<Result<_, _>>()
+                .ok()?;
+            Type::Table(xs, y)
+        }
+        "set" => Type::Set(
+            typ.parent()?
+                .named_children("type")
+                .into_iter()
+                .map(|x| x.utf8_text(source).map(Into::into))
+                .collect::<Result<_, _>>()
+                .ok()?,
+        ),
+        "time" => Type::Time,
+        "timer" => Type::Timer,
+        "list" => Type::List(
+            typ.parent()?
+                .named_child("type")
+                .and_then(|x| x.utf8_text(source).ok())
+                .map(Into::into)?,
+        ),
+        "vector" => Type::Vector(
+            typ.parent()?
+                .named_child("type")
+                .and_then(|x| x.utf8_text(source).ok())
+                .map(Into::into)?,
+        ),
+        "file" => Type::File(
+            typ.parent()?
+                .named_child("type")
+                .and_then(|x| x.utf8_text(source).ok())
+                .map(Into::into)?,
+        ),
+        "opaque" => Type::Opaque(
+            typ.parent()?
+                .named_child("id")
+                .and_then(|id| id.utf8_text(source).ok())
+                .map(Into::into)?,
+        ),
+        _ => Type::Id(n.utf8_text(source).ok()?.into()),
+    })
 }
 
 #[instrument]

@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustc_hash::FxHashSet;
 use std::{
     path::{Path, PathBuf},
@@ -199,9 +200,41 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
 
 #[instrument(skip(db))]
 fn resolve_type(db: &dyn Ast, typ: Type, scope: NodeLocation) -> Option<Arc<Decl>> {
-    match typ {
-        Type::Id(id) => return resolve_id(db, id, scope),
-    }
+    let resolve_or_id = |id: Str| {
+        db.resolve_id(id.clone(), scope.clone())
+            .map(|d| d.fqid.clone())
+            .unwrap_or(id)
+    };
+
+    Some(match typ {
+        Type::Id(id) => resolve_id(db, id, scope)?,
+        Type::Addr => db.builtin_type("addr".into()),
+        Type::Any => db.builtin_type("any".into()),
+        Type::Bool => db.builtin_type("bool".into()),
+        Type::Count => db.builtin_type("count".into()),
+        Type::Double => db.builtin_type("double".into()),
+        Type::Int => db.builtin_type("int".into()),
+        Type::Interval => db.builtin_type("interval".into()),
+        Type::String => db.builtin_type("string".into()),
+        Type::Subnet => db.builtin_type("subnet".into()),
+        Type::Pattern => db.builtin_type("pattern".into()),
+        Type::Port => db.builtin_type("port".into()),
+        Type::Table(ks, v) => {
+            let ks = ks.into_iter().map(resolve_or_id).join(", ");
+            let v = resolve_or_id(v);
+            db.builtin_type(format!("table[{ks}] of {v}").into())
+        }
+        Type::Set(xs) => {
+            let xs = xs.into_iter().map(resolve_or_id).join(", ");
+            db.builtin_type(format!("set[{xs}]").into())
+        }
+        Type::Time => db.builtin_type("time".into()),
+        Type::Timer => db.builtin_type("timer".into()),
+        Type::List(x) => db.builtin_type(format!("list of {}", resolve_or_id(x)).into()),
+        Type::Vector(x) => db.builtin_type(format!("vector of {}", resolve_or_id(x)).into()),
+        Type::File(x) => db.builtin_type(format!("file of {}", resolve_or_id(x)).into()),
+        Type::Opaque(x) => db.builtin_type(format!("opaque of {}", resolve_or_id(x)).into()),
+    })
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -663,7 +696,7 @@ mod test {
         ast::Ast,
         lsp::TestDatabase,
         parse::Parse,
-        query::{DeclKind, NodeLocation},
+        query::{self, DeclKind, NodeLocation},
         Files,
     };
 
@@ -1170,6 +1203,32 @@ global x2 = f2();
     }
 
     #[test]
+    fn typ_var_from_call() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "
+                function foo(): count { return 0; }
+                const a = foo();
+             }",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let a = root
+            .named_descendant_for_position(Position::new(2, 22))
+            .unwrap();
+        assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri.clone(), a))
+            .and_then(|d| db.typ(d)));
+    }
+
+    #[test]
     fn typ_const_decl() {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
@@ -1420,5 +1479,69 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
                 .next(),
             Some("C.")
         );
+    }
+
+    #[test]
+    fn resolve_type() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "
+local x1: addr;
+local x2: any;
+local x3: bool;
+local x4: count;
+local x5: double;
+local x6: int;
+local x7: interval;
+local x8: subnet;
+local x9: pattern;
+local x10: port;
+local x11: table[count, string] of int;
+local x12: set[count, string];
+local x13: time;
+local x14: timer;
+local x15: list of count;
+local x16: vector of count;
+local x17: file of count;
+local x18: opaque of count;
+            ",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let check = |position: Position, expected_id: &str| {
+            let n = root.named_descendant_for_position(position).unwrap();
+            assert_eq!(n.utf8_text(source.as_bytes()), Ok(expected_id));
+            let typ = n.parent().unwrap().named_child("type").unwrap();
+            let t = query::typ(typ, source.as_bytes()).unwrap();
+            let resolved = db
+                .resolve_type(t, NodeLocation::from_node(uri.clone(), typ))
+                .unwrap();
+            assert_debug_snapshot!(resolved);
+        };
+
+        check(Position::new(1, 6), "x1");
+        check(Position::new(2, 6), "x2");
+        check(Position::new(3, 6), "x3");
+        check(Position::new(4, 6), "x4");
+        check(Position::new(5, 6), "x5");
+        check(Position::new(6, 6), "x6");
+        check(Position::new(7, 6), "x7");
+        check(Position::new(8, 6), "x8");
+        check(Position::new(9, 6), "x9");
+        check(Position::new(10, 6), "x10");
+        check(Position::new(11, 6), "x11");
+        check(Position::new(12, 6), "x12");
+        check(Position::new(13, 6), "x13");
+        check(Position::new(14, 6), "x14");
+        check(Position::new(15, 6), "x15");
+        check(Position::new(16, 6), "x16");
+        check(Position::new(17, 6), "x17");
+        check(Position::new(18, 6), "x18");
     }
 }

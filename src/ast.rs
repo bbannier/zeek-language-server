@@ -9,7 +9,7 @@ use tracing::{error, instrument};
 
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, NodeLocation, Query},
+    query::{self, Decl, DeclKind, NodeLocation, Query, Type},
     zeek, Str,
 };
 
@@ -47,8 +47,11 @@ pub trait Ast: Parse + Query {
     /// Determine the type of the given decl.
     fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>>;
 
-    /// Resolve anidentifier in a scope.
+    /// Resolve identifier in a scope.
     fn resolve_id(&self, id: Str, scope: NodeLocation) -> Option<Arc<Decl>>;
+
+    /// Resolve type in a scope.
+    fn resolve_type(&self, typ: Type, scope: NodeLocation) -> Option<Arc<Decl>>;
 
     /// Gets decl for the builtin type `id`.
     fn builtin_type(&self, id: Str) -> Arc<Decl>;
@@ -194,6 +197,13 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
     }
 }
 
+#[instrument(skip(db))]
+fn resolve_type(db: &dyn Ast, typ: Type, scope: NodeLocation) -> Option<Arc<Decl>> {
+    match typ {
+        Type::Id(id) => return resolve_id(db, id, scope),
+    }
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     // If we see a type decl with location we are likely dealing with a buildin type already which
@@ -240,7 +250,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
         match &d.kind {
             // For function declarations produce the function's return type.
-            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_id(
+            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_type(
                 sig.result.clone()?,
                 NodeLocation::from_node(loc.uri.clone(), node),
             ),

@@ -10,7 +10,9 @@ expression: "super::decls_(root, uri, source.as_bytes())"
         kind: FuncDecl(
             Signature {
                 result: Some(
-                    "string",
+                    Id(
+                        "string",
+                    ),
                 ),
                 args: [
                     Decl {

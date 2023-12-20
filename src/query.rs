@@ -30,9 +30,14 @@ pub enum DeclKind {
     LoopIndex(usize, String), // Stores loop index `i` for a given init expression.
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+pub enum Type {
+    Id(Str),
+}
+
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub struct Signature {
-    pub result: Option<Str>,
+    pub result: Option<Type>,
     pub args: Vec<Decl>,
 }
 
@@ -469,7 +474,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                 .nodes_for_capture_index(c_fn_result)
                 .next()
                 .and_then(|n| n.utf8_text(source).ok())
-                .map(Into::into);
+                .map(|txt| Type::Id(txt.into()));
 
             let range = decl.range();
             let selection_range = id.range();

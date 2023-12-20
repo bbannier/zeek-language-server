@@ -12,7 +12,9 @@ expression: root_decls
         kind: FuncDef(
             Signature {
                 result: Some(
-                    "string",
+                    Id(
+                        "string",
+                    ),
                 ),
                 args: [
                     Decl {
@@ -442,7 +444,9 @@ expression: root_decls
         kind: FuncDecl(
             Signature {
                 result: Some(
-                    "string",
+                    Id(
+                        "string",
+                    ),
                 ),
                 args: [
                     Decl {

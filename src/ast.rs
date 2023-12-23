@@ -207,7 +207,8 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: NodeLocation) -> Option<Arc<Decl
     };
 
     Some(match typ {
-        Type::Id(id) => resolve_id(db, id, scope)?,
+        Type::Id(id) => resolve_id(db, id.clone(), scope)
+            .unwrap_or_else(|| db.builtin_type(format!("{id}").into())),
         Type::Addr => db.builtin_type("addr".into()),
         Type::Any => db.builtin_type("any".into()),
         Type::Bool => db.builtin_type("bool".into()),
@@ -258,22 +259,25 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         .root_node()
         .named_descendant_for_point_range(loc.range)?;
 
+    let make_typ = |typ| {
+        let source = db.source(uri.clone())?;
+        query::typ(typ, source.as_bytes())
+            .and_then(|t| db.resolve_type(t, NodeLocation::from_node(uri.clone(), typ)))
+    };
+
     let d = match node.kind() {
         "var_decl" | "const_decl" | "option_decl" | "formal_arg" => {
             let typ = node.named_children_not("nl").into_iter().nth(1)?;
 
             match typ.kind() {
-                "type" => db.resolve(NodeLocation::from_node(uri.clone(), typ)),
+                "type" => make_typ(typ),
                 "initializer" => typ
                     .named_child("expr")
                     .and_then(|n| db.resolve(NodeLocation::from_node(uri.clone(), n))),
                 _ => None,
             }
         }
-        "id" => node
-            .parent()?
-            .named_child("type")
-            .and_then(|n| db.resolve(NodeLocation::from_node(uri.clone(), n))),
+        "id" => node.parent()?.named_child("type").and_then(make_typ),
         _ => None,
     };
 
@@ -350,10 +354,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         }
 
         "type" => {
-            let text: Str = node.utf8_text(source.as_bytes()).ok()?.into();
-            return db
-                .resolve_id(text.clone(), location)
-                .or_else(|| Some(db.builtin_type(text)));
+            return query::typ(node, source.as_bytes()).and_then(|t| db.resolve_type(t, location))
         }
 
         "expr" => {

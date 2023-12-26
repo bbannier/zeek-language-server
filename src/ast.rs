@@ -330,13 +330,17 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             .as_ref()
             .map(|l| NodeLocation::from_range(l.uri.clone(), l.range));
 
+        #[allow(clippy::match_same_arms)]
         return match typ {
             Type::Vector(id) => match i {
                 0 => db.resolve_type(Type::Count, loc),
                 1 => db.resolve_type((**id).clone(), loc),
                 _ => None,
             },
-            _ => todo!(),
+            Type::Set(_) => db.resolve_type(Type::Count, loc),
+            Type::List(_) => None,        // Not implemented in Zeek.
+            Type::Table(_ks, _v) => None, // TODO(bbannier): Implement resolving for loops over tables.
+            _ => None,
         };
     }
 
@@ -1660,6 +1664,32 @@ event zeek_init() { for (i, v in vs) ; }
 
         let v = root
             .named_descendant_for_position(Position::new(3, 28))
+            .unwrap();
+        assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
+        let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
+    }
+
+    #[test]
+    fn loop_vars_set() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            r#"
+global vs: set[string] = set("a");
+event zeek_init() { for (v in vs) ; }
+                 "#,
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let v = root
+            .named_descendant_for_position(Position::new(2, 25))
             .unwrap();
         assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
         let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();

@@ -6,8 +6,8 @@ Decl {
     module: Global,
     id: "time",
     fqid: "time",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Time,
     ),
     is_export: None,
     loc: None,

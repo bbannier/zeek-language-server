@@ -6,8 +6,10 @@ Decl {
     module: Global,
     id: "opaque of count",
     fqid: "opaque of count",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Opaque(
+            "count",
+        ),
     ),
     is_export: None,
     loc: None,

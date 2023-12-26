@@ -7,8 +7,8 @@ Some(
         module: Global,
         id: "interval",
         fqid: "interval",
-        kind: Type(
-            [],
+        kind: Builtin(
+            Interval,
         ),
         is_export: None,
         loc: None,

@@ -6,8 +6,10 @@ Decl {
     module: Global,
     id: "file of count",
     fqid: "file of count",
-    kind: Type(
-        [],
+    kind: Builtin(
+        File(
+            "count",
+        ),
     ),
     is_export: None,
     loc: None,

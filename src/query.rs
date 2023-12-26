@@ -28,6 +28,7 @@ pub enum DeclKind {
     Field,
     EnumMember,
     LoopIndex(usize, String), // Stores loop index `i` for a given init expression.
+    Builtin(Type),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]

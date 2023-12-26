@@ -1,13 +1,13 @@
 ---
 source: src/ast.rs
-expression: typ
+expression: resolved
 ---
 Decl {
     module: Global,
     id: "int",
     fqid: "int",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Int,
     ),
     is_export: None,
     loc: None,

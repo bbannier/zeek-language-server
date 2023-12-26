@@ -6,8 +6,14 @@ Decl {
     module: Global,
     id: "table[count, string] of int",
     fqid: "table[count, string] of int",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Table(
+            [
+                "count",
+                "string",
+            ],
+            "int",
+        ),
     ),
     is_export: None,
     loc: None,

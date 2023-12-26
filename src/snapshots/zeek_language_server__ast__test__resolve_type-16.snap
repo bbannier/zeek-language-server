@@ -6,8 +6,10 @@ Decl {
     module: Global,
     id: "vector of count",
     fqid: "vector of count",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Vector(
+            "count",
+        ),
     ),
     is_export: None,
     loc: None,

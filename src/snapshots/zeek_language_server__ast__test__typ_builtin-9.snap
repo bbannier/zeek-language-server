@@ -7,8 +7,8 @@ Some(
         module: Global,
         id: "string",
         fqid: "string",
-        kind: Type(
-            [],
+        kind: Builtin(
+            String,
         ),
         is_export: None,
         loc: None,

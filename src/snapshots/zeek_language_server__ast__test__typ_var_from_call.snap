@@ -7,8 +7,8 @@ Some(
         module: Global,
         id: "count",
         fqid: "count",
-        kind: Type(
-            [],
+        kind: Builtin(
+            Count,
         ),
         is_export: None,
         loc: None,

@@ -52,10 +52,7 @@ pub trait Ast: Parse + Query {
     fn resolve_id(&self, id: Str, scope: NodeLocation) -> Option<Arc<Decl>>;
 
     /// Resolve type in a scope.
-    fn resolve_type(&self, typ: Type, scope: NodeLocation) -> Option<Arc<Decl>>;
-
-    /// Gets decl for the builtin type `id`.
-    fn builtin_type(&self, id: Str) -> Arc<Decl>;
+    fn resolve_type(&self, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>>;
 }
 
 #[instrument(skip(db))]
@@ -199,42 +196,56 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
 }
 
 #[instrument(skip(db))]
-fn resolve_type(db: &dyn Ast, typ: Type, scope: NodeLocation) -> Option<Arc<Decl>> {
-    let resolve_or_id = |id: Str| {
-        db.resolve_id(id.clone(), scope.clone())
-            .map(|d| d.fqid.clone())
-            .unwrap_or(id)
+fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>> {
+    #[allow(clippy::needless_pass_by_value)]
+    fn builtin_type(id: Str, typ: Type) -> Arc<Decl> {
+        Arc::new(Decl {
+            module: query::ModuleId::Global,
+            id: id.clone(),
+            fqid: id.clone(),
+            kind: DeclKind::Builtin(typ),
+            is_export: None,
+            loc: None,
+            documentation: format!("Builtin type '{id}'").as_str().into(),
+        })
+    }
+    let resolve_or_id = |id: &Str| {
+        scope
+            .as_ref()
+            .and_then(|s| db.resolve_id(id.clone(), s.clone()))
+            .map_or_else(|| id.clone(), |d| d.fqid.clone())
     };
 
-    Some(match typ {
-        Type::Id(id) => resolve_id(db, id.clone(), scope)
-            .unwrap_or_else(|| db.builtin_type(format!("{id}").into())),
-        Type::Addr => db.builtin_type("addr".into()),
-        Type::Any => db.builtin_type("any".into()),
-        Type::Bool => db.builtin_type("bool".into()),
-        Type::Count => db.builtin_type("count".into()),
-        Type::Double => db.builtin_type("double".into()),
-        Type::Int => db.builtin_type("int".into()),
-        Type::Interval => db.builtin_type("interval".into()),
-        Type::String => db.builtin_type("string".into()),
-        Type::Subnet => db.builtin_type("subnet".into()),
-        Type::Pattern => db.builtin_type("pattern".into()),
-        Type::Port => db.builtin_type("port".into()),
+    Some(match &typ {
+        Type::Id(id) => scope
+            .and_then(|s| resolve_id(db, id.clone(), s))
+            .unwrap_or_else(|| builtin_type(format!("{id}").into(), typ.clone())),
+        Type::Addr => builtin_type("addr".into(), typ),
+        Type::Any => builtin_type("any".into(), typ),
+        Type::Bool => builtin_type("bool".into(), typ),
+        Type::Count => builtin_type("count".into(), typ),
+        Type::Double => builtin_type("double".into(), typ),
+        Type::Int => builtin_type("int".into(), typ),
+        Type::Interval => builtin_type("interval".into(), typ),
+        Type::String => builtin_type("string".into(), typ),
+        Type::Subnet => builtin_type("subnet".into(), typ),
+        Type::Pattern => builtin_type("pattern".into(), typ),
+        Type::Port => builtin_type("port".into(), typ),
         Type::Table(ks, v) => {
-            let ks = ks.into_iter().map(resolve_or_id).join(", ");
+            let ks = ks.iter().map(resolve_or_id).join(", ");
             let v = resolve_or_id(v);
-            db.builtin_type(format!("table[{ks}] of {v}").into())
+            builtin_type(format!("table[{ks}] of {v}").into(), typ)
         }
         Type::Set(xs) => {
-            let xs = xs.into_iter().map(resolve_or_id).join(", ");
-            db.builtin_type(format!("set[{xs}]").into())
+            let xs = xs.iter().map(resolve_or_id).join(", ");
+            builtin_type(format!("set[{xs}]").into(), typ)
         }
-        Type::Time => db.builtin_type("time".into()),
-        Type::Timer => db.builtin_type("timer".into()),
-        Type::List(x) => db.builtin_type(format!("list of {}", resolve_or_id(x)).into()),
-        Type::Vector(x) => db.builtin_type(format!("vector of {}", resolve_or_id(x)).into()),
-        Type::File(x) => db.builtin_type(format!("file of {}", resolve_or_id(x)).into()),
-        Type::Opaque(x) => db.builtin_type(format!("opaque of {}", resolve_or_id(x)).into()),
+        Type::Time => builtin_type("time".into(), typ),
+        Type::Timer => builtin_type("timer".into(), typ),
+        Type::List(x) => builtin_type(format!("list of {}", resolve_or_id(x)).into(), typ),
+        Type::Vector(x) => builtin_type(format!("vector of {}", resolve_or_id(x)).into(), typ),
+        Type::File(x) => builtin_type(format!("file of {}", resolve_or_id(x)).into(), typ),
+        Type::Opaque(x) => builtin_type(format!("opaque of {}", resolve_or_id(x)).into(), typ),
     })
 }
 
@@ -262,7 +273,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     let make_typ = |typ| {
         let source = db.source(uri.clone())?;
         query::typ(typ, source.as_bytes())
-            .and_then(|t| db.resolve_type(t, NodeLocation::from_node(uri.clone(), typ)))
+            .and_then(|t| db.resolve_type(t, Some(NodeLocation::from_node(uri.clone(), typ))))
     };
 
     let d = match node.kind() {
@@ -289,7 +300,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             // For function declarations produce the function's return type.
             DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_type(
                 sig.result.clone()?,
-                NodeLocation::from_node(loc.uri.clone(), node),
+                Some(NodeLocation::from_node(loc.uri.clone(), node)),
             ),
 
             // For enum members return the enum.
@@ -338,23 +349,33 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
         // TODO(bbannier): the parser doesn't cleanly expose whether an integer is an `int` or a
         // `count`, use a dummy type until we resolve it
-        "integer" => return Some(db.builtin_type(format!("<{}>", node.kind()).as_str().into())),
+        "integer" => {
+            return db.resolve_type(
+                Type::Id(format!("<{}>", node.kind()).into()),
+                Some(location),
+            );
+        }
 
-        "hostname" => return Some(db.builtin_type("set[addr]".into())),
-        "floatp" => return Some(db.builtin_type("double".into())),
-        "ipv4" | "ipv6" => return Some(db.builtin_type("addr".into())),
-        "interval" | "port" | "string" => return Some(db.builtin_type(node.kind().into())),
-        "hex" => return Some(db.builtin_type("count".into())),
+        "hostname" => {
+            return db.resolve_type(Type::Set(vec!["addr".into()]), Some(location));
+        }
+        "floatp" => return db.resolve_type(Type::Double, Some(location)),
+        "ipv4" | "ipv6" => return db.resolve_type(Type::Addr, Some(location)),
+        "interval" => return db.resolve_type(Type::Interval, Some(location)),
+        "port" => return db.resolve_type(Type::Port, Some(location)),
+        "string" => return db.resolve_type(Type::String, Some(location)),
+        "hex" => return db.resolve_type(Type::Count, Some(location)),
 
         "constant" => {
             match node.utf8_text(source.as_bytes()).ok()? {
-                "T" | "F" => return Some(db.builtin_type("bool".into())),
+                "T" | "F" => return db.resolve_type(Type::Bool, Some(location)),
                 _ => return None,
             };
         }
 
         "type" => {
-            return query::typ(node, source.as_bytes()).and_then(|t| db.resolve_type(t, location))
+            return query::typ(node, source.as_bytes())
+                .and_then(|t| db.resolve_type(t, Some(location)))
         }
 
         "expr" => {
@@ -670,19 +691,6 @@ pub(crate) fn load_to_file(
             .or(known_no_ext)
             .or(known_directory)
             .map(|(f, _)| (*f).clone())
-    })
-}
-
-#[allow(clippy::needless_pass_by_value)]
-fn builtin_type(_: &dyn Ast, id: Str) -> Arc<Decl> {
-    Arc::new(Decl {
-        module: query::ModuleId::Global,
-        id: id.clone(),
-        fqid: id.clone(),
-        kind: DeclKind::Type(Vec::new()),
-        is_export: None,
-        loc: None,
-        documentation: format!("Builtin type '{id}'").as_str().into(),
     })
 }
 
@@ -1521,7 +1529,7 @@ local x18: opaque of count;
             let typ = n.parent().unwrap().named_child("type").unwrap();
             let t = query::typ(typ, source.as_bytes()).unwrap();
             let resolved = db
-                .resolve_type(t, NodeLocation::from_node(uri.clone(), typ))
+                .resolve_type(t, Some(NodeLocation::from_node(uri.clone(), typ)))
                 .unwrap();
             assert_debug_snapshot!(resolved);
         };

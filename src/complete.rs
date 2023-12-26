@@ -390,6 +390,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::Field => CompletionItemKind::FIELD,
         DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
         DeclKind::Module => CompletionItemKind::MODULE,
+        DeclKind::Builtin(_) => CompletionItemKind::KEYWORD,
     }
 }
 

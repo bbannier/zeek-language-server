@@ -6,8 +6,13 @@ Decl {
     module: Global,
     id: "set[count, string]",
     fqid: "set[count, string]",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Set(
+            [
+                "count",
+                "string",
+            ],
+        ),
     ),
     is_export: None,
     loc: None,

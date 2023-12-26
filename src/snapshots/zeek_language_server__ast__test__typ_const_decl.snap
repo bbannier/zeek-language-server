@@ -7,8 +7,10 @@ Some(
         module: Global,
         id: "<integer>",
         fqid: "<integer>",
-        kind: Type(
-            [],
+        kind: Builtin(
+            Id(
+                "<integer>",
+            ),
         ),
         is_export: None,
         loc: None,

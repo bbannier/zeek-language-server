@@ -6,8 +6,8 @@ Decl {
     module: Global,
     id: "subnet",
     fqid: "subnet",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Subnet,
     ),
     is_export: None,
     loc: None,

@@ -7,8 +7,12 @@ Some(
         module: Global,
         id: "set[addr]",
         fqid: "set[addr]",
-        kind: Type(
-            [],
+        kind: Builtin(
+            Set(
+                [
+                    "addr",
+                ],
+            ),
         ),
         is_export: None,
         loc: None,

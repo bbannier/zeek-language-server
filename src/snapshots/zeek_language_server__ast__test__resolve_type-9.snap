@@ -6,8 +6,8 @@ Decl {
     module: Global,
     id: "pattern",
     fqid: "pattern",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Pattern,
     ),
     is_export: None,
     loc: None,

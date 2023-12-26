@@ -6,8 +6,10 @@ Decl {
     module: Global,
     id: "list of count",
     fqid: "list of count",
-    kind: Type(
-        [],
+    kind: Builtin(
+        List(
+            "count",
+        ),
     ),
     is_export: None,
     loc: None,

@@ -6,8 +6,8 @@ Decl {
     module: Global,
     id: "port",
     fqid: "port",
-    kind: Type(
-        [],
+    kind: Builtin(
+        Port,
     ),
     is_export: None,
     loc: None,

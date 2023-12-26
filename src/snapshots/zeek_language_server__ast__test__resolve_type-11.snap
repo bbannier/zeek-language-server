@@ -9,10 +9,10 @@ Decl {
     kind: Builtin(
         Table(
             [
-                "count",
-                "string",
+                Count,
+                String,
             ],
-            "int",
+            Int,
         ),
     ),
     is_export: None,

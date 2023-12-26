@@ -8,7 +8,7 @@ Decl {
     fqid: "opaque of count",
     kind: Builtin(
         Opaque(
-            "count",
+            Count,
         ),
     ),
     is_export: None,

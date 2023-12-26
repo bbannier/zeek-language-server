@@ -8,7 +8,7 @@ Decl {
     fqid: "file of count",
     kind: Builtin(
         File(
-            "count",
+            Count,
         ),
     ),
     is_export: None,

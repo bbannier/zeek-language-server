@@ -8,7 +8,7 @@ Decl {
     fqid: "list of count",
     kind: Builtin(
         List(
-            "count",
+            Count,
         ),
     ),
     is_export: None,

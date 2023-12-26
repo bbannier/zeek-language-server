@@ -10,7 +10,7 @@ Some(
         kind: Builtin(
             Set(
                 [
-                    "addr",
+                    Addr,
                 ],
             ),
         ),

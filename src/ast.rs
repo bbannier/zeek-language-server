@@ -209,12 +209,6 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
             documentation: format!("Builtin type '{id}'").as_str().into(),
         })
     }
-    let resolve_or_id = |id: &Str| {
-        scope
-            .as_ref()
-            .and_then(|s| db.resolve_id(id.clone(), s.clone()))
-            .map_or_else(|| id.clone(), |d| d.fqid.clone())
-    };
 
     Some(match &typ {
         Type::Id(id) => scope
@@ -232,20 +226,68 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
         Type::Pattern => builtin_type("pattern".into(), typ),
         Type::Port => builtin_type("port".into(), typ),
         Type::Table(ks, v) => {
-            let ks = ks.iter().map(resolve_or_id).join(", ");
-            let v = resolve_or_id(v);
+            let ks: Vec<_> = ks
+                .iter()
+                .map(|k| {
+                    db.resolve_type(k.clone(), scope.clone())
+                        .map(|d| d.fqid.clone())
+                })
+                .collect::<Option<_>>()?;
+            let ks = ks.into_iter().join(", ");
+            let v = db
+                .resolve_type((**v).clone(), scope)
+                .map(|d| d.fqid.clone())?;
             builtin_type(format!("table[{ks}] of {v}").into(), typ)
         }
         Type::Set(xs) => {
-            let xs = xs.iter().map(resolve_or_id).join(", ");
+            let xs = xs
+                .iter()
+                .map(|x| {
+                    db.resolve_type(x.clone(), scope.clone())
+                        .map(|d| d.fqid.clone())
+                })
+                .collect::<Option<Vec<_>>>()?;
+            let xs = xs.into_iter().join(", ");
             builtin_type(format!("set[{xs}]").into(), typ)
         }
         Type::Time => builtin_type("time".into(), typ),
         Type::Timer => builtin_type("timer".into(), typ),
-        Type::List(x) => builtin_type(format!("list of {}", resolve_or_id(x)).into(), typ),
-        Type::Vector(x) => builtin_type(format!("vector of {}", resolve_or_id(x)).into(), typ),
-        Type::File(x) => builtin_type(format!("file of {}", resolve_or_id(x)).into(), typ),
-        Type::Opaque(x) => builtin_type(format!("opaque of {}", resolve_or_id(x)).into(), typ),
+        Type::List(x) => builtin_type(
+            format!(
+                "list of {}",
+                db.resolve_type((**x).clone(), scope)
+                    .map(|d| d.fqid.clone())?
+            )
+            .into(),
+            typ,
+        ),
+        Type::Vector(x) => builtin_type(
+            format!(
+                "vector of {}",
+                db.resolve_type((**x).clone(), scope)
+                    .map(|d| d.fqid.clone())?
+            )
+            .into(),
+            typ,
+        ),
+        Type::File(x) => builtin_type(
+            format!(
+                "file of {}",
+                db.resolve_type((**x).clone(), scope)
+                    .map(|d| d.fqid.clone())?
+            )
+            .into(),
+            typ,
+        ),
+        Type::Opaque(x) => builtin_type(
+            format!(
+                "opaque of {}",
+                db.resolve_type((**x).clone(), scope)
+                    .map(|d| d.fqid.clone())?
+            )
+            .into(),
+            typ,
+        ),
     })
 }
 
@@ -357,7 +399,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         }
 
         "hostname" => {
-            return db.resolve_type(Type::Set(vec!["addr".into()]), Some(location));
+            return db.resolve_type(Type::Set(vec![Type::Addr]), Some(location));
         }
         "floatp" => return db.resolve_type(Type::Double, Some(location)),
         "ipv4" | "ipv6" => return db.resolve_type(Type::Addr, Some(location)),

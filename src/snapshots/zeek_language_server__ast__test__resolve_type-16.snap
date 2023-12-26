@@ -8,7 +8,7 @@ Decl {
     fqid: "vector of count",
     kind: Builtin(
         Vector(
-            "count",
+            Count,
         ),
     ),
     is_export: None,

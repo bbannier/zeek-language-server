@@ -45,14 +45,14 @@ pub enum Type {
     Subnet,
     Pattern,
     Port,
-    Table(Vec<Str>, Str),
-    Set(Vec<Str>),
+    Table(Vec<Type>, Box<Type>),
+    Set(Vec<Type>),
     Time,
     Timer,
-    List(Str),
-    Vector(Str),
-    File(Str),
-    Opaque(Str),
+    List(Box<Type>),
+    Vector(Box<Type>),
+    File(Box<Type>),
+    Opaque(Box<Type>),
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
@@ -803,9 +803,61 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
 #[instrument]
 #[must_use]
 pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
-    let typ: Node = n.0.child(0)?.into();
-    let typ_txt = typ.utf8_text(source).ok()?;
-    Some(match typ_txt {
+    let typ: Node = n.0.child(0).unwrap_or(n.0).into();
+    let type_text = typ.utf8_text(source).ok()?;
+    typ_from_text(type_text).or_else(|| {
+        Some(match type_text {
+            "table" => {
+                let children = typ.parent()?.named_children("type");
+                let y = children
+                    .last()
+                    .and_then(|x| self::typ(*x, source))
+                    .map(Into::into)?;
+                let xs = children
+                    .iter()
+                    .take(children.len() - 1) // If we have `y` this never underflows.
+                    .map(|x| self::typ(*x, source))
+                    .collect::<Option<_>>()?;
+                Type::Table(xs, y)
+            }
+            "set" => Type::Set(
+                typ.parent()?
+                    .named_children("type")
+                    .into_iter()
+                    .map(|x| self::typ(x, source))
+                    .collect::<Option<_>>()?,
+            ),
+            "list" => Type::List(
+                typ.parent()?
+                    .named_child("type")
+                    .and_then(|x| self::typ(x, source))
+                    .map(Into::into)?,
+            ),
+            "vector" => Type::Vector(
+                typ.parent()?
+                    .named_child("type")
+                    .and_then(|x| self::typ(x, source))
+                    .map(Into::into)?,
+            ),
+            "file" => Type::File(
+                typ.parent()?
+                    .named_child("type")
+                    .and_then(|x| self::typ(x, source))
+                    .map(Into::into)?,
+            ),
+            "opaque" => Type::Opaque(
+                typ.parent()?
+                    .named_child("id")
+                    .and_then(|x| self::typ(x, source))
+                    .map(Into::into)?,
+            ),
+            _ => Type::Id(n.utf8_text(source).ok()?.into()),
+        })
+    })
+}
+
+fn typ_from_text(text: &str) -> Option<Type> {
+    Some(match text {
         "addr" => Type::Addr,
         "any" => Type::Any,
         "bool" => Type::Bool,
@@ -817,55 +869,9 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
         "subnet" => Type::Subnet,
         "pattern" => Type::Pattern,
         "port" => Type::Port,
-        "table" => {
-            let children = typ.parent()?.named_children("type");
-            let y = children
-                .last()
-                .and_then(|x| x.utf8_text(source).map(Into::into).ok())?;
-            assert!(!children.is_empty());
-            let xs = children
-                .iter()
-                .take(children.len() - 1) // If we have `y` this never underflows.
-                .map(|x| x.utf8_text(source).map(Into::into))
-                .collect::<Result<_, _>>()
-                .ok()?;
-            Type::Table(xs, y)
-        }
-        "set" => Type::Set(
-            typ.parent()?
-                .named_children("type")
-                .into_iter()
-                .map(|x| x.utf8_text(source).map(Into::into))
-                .collect::<Result<_, _>>()
-                .ok()?,
-        ),
         "time" => Type::Time,
         "timer" => Type::Timer,
-        "list" => Type::List(
-            typ.parent()?
-                .named_child("type")
-                .and_then(|x| x.utf8_text(source).ok())
-                .map(Into::into)?,
-        ),
-        "vector" => Type::Vector(
-            typ.parent()?
-                .named_child("type")
-                .and_then(|x| x.utf8_text(source).ok())
-                .map(Into::into)?,
-        ),
-        "file" => Type::File(
-            typ.parent()?
-                .named_child("type")
-                .and_then(|x| x.utf8_text(source).ok())
-                .map(Into::into)?,
-        ),
-        "opaque" => Type::Opaque(
-            typ.parent()?
-                .named_child("id")
-                .and_then(|id| id.utf8_text(source).ok())
-                .map(Into::into)?,
-        ),
-        _ => Type::Id(n.utf8_text(source).ok()?.into()),
+        _ => return None,
     })
 }
 

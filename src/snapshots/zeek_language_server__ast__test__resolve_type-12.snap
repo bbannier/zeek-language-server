@@ -9,8 +9,8 @@ Decl {
     kind: Builtin(
         Set(
             [
-                "count",
-                "string",
+                Count,
+                String,
             ],
         ),
     ),

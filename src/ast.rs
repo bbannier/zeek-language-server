@@ -312,6 +312,34 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         .root_node()
         .named_descendant_for_point_range(loc.range)?;
 
+    if let DeclKind::LoopIndex(i, from) = &decl.kind {
+        let from = db
+            .resolve_id(
+                from.as_str().into(),
+                NodeLocation::from_node(uri.clone(), node),
+            )
+            .and_then(|r| db.typ(r))?;
+
+        let DeclKind::Builtin(typ) = &from.kind else {
+            // TODO(bbannier): report diagnostic for iteration over non-builtins.
+            return None;
+        };
+
+        let loc = decl
+            .loc
+            .as_ref()
+            .map(|l| NodeLocation::from_range(l.uri.clone(), l.range));
+
+        return match typ {
+            Type::Vector(id) => match i {
+                0 => db.resolve_type(Type::Count, loc),
+                1 => db.resolve_type((**id).clone(), loc),
+                _ => None,
+            },
+            _ => todo!(),
+        };
+    }
+
     let make_typ = |typ| {
         let source = db.source(uri.clone())?;
         query::typ(typ, source.as_bytes())
@@ -1594,5 +1622,48 @@ local x18: opaque of count;
         check(Position::new(16, 6), "x16");
         check(Position::new(17, 6), "x17");
         check(Position::new(18, 6), "x18");
+    }
+
+    #[test]
+    fn loop_vars_vector() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            r#"
+global vs: vector of string = vector("a");
+event zeek_init() { for (v in vs) ; }
+event zeek_init() { for (i, v in vs) ; }
+                 "#,
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let v = root
+            .named_descendant_for_position(Position::new(2, 25))
+            .unwrap();
+        assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
+        let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
+
+        let i = root
+            .named_descendant_for_position(Position::new(3, 25))
+            .unwrap();
+        assert_eq!(i.utf8_text(source.as_bytes()), Ok("i"));
+        let decl = db.resolve(NodeLocation::from_node(uri.clone(), i)).unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
+
+        let v = root
+            .named_descendant_for_position(Position::new(3, 28))
+            .unwrap();
+        assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
+        let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
     }
 }

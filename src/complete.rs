@@ -444,10 +444,10 @@ mod test {
         let uri = uri1;
         {
             let params = CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
-                    position: Position::new(2, 16),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(2, 16),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -476,10 +476,10 @@ mod test {
         let uri = uri2;
         {
             let params = CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
-                    position: Position::new(2, 17),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(2, 17),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -561,10 +561,10 @@ mod test {
             let uri = uri1;
             let position = Position::new(2, 17);
             let params = CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
                     position,
-                },
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -582,10 +582,10 @@ mod test {
             let uri = uri2;
             let position = Position::new(2, 17);
             let params = CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
                     position,
-                },
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -763,10 +763,10 @@ mod test {
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
-                    position: Position::new(0, 6),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(0, 6),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -798,10 +798,10 @@ hook h
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.clone()),
-                    position: Position::new(7, 6),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(7, 6),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -811,10 +811,10 @@ hook h
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.clone()),
-                    position: Position::new(8, 10),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(8, 10),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -824,10 +824,10 @@ hook h
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri.clone()),
-                    position: Position::new(9, 6),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(9, 6),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -837,10 +837,10 @@ hook h
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
-                    position: Position::new(11, 8),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(11, 8),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,
@@ -862,10 +862,10 @@ f",
         let result = complete(
             &db.0,
             CompletionParams {
-                text_document_position: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier::new(uri),
-                    position: Position::new(2, 0),
-                },
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(2, 0),
+                ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
                 context: None,

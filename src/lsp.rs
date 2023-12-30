@@ -365,7 +365,7 @@ impl Backend {
         let workspace_folder = self
             .with_state(|s| {
                 s.workspace_folders()
-                    .get(0)
+                    .first()
                     .and_then(|f| f.to_file_path().ok())
             })
             .await;
@@ -652,7 +652,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        let Some(changes) = params.content_changes.get(0) else {
+        let Some(changes) = params.content_changes.first() else {
             error!("more than one change received even though we only advertize full update mode");
             return;
         };

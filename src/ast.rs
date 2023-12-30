@@ -319,7 +319,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
             let xs = node.named_children_not("nl");
-            let lhs = xs.get(0).copied()?;
+            let lhs = xs.first().copied()?;
             let rhs = xs.get(1).copied()?;
 
             let id = rhs.utf8_text(source.as_bytes()).ok()?;

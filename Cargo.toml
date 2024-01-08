@@ -17,7 +17,7 @@ default = []
 telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "opentelemetry_sdk"]
 
 [dependencies]
-clap = { version = "4.4.12", features = ["std", "derive", "help"], default-features = false }
+clap = { version = "4.4.13", features = ["std", "derive", "help"], default-features = false }
 eyre = { default-features = false, version = "0.6.11", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.30" }
 itertools = "0.12.0"

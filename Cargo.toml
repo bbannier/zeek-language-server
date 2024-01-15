@@ -33,7 +33,7 @@ rustc-hash = "1.1.0"
 salsa = "0.16.1"
 semver = { version = "1.0.21", default-features = false }
 serde = { version = "1.0.195", default-features = false }
-serde_json = { default-features = false, version = "1.0.109" }
+serde_json = { default-features = false, version = "1.0.111" }
 tokio = { version = "1.35.1", features = ["fs", "io-std", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp = { version = "0.20.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.40" }

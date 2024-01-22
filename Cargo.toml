@@ -26,7 +26,7 @@ opentelemetry-jaeger = { version = "0.20.0", features = ["reqwest_collector_clie
 opentelemetry_sdk = { version = "0.21.2", features = ["rt-tokio"], default-features = false, optional = true }
 path-clean = "1.0.1"
 rayon = "1.8.0"
-regex = { default-features = false, version = "1.10.2" }
+regex = { default-features = false, version = "1.10.3" }
 reqwest = { version = "0.11.23", default-features = false }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "1.1.0"

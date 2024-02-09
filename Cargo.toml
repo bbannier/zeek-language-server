@@ -45,7 +45,7 @@ tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }
 walkdir = "2.4.0"
 
 [workspace]
-members = ["crates/tree-sitter-zeek"]
+members = [".", "crates/tree-sitter-zeek"]
 
 [profile.release]
 panic = "abort"

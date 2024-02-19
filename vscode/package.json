@@ -184,7 +184,7 @@
     "vscode-uri": "^3.0.8"
   },
   "devDependencies": {
-    "@types/node": "^20.11.17",
+    "@types/node": "^20.11.19",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^6.21.0",

@@ -21,7 +21,7 @@ clap = { version = "4.5.1", features = ["std", "derive", "help"], default-featur
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.30" }
 itertools = "0.12.1"
-opentelemetry = { version = "0.21.0", features = ["trace"], optional = true }
+opentelemetry = { version = "0.22.0", features = ["trace"], optional = true }
 opentelemetry-jaeger = { version = "0.20.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
 opentelemetry_sdk = { version = "0.21.2", features = ["rt-tokio"], default-features = false, optional = true }
 path-clean = "1.0.1"

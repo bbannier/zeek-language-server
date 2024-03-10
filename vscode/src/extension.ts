@@ -12,7 +12,6 @@ import {
 import * as fs from "fs";
 import * as path from "path";
 import * as child_process from "child_process";
-import got from "got";
 
 import {
   Executable,
@@ -209,6 +208,11 @@ async function tryZeek(): Promise<void> {
     pcap: string;
   }
 
+  interface Result {
+    job: string;
+    stdout: string;
+  }
+
   // try.zeek.org expects a file `main.zeek`. Add a dummy file loading
   // the main content unless the file is already called `main.zeek`.
   const sources: Source[] = [{ name, content }];
@@ -222,20 +226,22 @@ async function tryZeek(): Promise<void> {
     pcap: "",
   };
 
-  const body = JSON.stringify(query);
-
-  const res = await got.post("https://try.zeek.org/run", {
+  const response = await fetch("https://try.zeek.org/run", {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body,
+    body: JSON.stringify(query),
   });
 
-  const { job } = JSON.parse(res.body);
-  log.info(`Got try.zeek.org post ${job}`);
+  const result = (await response.json()) as Result;
 
-  env.openExternal(Uri.parse(`https://try.zeek.org/#/tryzeek/saved/${job}`));
+  log.info(`Got try.zeek.org post ${result.job}`);
+
+  env.openExternal(
+    Uri.parse(`https://try.zeek.org/#/tryzeek/saved/${result.job}`),
+  );
 }
 
 let CLIENT: LanguageClient;

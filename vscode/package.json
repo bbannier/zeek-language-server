@@ -178,8 +178,6 @@
     "fix": "prettier --write . && eslint --ext=ts . --fix"
   },
   "dependencies": {
-    "@types/got": "^9.6.12",
-    "got": "^14.2.0",
     "vscode-languageclient": "^9.0.1"
   },
   "activationEvents": [

@@ -177,14 +177,12 @@
     "lint": "prettier --check . && eslint --ext=ts .",
     "fix": "prettier --write . && eslint --ext=ts . --fix"
   },
-  "dependencies": {
-    "vscode-languageclient": "^9.0.1"
-  },
   "activationEvents": [
     "onLanguage:zeek",
     "onLanguage:sig"
   ],
   "devDependencies": {
+    "vscode-languageclient": "^9.0.1",
     "@types/node": "^20.11.24",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^7.1.0",

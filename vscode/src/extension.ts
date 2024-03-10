@@ -20,8 +20,6 @@ import {
   ServerOptions,
 } from "vscode-languageclient/node";
 
-import { promisify } from "util";
-
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
 
@@ -29,9 +27,6 @@ const PLATFORMS = {
   linux: "x86_64-unknown-linux-gnu",
   darwin: "x86_64-apple-darwin",
 };
-
-const exists = promisify(fs.exists);
-const execFile = promisify(child_process.execFile);
 
 class ZeekLanguageServer {
   private readonly context: ExtensionContext;
@@ -86,7 +81,7 @@ class ZeekLanguageServer {
     const expectOut = `zeek-language-server ${this.version}`;
 
     try {
-      const { stdout } = await execFile(file, ["--version"]);
+      const stdout = child_process.execFileSync(file, ["--version"]).toString();
       return stdout.startsWith(expectOut);
     } catch (error) {
       return false;
@@ -109,8 +104,11 @@ class ZeekLanguageServer {
     const url = await this.getDownloadUrl();
     log.info(`Downloading ${url} to ${dest}`);
 
-    if (await exists(dest)) await fs.promises.rm(dest);
-    else await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+    if (fs.existsSync(dest)) {
+      fs.rmSync(dest);
+    } else {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+    }
 
     const params = {
       title: "Downloading zeek-language-server binary",
@@ -254,7 +252,7 @@ async function checkDependencies(): Promise<void> {
       .get<boolean>("checkZeekFormat")
   ) {
     try {
-      await execFile("zeek-format", ["--version"]);
+      child_process.execFileSync("zeek-format", ["--version"]);
     } catch (error) {
       const installZeekFormat = "Install zeek-format";
       const doNotCheck = "Do not check again";

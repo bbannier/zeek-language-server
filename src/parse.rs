@@ -47,7 +47,7 @@ pub trait Parse: Files {
 fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
     let mut parser = Parser::new();
     parser
-        .set_language(language_zeek())
+        .set_language(&language_zeek())
         .expect("cannot set parser language");
 
     let source = db.source(file)?;

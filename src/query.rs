@@ -418,7 +418,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
     let signature = format!("[{signature} (func_params ({signature}))]");
     let typ = format!("[(type {signature}?) {signature}]?@typ");
     let query = match tree_sitter::Query::new(
-        language_zeek(),
+        &language_zeek(),
         &format!(r#"(_ (_ (["global" "local"]?)@scope (id)@id {typ})@decl)@outer_node"#),
     ) {
         Ok(q) => q,
@@ -878,7 +878,7 @@ fn typ_from_text(text: &str) -> Option<Type> {
 #[instrument]
 #[must_use]
 fn modules(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
-    let query = match tree_sitter::Query::new(language_zeek(), "(module_decl (id)@id)") {
+    let query = match tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)") {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
@@ -1038,7 +1038,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
 
 #[instrument]
 fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
-    let query = match tree_sitter::Query::new(language_zeek(), "(\"@load\") (file)@file") {
+    let query = match tree_sitter::Query::new(&language_zeek(), "(\"@load\") (file)@file") {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
@@ -1116,7 +1116,7 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
     };
 
     // Match things which look like function calls with arguments.
-    let query = match tree_sitter::Query::new(language_zeek(), "(expr (id) (expr_list))@fn") {
+    let query = match tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn") {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);
@@ -1161,7 +1161,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
 
     // Match untyped var and const decls
     let query = match tree_sitter::Query::new(
-        language_zeek(),
+        &language_zeek(),
         "[(const_decl) (option_decl) (var_decl)] @var",
     ) {
         Ok(q) => q,
@@ -1229,7 +1229,7 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
     };
 
     // Match any id.
-    let query = match tree_sitter::Query::new(language_zeek(), "(id)@id") {
+    let query = match tree_sitter::Query::new(&language_zeek(), "(id)@id") {
         Ok(q) => q,
         Err(e) => {
             error!("could not construct query: {}", e);

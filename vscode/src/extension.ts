@@ -11,8 +11,6 @@ import {
 } from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import * as crypto from "crypto";
-import * as stream from "stream";
 import * as child_process from "child_process";
 import got from "got";
 
@@ -34,7 +32,6 @@ const PLATFORMS = {
 };
 
 const exists = promisify(fs.exists);
-const pipeline = promisify(stream.pipeline);
 const execFile = promisify(child_process.execFile);
 
 class ZeekLanguageServer {
@@ -112,10 +109,6 @@ class ZeekLanguageServer {
   private async download(dest: string) {
     const url = await this.getDownloadUrl();
     log.info(`Downloading ${url} to ${dest}`);
-    const tempDest = path.join(
-      path.dirname(dest),
-      `.tmp${crypto.randomBytes(5).toString("hex")}`,
-    );
 
     if (await exists(dest)) await fs.promises.rm(dest);
     else await fs.promises.mkdir(path.dirname(dest), { recursive: true });
@@ -131,24 +124,43 @@ class ZeekLanguageServer {
       async (progressHandle, cancellationHandle) => {
         let lastPercent = 0;
 
-        const stream = got.stream(url).on("downloadProgress", (progress) => {
-          if (!progress.total) {
-            return;
-          }
+        const response = await fetch(url);
+        const reader = response.body.getReader();
 
-          const message = `${(progress.percent * 100).toFixed(0)}%`;
-          const increment = (progress.percent - lastPercent) * 100;
-          progressHandle.report({ message, increment });
-          lastPercent = progress.percent;
+        cancellationHandle.onCancellationRequested(() => {
+          reader.cancel("cancelled by user");
         });
 
-        cancellationHandle.onCancellationRequested(stream.destroy.bind(stream));
+        const contentLength = parseInt(response.headers.get("Content-Length"));
+        let receivedLength = 0;
+        const chunks = []; // array of received binary chunks (comprises the body)
+        for (;;) {
+          const { done, value } = await reader.read();
 
-        await pipeline(stream, fs.createWriteStream(tempDest, { mode: 0o755 }));
+          if (done) {
+            break;
+          }
+
+          chunks.push(value);
+          receivedLength += value.length;
+
+          const percent = (receivedLength / contentLength) * 100;
+          const message = `${percent.toFixed(0)}%`;
+          const increment = percent - lastPercent;
+          progressHandle.report({ message, increment });
+          lastPercent = percent;
+        }
+
+        const chunksAll = new Uint8Array(receivedLength);
+        let position = 0;
+        for (const chunk of chunks) {
+          chunksAll.set(chunk, position);
+          position += chunk.length;
+        }
+
+        fs.writeFileSync(dest, chunksAll, { mode: 0o755 });
       },
     );
-
-    await fs.promises.rename(tempDest, dest);
   }
 }
 

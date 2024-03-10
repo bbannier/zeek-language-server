@@ -24,7 +24,6 @@ import {
 } from "vscode-languageclient/node";
 
 import { promisify } from "util";
-import { Utils } from "vscode-uri";
 
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
@@ -183,7 +182,7 @@ const log = new (class {
 /** Publish the currently open document to try.zeek.org and open the result. */
 async function tryZeek(): Promise<void> {
   const document = window.activeTextEditor.document;
-  const name = Utils.basename(document.uri);
+  const name = path.basename(document.uri.path);
   const content = document.getText();
 
   log.info(`Creating try.zeek.org content for ${document.uri.fsPath}`);

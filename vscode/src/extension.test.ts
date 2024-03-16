@@ -9,7 +9,7 @@ jest.mock("node:child_process");
 
 describe("checkDependencies", () => {
   afterEach(() => {
-    jest.resetAllMocks();
+    jest.restoreAllMocks();
   });
 
   class MockWorkspace implements WorkspaceConfiguration {

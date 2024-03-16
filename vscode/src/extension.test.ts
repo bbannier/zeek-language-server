@@ -1,9 +1,9 @@
-import { ConfigurationTarget, workspace, window, env } from "vscode";
+import { workspace, window, env } from "vscode";
 import { checkDependencies } from "./extension";
 import { jest, expect, test } from "@jest/globals";
 import { WorkspaceConfiguration } from "vscode";
 import * as cp from "node:child_process";
-import { after, afterEach, describe } from "node:test";
+import { afterEach, describe } from "node:test";
 
 jest.mock("node:child_process");
 

@@ -7,39 +7,39 @@ import { afterEach, describe } from "node:test";
 
 jest.mock("node:child_process");
 
-class MockWorkspace implements WorkspaceConfiguration {
-  [key: string]: any;
-  get<T>(section: string): T {
-    return this[section];
-  }
-  has(_section: string) {
-    return true;
-  }
-  inspect<T>(_section: string): {
-    key: string;
-    defaultValue?: T;
-    globalValue?: T;
-    workspaceValue?: T;
-    workspaceFolderValue?: T;
-    defaultLanguageValue?: T;
-    globalLanguageValue?: T;
-    workspaceLanguageValue?: T;
-    workspaceFolderLanguageValue?: T;
-    languageIds?: string[];
-  } {
-    return null;
-  }
-  update(section: string, value: any): Thenable<void> {
-    section = section.split(".", 2)[1];
-    this[section] = value;
-    return null;
-  }
-}
-
 describe("checkDependencies", () => {
   afterEach(() => {
     jest.resetAllMocks();
   });
+
+  class MockWorkspace implements WorkspaceConfiguration {
+    [key: string]: any;
+    get<T>(section: string): T {
+      return this[section];
+    }
+    has(_section: string) {
+      return true;
+    }
+    inspect<T>(_section: string): {
+      key: string;
+      defaultValue?: T;
+      globalValue?: T;
+      workspaceValue?: T;
+      workspaceFolderValue?: T;
+      defaultLanguageValue?: T;
+      globalLanguageValue?: T;
+      workspaceLanguageValue?: T;
+      workspaceFolderLanguageValue?: T;
+      languageIds?: string[];
+    } {
+      return null;
+    }
+    update(section: string, value: any): Thenable<void> {
+      section = section.split(".", 2)[1];
+      this[section] = value;
+      return null;
+    }
+  }
 
   type ShowInformationMessage = (message: string, ...items: string[]) => string;
   let showInformationMessage = jest.spyOn(

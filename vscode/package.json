@@ -168,6 +168,10 @@
       }
     ]
   },
+  "activationEvents": [
+    "onLanguage:zeek",
+    "onLanguage:sig"
+  ],
   "scripts": {
     "vscode:prepublish": "npm run build-base -- --minify",
     "vsix": "vsce package -o zeek-language-server.vsix",
@@ -178,12 +182,8 @@
     "fix": "prettier --write . && eslint --ext=ts . --fix",
     "test": "jest"
   },
-  "activationEvents": [
-    "onLanguage:zeek",
-    "onLanguage:sig"
-  ],
   "devDependencies": {
-    "@types/jest": "^29.5.12",
+    "@jest/globals": "^29.7.0",
     "@types/node": "^20.11.25",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^7.1.1",

@@ -12,10 +12,10 @@ class MockWorkspace implements WorkspaceConfiguration {
   get<T>(section: string): T {
     return this[section];
   }
-  has(section: string) {
+  has(_section: string) {
     return true;
   }
-  inspect<T>(section: string): {
+  inspect<T>(_section: string): {
     key: string;
     defaultValue?: T;
     globalValue?: T;
@@ -29,12 +29,7 @@ class MockWorkspace implements WorkspaceConfiguration {
   } {
     return null;
   }
-  update(
-    section: string,
-    value: any,
-    configurationTarget?: boolean | ConfigurationTarget,
-    overrideInLanguage?: boolean,
-  ): Thenable<void> {
+  update(section: string, value: any): Thenable<void> {
     section = section.split(".", 2)[1];
     this[section] = value;
     return null;
@@ -60,8 +55,6 @@ describe("checkDependencies", () => {
   test("found", async () => {
     jest.spyOn(cp, "execFileSync").mockImplementationOnce(function (
       this: cp.ChildProcess,
-      file: string,
-      args: string[],
     ): Buffer {
       // Simulate that zeek-format was found.
       return Buffer.from("1.2.3");
@@ -76,8 +69,6 @@ describe("checkDependencies", () => {
   test("not found with installation", async () => {
     jest.spyOn(cp, "execFileSync").mockImplementationOnce(function (
       this: cp.ChildProcess,
-      file: string,
-      args: string[],
     ): Buffer {
       // Simulate that zeek-format was not found.
       throw new Error();
@@ -96,7 +87,6 @@ describe("checkDependencies", () => {
   test("not found without installation", async () => {
     jest.spyOn(cp, "execFileSync").mockImplementationOnce(function (
       this: cp.ChildProcess,
-      _file: string,
     ): Buffer {
       // Simulate that zeek-format was not found.
       throw new Error();

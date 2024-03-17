@@ -42,12 +42,12 @@ describe("checkDependencies", () => {
   }
 
   type ShowInformationMessage = (message: string, ...items: string[]) => string;
-  let showInformationMessage = jest.spyOn(
+  const showInformationMessage = jest.spyOn(
     window,
     "showInformationMessage",
   ) as unknown as jest.MockedFunction<ShowInformationMessage>;
 
-  let config = new MockWorkspace();
+  const config = new MockWorkspace();
   config["checkZeekFormat"] = true;
 
   jest.spyOn(workspace, "getConfiguration").mockReturnValue(config);

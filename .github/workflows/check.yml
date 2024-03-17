@@ -94,10 +94,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "16.x"
-      - run: |
+      - name: Install dependencies
+        run: |
           cd vscode
           npm install
           npm install -g @vscode/vsce
+      - name: Test
+        run: |
+          cd vscode
+          npm test
       - name: Lint
         run: |
           cd vscode

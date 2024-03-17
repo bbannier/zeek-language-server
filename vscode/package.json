@@ -168,6 +168,10 @@
       }
     ]
   },
+  "activationEvents": [
+    "onLanguage:zeek",
+    "onLanguage:sig"
+  ],
   "scripts": {
     "vscode:prepublish": "npm run build-base -- --minify",
     "vsix": "vsce package -o zeek-language-server.vsix",
@@ -175,14 +179,11 @@
     "build": "npm run build-base -- --sourcemap",
     "watch": "npm run build-base -- --sourcemap --watch",
     "lint": "prettier --check . && eslint --ext=ts .",
-    "fix": "prettier --write . && eslint --ext=ts . --fix"
+    "fix": "prettier --write . && eslint --ext=ts . --fix",
+    "test": "jest"
   },
-  "activationEvents": [
-    "onLanguage:zeek",
-    "onLanguage:sig"
-  ],
   "devDependencies": {
-    "vscode-languageclient": "^9.0.1",
+    "@jest/globals": "^29.7.0",
     "@types/node": "^20.11.25",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
@@ -190,8 +191,12 @@
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.1",
     "eslint": "^8.57.0",
+    "jest": "^29.7.0",
     "mocha": "^10.3.0",
     "prettier": "^3.2.2",
-    "typescript": "^5.4.2"
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.2",
+    "vscode-languageclient": "^9.0.1"
   }
 }

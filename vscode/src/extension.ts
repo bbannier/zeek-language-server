@@ -244,7 +244,7 @@ async function tryZeek(): Promise<void> {
 
 let CLIENT: LanguageClient;
 
-async function checkDependencies(): Promise<void> {
+export async function checkDependencies(): Promise<void> {
   // Check for `zeek-format`.
   if (
     workspace

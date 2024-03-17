@@ -13,14 +13,15 @@ describe("checkDependencies", () => {
   });
 
   class MockWorkspace implements WorkspaceConfiguration {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
     get<T>(section: string): T {
       return this[section];
     }
-    has(_section: string) {
+    has() {
       return true;
     }
-    inspect<T>(_section: string): {
+    inspect<T>(): {
       key: string;
       defaultValue?: T;
       globalValue?: T;
@@ -34,6 +35,7 @@ describe("checkDependencies", () => {
     } {
       return null;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     update(section: string, value: any): Thenable<void> {
       section = section.split(".", 2)[1];
       this[section] = value;

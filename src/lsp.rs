@@ -1217,7 +1217,7 @@ impl LanguageServer for Backend {
                             )
                         })
                         .find(|&d| d.id == decl.id)
-                        .map(Clone::clone),
+                        .cloned(),
                     _ => None,
                 }
             })

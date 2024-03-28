@@ -471,11 +471,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
             match &type_decl.kind {
                 DeclKind::Type(fields) => {
                     // Find the given id in the fields.
-                    return fields
-                        .iter()
-                        .find(|f| &*f.id == id)
-                        .map(Clone::clone)
-                        .map(Arc::new);
+                    return fields.iter().find(|f| &*f.id == id).cloned().map(Arc::new);
                 }
                 DeclKind::Field => return db.typ(type_decl),
                 _ => return None,

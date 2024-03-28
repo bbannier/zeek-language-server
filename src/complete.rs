@@ -22,15 +22,11 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 
     let source = state.source(uri.clone())?;
 
-    let Some(tree) = state.parse(uri.clone()) else {
-        return None;
-    };
+    let tree = state.parse(uri.clone())?;
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
-    let Some(mut node) = root.descendant_for_position(position) else {
-        return None;
-    };
+    let mut node = root.descendant_for_position(position)?;
 
     let text = completion_text(node, &source);
 
@@ -91,9 +87,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         // If we are completing some identifier from a module got to the node containing the full
         // identifier.
         while node.utf8_text(source.as_bytes()) == Ok(":") {
-            let Some(p) = node.parent() else {
-                return None;
-            };
+            let p = node.parent()?;
             node = p;
         }
 
@@ -333,9 +327,7 @@ fn complete_any(
             // completions from that namespace. The namespace needs to match exactly, but we fuzzy
             // match items from the namespace.
             if let Some((t1, t2)) = text.split_once("::") {
-                let Some((l1, l2)) = label.split_once("::") else {
-                    return None;
-                };
+                let (l1, l2) = label.split_once("::")?;
 
                 return (t1 == l1
                     && (t2.is_empty() || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0))

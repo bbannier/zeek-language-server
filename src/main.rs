@@ -1,6 +1,5 @@
-use clap::Parser;
-
 use {
+    clap::Parser,
     eyre::Result,
     tracing::info,
     tracing_appender::non_blocking::WorkerGuard,
@@ -8,12 +7,19 @@ use {
     zeek_language_server::lsp::run,
 };
 
+#[cfg(feature = "telemetry")]
+use {
+    opentelemetry::KeyValue,
+    opentelemetry_otlp::WithExportConfig,
+    opentelemetry_sdk::{trace, Resource},
+};
+
 #[derive(Parser, Debug)]
 #[clap(about, version)]
 struct Args {
-    /// Jaeger endpoint collecting tracing spans in jaeger.thrift format.
+    /// OTLP gRPC collection endpoint.
     #[cfg(feature = "telemetry")]
-    #[clap(short, long, default_value = "http://127.0.0.1:14268/api/traces")]
+    #[clap(short, long, default_value = "http://127.0.0.1:4317")]
     collector_endpoint: String,
 
     /// Minimal level of events to log.
@@ -36,14 +42,21 @@ fn init_logging(args: &Args) -> Result<WorkerGuard> {
         let registry = tracing_subscriber::registry().with(fmt);
 
         #[cfg(feature = "telemetry")]
-        let tracer = opentelemetry_jaeger::new_collector_pipeline()
-            .with_endpoint(&args.collector_endpoint)
-            .with_service_name(env!("CARGO_BIN_NAME"))
-            .with_reqwest()
-            .install_batch(opentelemetry_sdk::runtime::Tokio)?;
-
-        #[cfg(feature = "telemetry")]
-        let registry = registry.with(tracing_opentelemetry::layer().with_tracer(tracer));
+        let registry = registry.with(
+            tracing_opentelemetry::layer().with_tracer(
+                opentelemetry_otlp::new_pipeline()
+                    .tracing()
+                    .with_exporter(
+                        opentelemetry_otlp::new_exporter()
+                            .tonic()
+                            .with_endpoint(&args.collector_endpoint),
+                    )
+                    .with_trace_config(trace::config().with_resource(Resource::new(vec![
+                        KeyValue::new("service.name", env!("CARGO_BIN_NAME")),
+                    ])))
+                    .install_batch(opentelemetry_sdk::runtime::Tokio)?,
+            ),
+        );
 
         registry.init();
     }

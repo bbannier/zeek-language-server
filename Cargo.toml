@@ -13,7 +13,7 @@ tempfile = "3.10.1"
 wiremock = "0.6.0"
 
 [features]
-default = []
+default = ["telemetry"]
 telemetry = ["opentelemetry", "opentelemetry-jaeger", "tracing-opentelemetry", "opentelemetry_sdk"]
 
 [dependencies]
@@ -22,8 +22,8 @@ eyre = { default-features = false, version = "0.6.12", features = ["auto-install
 futures = { default-features = false, version = "0.3.30" }
 itertools = "0.12.1"
 opentelemetry = { version = "0.22.0", features = ["trace"], optional = true }
-opentelemetry-jaeger = { version = "0.20.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
-opentelemetry_sdk = { version = "0.21.2", features = ["rt-tokio"], default-features = false, optional = true }
+opentelemetry-jaeger = { version = "0.21.0", features = ["reqwest_collector_client", "rt-tokio"], optional = true }
+opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio"], default-features = false, optional = true }
 path-clean = "1.0.1"
 rayon = "1.10.0"
 regex = { default-features = false, version = "1.10.4" }

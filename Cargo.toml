@@ -38,7 +38,7 @@ tokio = { version = "1.37.0", features = ["fs", "io-std", "io-util", "rt-multi-t
 tower-lsp = { version = "0.20.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.40" }
 tracing-appender = { version = "0.2.3", default-features = false }
-tracing-opentelemetry = { version = "0.22.0", optional = true }
+tracing-opentelemetry = { version = "0.23.0", optional = true }
 tracing-subscriber = { version = "0.3.18", features = ["tracing-log"], default-features = false }
 tree-sitter = "0.22.2"
 tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }

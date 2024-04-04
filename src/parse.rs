@@ -1,5 +1,5 @@
 use crate::{query::Node, Files};
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 use tower_lsp::lsp_types::Url;
 use tracing::instrument;
 use tree_sitter::Parser;
@@ -28,14 +28,6 @@ impl From<tree_sitter::Tree> for Tree {
 }
 
 impl Eq for Tree {}
-
-impl Deref for Tree {
-    type Target = tree_sitter::Tree;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 #[salsa::query_group(ParseStorage)]
 pub trait Parse: Files {

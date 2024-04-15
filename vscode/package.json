@@ -171,7 +171,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build-base -- --minify",
     "vsix": "vsce package -o zeek-language-server.vsix",
-    "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node12",
+    "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node16",
     "build": "npm run build-base -- --sourcemap",
     "watch": "npm run build-base -- --sourcemap --watch",
     "lint": "prettier --check . && eslint --ext=ts .",

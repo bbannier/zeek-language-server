@@ -187,7 +187,7 @@
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^7.5.0",
     "@typescript-eslint/parser": "^7.6.0",
-    "@vscode/vsce": "^2.24.0",
+    "@vscode/vsce": "^2.25.0",
     "esbuild": "^0.20.2",
     "eslint": "^8.57.0",
     "mocha": "^10.4.0",

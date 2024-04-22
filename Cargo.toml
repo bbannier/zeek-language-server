@@ -27,7 +27,7 @@ opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio", "trace"], defa
 path-clean = "1.0.1"
 rayon = "1.10.0"
 regex = { default-features = false, version = "1.10.4" }
-reqwest = { version = "0.12.3", default-features = false }
+reqwest = { version = "0.12.4", default-features = false }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "1.1.0"
 salsa = "0.16.1"

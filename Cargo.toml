@@ -31,7 +31,7 @@ reqwest = { version = "0.12.4", default-features = false }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "1.1.0"
 salsa = "0.16.1"
-semver = { version = "1.0.22", default-features = false }
+semver = { version = "1.0.23", default-features = false }
 serde = { version = "1.0.200", default-features = false }
 serde_json = { default-features = false, version = "1.0.116" }
 smol_str = "0.2.1"

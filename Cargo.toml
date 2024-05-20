@@ -8,7 +8,7 @@ license = "GPL-3.0-only"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
-insta = "1.38.0"
+insta = "1.39.0"
 tempfile = "3.10.1"
 wiremock = "0.6.0"
 

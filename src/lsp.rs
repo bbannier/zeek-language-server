@@ -850,7 +850,7 @@ impl LanguageServer for Backend {
 
                 decls_w_mod
                     .into_iter()
-                    .group_by(|d| &d.module)
+                    .chunk_by(|d| &d.module)
                     .into_iter()
                     .map(|(m, decls)| {
                         #[allow(deprecated)]
@@ -1470,7 +1470,7 @@ impl LanguageServer for Backend {
 
         let changes = references
             .into_iter()
-            .group_by(|r| (*r.uri).clone())
+            .chunk_by(|r| (*r.uri).clone())
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g

@@ -20,7 +20,7 @@ telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "ope
 clap = { version = "4.5.4", features = ["std", "derive", "help"], default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.30" }
-itertools = "0.12.1"
+itertools = "0.13.0"
 opentelemetry = { version = "0.22.0", features = ["trace"], optional = true }
 opentelemetry-otlp = { version = "0.15.0", features = ["grpc-tonic", "trace"], default-features = false, optional = true }
 opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio", "trace"], default-features = false, optional = true }
@@ -32,9 +32,9 @@ rust-fuzzy-search = "0.1.1"
 rustc-hash = "1.1.0"
 salsa = "0.16.1"
 semver = { version = "1.0.23", default-features = false }
-serde = { version = "1.0.201", default-features = false }
+serde = { version = "1.0.202", default-features = false }
 serde_json = { default-features = false, version = "1.0.117" }
-smol_str = "0.2.1"
+smol_str = "0.2.2"
 tokio = { version = "1.37.0", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp = { version = "0.20.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.40" }

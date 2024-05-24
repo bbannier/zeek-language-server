@@ -25,7 +25,7 @@ const BASE_URL =
 
 const PLATFORMS = {
   linux: "x86_64-unknown-linux-gnu",
-  darwin: "aarch64-apple-darwin",
+  darwin: "x86_64-apple-darwin",
 };
 
 class ZeekLanguageServer {

@@ -293,7 +293,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
 
 #[allow(clippy::needless_pass_by_value)]
 fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
-    // If we see a type decl with location we are likely dealing with a buildin type already which
+    // If we see a type decl with location we are likely dealing with a builtin type already which
     // cannot be further resolved; return it directly.
     if let DeclKind::Type(_) = &decl.kind {
         if decl.loc.is_none() {
@@ -399,9 +399,11 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             }
 
             // Return the actual type for variable declarations.
-            DeclKind::Const | DeclKind::Global | DeclKind::Variable | DeclKind::LoopIndex(_, _) => {
-                db.typ(d)
-            }
+            DeclKind::Const
+            | DeclKind::Field
+            | DeclKind::Global
+            | DeclKind::LoopIndex(_, _)
+            | DeclKind::Variable => db.typ(d),
 
             // Other kinds we return directly.
             _ => Some(d),
@@ -1622,6 +1624,38 @@ local x18: opaque of count;
         check(Position::new(16, 6), "x16");
         check(Position::new(17, 6), "x17");
         check(Position::new(18, 6), "x18");
+    }
+
+    #[test]
+    fn resolve_record_type() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "
+            type R: record {
+                a: count;
+            };
+
+            event zeek_init() {
+                local r: R;
+                local my_a = r$a;
+            }",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let a = root
+            .named_descendant_for_position(Position::new(7, 22))
+            .unwrap();
+        assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "my_a");
+
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri.clone(), a))
+            .and_then(|d| db.typ(d)));
     }
 
     #[test]

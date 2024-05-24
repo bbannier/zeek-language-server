@@ -5,30 +5,78 @@ expression: db.typ(decl)
 Some(
     Decl {
         module: None,
-        id: "b",
-        fqid: "A::b",
-        kind: Field,
-        is_export: None,
+        id: "B",
+        fqid: "B",
+        kind: Type(
+            [
+                Decl {
+                    module: None,
+                    id: "i",
+                    fqid: "B::i",
+                    kind: Field,
+                    is_export: None,
+                    loc: Some(
+                        Location {
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    character: 16,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    character: 17,
+                                },
+                            },
+                            selection_range: Range {
+                                start: Position {
+                                    line: 2,
+                                    character: 16,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    character: 17,
+                                },
+                            },
+                            uri: Url {
+                                scheme: "file",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: None,
+                                port: None,
+                                path: "/x.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        },
+                    ),
+                    documentation: "```zeek\n# In B\ni: count;\n```",
+                },
+            ],
+        ),
+        is_export: Some(
+            false,
+        ),
         loc: Some(
             Location {
                 range: Range {
                     start: Position {
-                        line: 5,
-                        character: 16,
+                        line: 1,
+                        character: 12,
                     },
                     end: Position {
-                        line: 5,
-                        character: 17,
+                        line: 3,
+                        character: 14,
                     },
                 },
                 selection_range: Range {
                     start: Position {
-                        line: 5,
-                        character: 16,
+                        line: 1,
+                        character: 17,
                     },
                     end: Position {
-                        line: 5,
-                        character: 17,
+                        line: 1,
+                        character: 18,
                     },
                 },
                 uri: Url {
@@ -44,6 +92,6 @@ Some(
                 },
             },
         ),
-        documentation: "```zeek\n# In A\nb: B;\n```",
+        documentation: "```zeek\ntype B: record {\n                i: count;\n            };\n```",
     },
 )

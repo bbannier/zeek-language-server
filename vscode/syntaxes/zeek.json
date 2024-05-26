@@ -5,13 +5,19 @@
   "fileTypes": ["bro", "zeek"],
   "patterns": [
     {
-      "begin": "(##!|##<|##|#)",
+      "begin": "#[^#]",
       "name": "comment.line.zeek",
       "beginCaptures": {
         "1": {
           "name": "punctuation.definition.comment.zeek"
         }
       },
+      "end": "$"
+    },
+    {
+      "begin": "(##!|##<|##)",
+      "name": "comment.line.zeekygen",
+      "patterns": [{ "include": "source.rst" }],
       "end": "$"
     },
     {

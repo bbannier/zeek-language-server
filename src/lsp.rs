@@ -886,34 +886,22 @@ impl LanguageServer for Backend {
 
         let symbols = self
             .with_state(|state| {
-                let files = state.files();
-                files
-                    .iter()
-                    .flat_map(|uri| {
-                        state
-                            .decls(uri.clone())
-                            .iter()
-                            .filter(|d| {
-                                rust_fuzzy_search::fuzzy_compare(&query, &d.fqid.to_lowercase())
-                                    > 0.0
-                            })
-                            .filter_map(|d| {
-                                let url: &Url = uri;
-                                let loc = &d.loc.as_ref()?;
+                fuzzy_search_symbol(&state, &query)
+                    .into_iter()
+                    .filter_map(|(_, d)| {
+                        let loc = d.loc.as_ref()?;
 
-                                #[allow(deprecated)]
-                                Some(SymbolInformation {
-                                    name: d.fqid.to_string(),
-                                    kind: to_symbol_kind(&d.kind),
+                        #[allow(deprecated)]
+                        Some(SymbolInformation {
+                            name: d.fqid.to_string(),
+                            kind: to_symbol_kind(&d.kind),
 
-                                    location: Location::new(url.clone(), loc.range),
-                                    container_name: Some(format!("{}", &d.module)),
+                            location: Location::new(loc.uri.as_ref().clone(), loc.range),
+                            container_name: Some(format!("{}", d.module)),
 
-                                    tags: None,
-                                    deprecated: None,
-                                })
-                            })
-                            .collect::<Vec<_>>()
+                            tags: None,
+                            deprecated: None,
+                        })
                     })
                     .collect()
             })
@@ -967,6 +955,16 @@ impl LanguageServer for Backend {
                             state.prefixes().as_ref(),
                         )
                         .map(|uri| Location::new((*uri).clone(), Range::default()))
+                    }
+                    "zeekygen_head_comment" | "zeekygen_prev_comment" | "zeekygen_next_comment" => {
+                        // If we are in a zeekygen comment try to recover an
+                        // identifier under the cursor and use it as target.
+                        let symbol = code_at_position(&source, position)?;
+                        let mut x = fuzzy_search_symbol(&state, &symbol);
+                        x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
+                        x.last()
+                            .and_then(|(_, d)| d.loc.as_ref())
+                            .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
                     }
                     _ => None,
                 }
@@ -1485,6 +1483,35 @@ impl LanguageServer for Backend {
 
         Ok(Some(WorkspaceEdit::new(changes)))
     }
+}
+
+fn code_at_position(source: &str, position: Position) -> Option<String> {
+    let line = source.lines().nth(usize::try_from(position.line).ok()?)?;
+    let (a, b) = line.split_at(usize::try_from(position.character).ok()?);
+    let a = a.split('`').last()?;
+    let b = b.split('`').next()?;
+
+    Some(format!("{a}{b}"))
+}
+
+fn fuzzy_search_symbol(db: &Snapshot<Database>, symbol: &str) -> Vec<(f32, Decl)> {
+    let files = db.files();
+    files
+        .iter()
+        .flat_map(|uri| {
+            db.decls(uri.clone())
+                .iter()
+                .filter_map(|d| {
+                    let rank = rust_fuzzy_search::fuzzy_compare(symbol, &d.fqid.to_lowercase());
+                    if rank > 0.0 {
+                        Some((rank, d.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -2056,6 +2083,34 @@ event zeek_init() {}",
                     text_document_position_params: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new(uri),
                         Position::new(4, 8),
+                    ),
+                    partial_result_params: PartialResultParams::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn goto_definition_zeekygen() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+            function foo() {}
+
+            ## ``foo``",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .goto_definition(super::GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(3, 18),
                     ),
                     partial_result_params: PartialResultParams::default(),
                     work_done_progress_params: WorkDoneProgressParams::default(),

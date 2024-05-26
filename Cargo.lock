@@ -2459,6 +2459,7 @@ dependencies = [
  "futures",
  "insta",
  "itertools 0.13.0",
+ "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",

@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
@@ -114,8 +115,8 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 .lines()
                 .nth(usize::try_from(node.range().start.line).expect("too many lines"))
                 .and_then(|line| {
-                    let re = regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp");
-                    Some(re.captures(line)?.get(1)?.as_str())
+                    static RE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp"));
+                    Some(RE.captures(line)?.get(1)?.as_str())
                 }).map(|kind| complete_from_decls(state, uri.clone(), kind))
         } else {
             None

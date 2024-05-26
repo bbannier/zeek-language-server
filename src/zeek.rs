@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 use std::{
     ffi::OsStr,
@@ -112,6 +113,9 @@ pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
     file: P1,
     cwd: P2,
 ) -> Result<Vec<CheckResult>> {
+    static ERRLINE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"error in (\S*), line (\d+): (.*)$").expect("valid regex"));
+
     let check = tokio::process::Command::new("zeek")
         .current_dir(cwd)
         .arg("--parse-only")
@@ -119,14 +123,12 @@ pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
         .output()
         .await?;
 
-    let errline = regex::Regex::new(r"error in (\S*), line (\d+): (.*)$").expect("valid regex");
-
     let stderr = str::from_utf8(&check.stderr)?;
 
     Ok(stderr
         .lines()
         .filter_map(|l| {
-            errline.captures(l).and_then(|cap| {
+            ERRLINE.captures(l).and_then(|cap| {
                 Some(CheckResult {
                     file: cap[1].to_string(),
                     line: cap[2].parse().ok()?,

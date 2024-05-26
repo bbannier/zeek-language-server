@@ -13,6 +13,7 @@ pub fn markdownify(rst: &str) -> String {
     let rst = zeek_keyword(&rst);
     let rst = zeek_see_inline(&rst);
     let rst = zeek_see_block(&rst);
+    let rst = note(&rst);
 
     rst.into_owned()
 }
@@ -76,6 +77,13 @@ fn zeek_see_block(rst: &str) -> Cow<str> {
             .unwrap_or_default();
         format!("**See also:** {refs}")
     })
+}
+
+fn note(rst: &str) -> Cow<str> {
+    static RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+(note::)(.*)$").expect("invalid regexp"));
+
+    RE.replace_all(rst, "**Note:**$2")
 }
 
 fn docs_search(id: &str) -> String {
@@ -199,6 +207,43 @@ More text
                 abc = docs_search("abc"),
                 xyz = docs_search("xyz")
             )
+        );
+    }
+
+    #[test]
+    fn note() {
+        assert_eq!(
+            markdownify(
+                "foo
+
+.. note:: bar
+"
+            ),
+            "foo
+
+**Note:** bar
+"
+        );
+
+        assert_eq!(
+            markdownify(
+                "foo
+
+.. note::
+
+   foo bar
+   baz
+"
+            ),
+            // We do not clean up indention of the note block under the assumption that a
+            // markdown-capable client would not display it.
+            "foo
+
+**Note:**
+
+   foo bar
+   baz
+"
         );
     }
 }

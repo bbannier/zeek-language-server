@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::Captures;
 
@@ -10,6 +11,8 @@ pub fn markdownify(rst: &str) -> String {
     let rst = inline_code(&rst);
     let rst = zeek_id(&rst);
     let rst = zeek_keyword(&rst);
+    let rst = zeek_see_inline(&rst);
+    let rst = zeek_see_block(&rst);
 
     rst.into_owned()
 }
@@ -50,6 +53,28 @@ fn zeek_keyword(rst: &str) -> Cow<str> {
 
     RE.replace_all(rst, |cap: &Captures| {
         docs_search(cap.get(1).expect("id should be captured").as_str())
+    })
+}
+
+fn zeek_see_inline(rst: &str) -> Cow<str> {
+    static RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r":zeek:see:`([^`]+)`").expect("invalid regexp"));
+
+    RE.replace_all(rst, |cap: &Captures| {
+        docs_search(cap.get(1).expect("id should be captured").as_str())
+    })
+}
+
+fn zeek_see_block(rst: &str) -> Cow<str> {
+    static RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+zeek:see::(.*)$").expect("invalid regexp"));
+
+    RE.replace_all(rst, |caps: &Captures| {
+        let refs = caps
+            .get(1)
+            .map(|ids| ids.as_str().split_whitespace().map(docs_search).join(" "))
+            .unwrap_or_default();
+        format!("**See also:** {refs}")
     })
 }
 
@@ -126,6 +151,53 @@ mod test {
                 "A {foo} next to a {bar}",
                 foo = docs_search("foo"),
                 bar = docs_search("bar")
+            )
+        );
+    }
+
+    #[test]
+    fn zeek_see_inline() {
+        assert_eq!(markdownify(":zeek:see:`foo`"), docs_search("foo"));
+
+        assert_eq!(
+            markdownify("A :zeek:see:`foo` next to a :zeek:see:`bar`"),
+            format!(
+                "A {foo} next to a {bar}",
+                foo = docs_search("foo"),
+                bar = docs_search("bar")
+            )
+        );
+    }
+
+    #[test]
+    fn zeek_see_block() {
+        assert_eq!(
+            markdownify(".. zeek:see:: abc xyz"),
+            format!(
+                "**See also:** {abc} {xyz}",
+                abc = docs_search("abc"),
+                xyz = docs_search("xyz")
+            )
+        );
+
+        assert_eq!(
+            markdownify(
+                "Some text
+
+.. zeek:see:: abc xyz
+
+More text
+"
+            ),
+            format!(
+                "Some text
+
+**See also:** {abc} {xyz}
+
+More text
+",
+                abc = docs_search("abc"),
+                xyz = docs_search("xyz")
             )
         );
     }

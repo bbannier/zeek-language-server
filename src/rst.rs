@@ -8,6 +8,7 @@ pub fn markdownify(rst: &str) -> String {
     let rst = unwrap(rst);
     let rst = external_link(&rst);
     let rst = inline_code(&rst);
+    let rst = zeek_id(&rst);
     let rst = zeek_keyword(&rst);
 
     rst.into_owned()
@@ -32,6 +33,15 @@ fn unwrap(rst: &str) -> Cow<str> {
         Lazy::new(|| regex::Regex::new(r"(\S)(\n)(\S)").expect("invalid regexp"));
 
     RE.replace_all(rst, "$1 $3")
+}
+
+fn zeek_id(rst: &str) -> Cow<str> {
+    static RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r":zeek:id:`([^`]+)`").expect("invalid regexp"));
+
+    RE.replace_all(rst, |cap: &Captures| {
+        docs_search(cap.get(1).expect("id should be captured").as_str())
+    })
 }
 
 fn zeek_keyword(rst: &str) -> Cow<str> {
@@ -84,6 +94,23 @@ mod test {
         assert_eq!(markdownify("ab\n"), "ab\n");
         assert_eq!(markdownify("ab\n\ncd\n"), "ab\n\ncd\n");
         assert_eq!(markdownify("ab\ncd\n"), "ab cd\n");
+    }
+
+    #[test]
+    fn zeek_id() {
+        assert_eq!(
+            markdownify(":zeek:id:`network_time`"),
+            docs_search("network_time")
+        );
+
+        assert_eq!(
+            markdownify("A :zeek:id:`foo` next to a :zeek:id:`bar`"),
+            format!(
+                "A {foo} next to a {bar}",
+                foo = docs_search("foo"),
+                bar = docs_search("bar")
+            )
+        );
     }
 
     #[test]

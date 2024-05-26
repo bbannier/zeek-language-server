@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams {\n                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n                position: Position::new(13, 15),\n            },\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n                Position::new(13, 15)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
 ---
 Ok(
     Some(
@@ -11,7 +11,7 @@ Ok(
                         "### event `bar`",
                     ),
                     String(
-                        "Declaration & definition.\n```zeek\nevent bar() {}\n```",
+                        "Declaration & definition.\n* * *\n```zeek\nevent bar() {}\n```",
                     ),
                 ],
             ),

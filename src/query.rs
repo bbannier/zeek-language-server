@@ -520,7 +520,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
 
             let documentation = if let Some(docs) = zeekygen_comments(decl, source) {
                 format!(
-                    "{docs}\n```zeek\n{source}\n```",
+                    "{docs}\n* * *\n```zeek\n{source}\n```",
                     source = decl.utf8_text(source).ok()?
                 )
             } else {
@@ -570,7 +570,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
             let extract_documentation = |n: Node| -> Option<Str> {
                 let documentation = if let Some(docs) = zeekygen_comments(n, source) {
                     format!(
-                        "{docs}\n```zeek\n# In {fqid}\n{source}\n```",
+                        "{docs}\n* * *\n```zeek\n# In {fqid}\n{source}\n```",
                         source = n.utf8_text(source).ok()?
                     )
                 } else {

@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams {\n                text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n                position: Position::new(7, 15),\n            },\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n                Position::new(7, 15)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
 ---
 Ok(
     Some(
@@ -14,7 +14,7 @@ Ok(
                         "Type: `event()`",
                     ),
                     String(
-                        "Declaration.\n```zeek\nglobal foo: event();\n```",
+                        "Declaration.\n* * *\n```zeek\nglobal foo: event();\n```",
                     ),
                 ],
             ),

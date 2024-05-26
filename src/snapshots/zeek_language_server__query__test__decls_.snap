@@ -52,7 +52,7 @@ expression: root_decls
                             },
                         },
                     ),
-                    documentation: "A field.\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
+                    documentation: "A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
                 },
             ],
         ),
@@ -94,7 +94,7 @@ expression: root_decls
                 },
             },
         ),
-        documentation: "Y does the y. It takes no arguments. But it also has a field y\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
+        documentation: "Y does the y. It takes no arguments. But it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
     },
     Decl {
         module: String(
@@ -243,7 +243,7 @@ expression: root_decls
                             },
                         },
                     ),
-                    documentation: "A new field.\n```zeek\n# In bar::Y\ny2: count &optional;\n```",
+                    documentation: "A new field.\n* * *\n```zeek\n# In bar::Y\ny2: count &optional;\n```",
                 },
             ],
         ),

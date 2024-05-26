@@ -5,7 +5,7 @@ use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{parse::Parse, Str};
+use crate::{parse::Parse, rst::markdownify, Str};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -1299,7 +1299,7 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
     if docs.is_empty() {
         None
     } else {
-        Some(docs.iter().join("\n"))
+        Some(markdownify(&docs.iter().join("\n")))
     }
 }
 
@@ -1487,5 +1487,30 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         let source = db.source(uri.clone()).unwrap();
 
         assert_debug_snapshot!(super::decls_(root, uri, source.as_bytes()));
+    }
+
+    #[test]
+    fn markdown_docs() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "## With `link <http://example.com>`__
+function f() {}",
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+        let source = db.source(uri.clone()).unwrap();
+
+        let decls = super::decls_(root, uri, source.as_bytes());
+        assert_eq!(decls.len(), 1);
+        let d = decls.iter().next().unwrap();
+        assert_eq!(d.id, "f");
+        assert_eq!(
+            d.documentation.lines().next(),
+            Some("With [link](http://example.com)")
+        );
     }
 }

@@ -704,7 +704,8 @@ impl LanguageServer for Backend {
             };
 
             let node = tree.root_node();
-            let Some(node) = node.named_descendant_for_position(params.position) else {
+            let position = params.position;
+            let Some(node) = node.named_descendant_for_position(position) else {
                 return Ok(None);
             };
 
@@ -772,6 +773,21 @@ impl LanguageServer for Backend {
                     if let Some(uri) = uri {
                         contents.push(MarkedString::String(format!("`{}`", uri.path())));
                     }
+                }
+                "zeekygen_head_comment" | "zeekygen_prev_comment" | "zeekygen_next_comment" => {
+                    // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
+                    let try_update = |contents: &mut Vec<_>| {
+                        let symbol = code_at_position(&source, position)?;
+
+                        let mut x = fuzzy_search_symbol(&state, &symbol);
+                        x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
+
+                        if let Some((_, decl)) = x.last() {
+                            contents.push(MarkedString::String(decl.documentation.to_string()));
+                        }
+                        Some(())
+                    };
+                    try_update(&mut contents);
                 }
                 _ => {}
             }
@@ -1931,6 +1947,33 @@ global r: R;
                         Position::new(7, 7)
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default()
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn hover_zeekygen() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+            function foo() {}
+
+            ## ``foo``",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(3, 18),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await
         );

@@ -1,0 +1,29 @@
+---
+source: src/lsp.rs
+expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n                Position::new(3, 18)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+---
+Ok(
+    Some(
+        Hover {
+            contents: Array(
+                [
+                    String(
+                        "```zeek\nfunction foo() {}\n```",
+                    ),
+                ],
+            ),
+            range: Some(
+                Range {
+                    start: Position {
+                        line: 3,
+                        character: 12,
+                    },
+                    end: Position {
+                        line: 3,
+                        character: 22,
+                    },
+                },
+            ),
+        },
+    ),
+)

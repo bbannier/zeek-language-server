@@ -185,7 +185,7 @@
     "vscode-languageclient": "^9.0.1",
     "@types/node": "^20.12.12",
     "@types/vscode": "^1.82.0",
-    "@typescript-eslint/eslint-plugin": "^7.9.0",
+    "@typescript-eslint/eslint-plugin": "^7.10.0",
     "@typescript-eslint/parser": "^7.9.0",
     "@vscode/vsce": "^2.26.1",
     "esbuild": "^0.21.4",

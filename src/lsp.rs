@@ -782,8 +782,15 @@ impl LanguageServer for Backend {
                         let mut x = fuzzy_search_symbol(&state, &symbol);
                         x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
 
-                        if let Some((_, decl)) = x.last() {
-                            contents.push(MarkedString::String(decl.documentation.to_string()));
+                        if let Some(docs) = fuzzy_search_symbol(&state, &symbol)
+                            .iter()
+                            // Filter out event implementations.
+                            .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
+                            .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
+                            .last()
+                            .map(|(_, d)| d.documentation.to_string())
+                        {
+                            contents.push(MarkedString::String(docs));
                         }
                         Some(())
                     };
@@ -976,9 +983,12 @@ impl LanguageServer for Backend {
                         // If we are in a zeekygen comment try to recover an
                         // identifier under the cursor and use it as target.
                         let symbol = word_at_position(&source, position)?;
-                        let mut x = fuzzy_search_symbol(&state, &symbol);
-                        x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
-                        x.last()
+                        fuzzy_search_symbol(&state, &symbol)
+                            .iter()
+                            // Filter out event implementations.
+                            .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
+                            .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
+                            .last()
                             .and_then(|(_, d)| d.loc.as_ref())
                             .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
                     }

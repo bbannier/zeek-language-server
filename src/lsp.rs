@@ -777,7 +777,7 @@ impl LanguageServer for Backend {
                 "zeekygen_head_comment" | "zeekygen_prev_comment" | "zeekygen_next_comment" => {
                     // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
                     let try_update = |contents: &mut Vec<_>| {
-                        let symbol = code_at_position(&source, position)?;
+                        let symbol = word_at_position(&source, position)?;
 
                         let mut x = fuzzy_search_symbol(&state, &symbol);
                         x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
@@ -975,7 +975,7 @@ impl LanguageServer for Backend {
                     "zeekygen_head_comment" | "zeekygen_prev_comment" | "zeekygen_next_comment" => {
                         // If we are in a zeekygen comment try to recover an
                         // identifier under the cursor and use it as target.
-                        let symbol = code_at_position(&source, position)?;
+                        let symbol = word_at_position(&source, position)?;
                         let mut x = fuzzy_search_symbol(&state, &symbol);
                         x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
                         x.last()
@@ -1501,13 +1501,13 @@ impl LanguageServer for Backend {
     }
 }
 
-fn code_at_position(source: &str, position: Position) -> Option<String> {
+fn word_at_position(source: &str, position: Position) -> Option<String> {
     let line = source.lines().nth(usize::try_from(position.line).ok()?)?;
-    let (a, b) = line.split_at(usize::try_from(position.character).ok()?);
-    let a = a.split('`').last()?;
-    let b = b.split('`').next()?;
+    let (a, b) = line.split_at(usize::try_from(position.character + 1).ok()?);
+    let a = a.split_whitespace().last().unwrap_or_default();
+    let b = b.split_whitespace().next().unwrap_or_default();
 
-    Some(format!("{a}{b}"))
+    dbg!(Some(format!("{a}{b}")))
 }
 
 fn fuzzy_search_symbol(db: &Snapshot<Database>, symbol: &str) -> Vec<(f32, Decl)> {

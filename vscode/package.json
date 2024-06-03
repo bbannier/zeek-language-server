@@ -191,7 +191,7 @@
     "esbuild": "^0.21.4",
     "eslint": "^8.57.0",
     "mocha": "^10.4.0",
-    "prettier": "^3.2.2",
+    "prettier": "^3.3.0",
     "typescript": "^5.4.5"
   }
 }

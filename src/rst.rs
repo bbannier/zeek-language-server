@@ -14,6 +14,7 @@ pub fn markdownify(rst: &str) -> String {
     let rst = zeek_see_inline(&rst);
     let rst = zeek_see_block(&rst);
     let rst = note(&rst);
+    let rst = todo(&rst);
 
     rst.into_owned()
 }
@@ -84,6 +85,13 @@ fn note(rst: &str) -> Cow<str> {
         Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+(note::)(.*)$").expect("invalid regexp"));
 
     RE.replace_all(rst, "**Note:**$2")
+}
+
+fn todo(rst: &str) -> Cow<str> {
+    static RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+(todo::)(.*)$").expect("invalid regexp"));
+
+    RE.replace_all(rst, "**TODO:**$2")
 }
 
 fn docs_search(id: &str) -> String {
@@ -243,6 +251,22 @@ More text
 
    foo bar
    baz
+"
+        );
+    }
+
+    #[test]
+    fn todo() {
+        assert_eq!(
+            markdownify(
+                "foo
+
+.. todo:: bar
+"
+            ),
+            "foo
+
+**TODO:** bar
 "
         );
     }

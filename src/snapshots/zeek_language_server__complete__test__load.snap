@@ -1,12 +1,12 @@
 ---
 source: src/complete.rs
-expression: "complete(&db.0,\n    CompletionParams {\n        text_document_position: TextDocumentPositionParams {\n            text_document: TextDocumentIdentifier::new(uri.as_ref().clone()),\n            position: Position::new(0, 6),\n        },\n        work_done_progress_params: WorkDoneProgressParams::default(),\n        partial_result_params: PartialResultParams::default(),\n        context: None,\n    })"
+expression: "complete(&db.0,\n    CompletionParams {\n        text_document_position: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n            Position::new(0, 6)),\n        work_done_progress_params: WorkDoneProgressParams::default(),\n        partial_result_params: PartialResultParams::default(),\n        context: None,\n    })"
 ---
 Some(
     Array(
         [
             CompletionItem {
-                label: "foo/a1",
+                label: "foo/b1",
                 label_details: None,
                 kind: Some(
                     File,
@@ -28,7 +28,7 @@ Some(
                 tags: None,
             },
             CompletionItem {
-                label: "foo/b1",
+                label: "foo/a1",
                 label_details: None,
                 kind: Some(
                     File,

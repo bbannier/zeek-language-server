@@ -19,6 +19,29 @@ Ok(
                 },
                 range: Range {
                     start: Position {
+                        line: 6,
+                        character: 10,
+                    },
+                    end: Position {
+                        line: 6,
+                        character: 11,
+                    },
+                },
+            },
+            Location {
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+                range: Range {
+                    start: Position {
                         line: 4,
                         character: 6,
                     },
@@ -47,29 +70,6 @@ Ok(
                     },
                     end: Position {
                         line: 7,
-                        character: 11,
-                    },
-                },
-            },
-            Location {
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/x.zeek",
-                    query: None,
-                    fragment: None,
-                },
-                range: Range {
-                    start: Position {
-                        line: 6,
-                        character: 10,
-                    },
-                    end: Position {
-                        line: 6,
                         character: 11,
                     },
                 },

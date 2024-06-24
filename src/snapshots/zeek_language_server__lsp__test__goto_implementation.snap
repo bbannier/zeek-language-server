@@ -20,11 +20,11 @@ Ok(
                     },
                     range: Range {
                         start: Position {
-                            line: 3,
+                            line: 4,
                             character: 0,
                         },
                         end: Position {
-                            line: 3,
+                            line: 4,
                             character: 20,
                         },
                     },
@@ -43,11 +43,11 @@ Ok(
                     },
                     range: Range {
                         start: Position {
-                            line: 4,
+                            line: 3,
                             character: 0,
                         },
                         end: Position {
-                            line: 4,
+                            line: 3,
                             character: 20,
                         },
                     },

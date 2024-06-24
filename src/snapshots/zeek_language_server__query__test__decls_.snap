@@ -5,99 +5,6 @@ expression: root_decls
 {
     Decl {
         module: String(
-            "test",
-        ),
-        id: "Y",
-        fqid: "test::Y",
-        kind: Type(
-            [
-                Decl {
-                    module: None,
-                    id: "y",
-                    fqid: "test::Y::y",
-                    kind: Field,
-                    is_export: None,
-                    loc: Some(
-                        Location {
-                            range: Range {
-                                start: Position {
-                                    line: 11,
-                                    character: 18,
-                                },
-                                end: Position {
-                                    line: 11,
-                                    character: 19,
-                                },
-                            },
-                            selection_range: Range {
-                                start: Position {
-                                    line: 11,
-                                    character: 18,
-                                },
-                                end: Position {
-                                    line: 11,
-                                    character: 19,
-                                },
-                            },
-                            uri: Url {
-                                scheme: "file",
-                                cannot_be_a_base: false,
-                                username: "",
-                                password: None,
-                                host: None,
-                                port: None,
-                                path: "/foo/bar.zeek",
-                                query: None,
-                                fragment: None,
-                            },
-                        },
-                    ),
-                    documentation: "A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
-                },
-            ],
-        ),
-        is_export: Some(
-            false,
-        ),
-        loc: Some(
-            Location {
-                range: Range {
-                    start: Position {
-                        line: 9,
-                        character: 14,
-                    },
-                    end: Position {
-                        line: 12,
-                        character: 16,
-                    },
-                },
-                selection_range: Range {
-                    start: Position {
-                        line: 9,
-                        character: 19,
-                    },
-                    end: Position {
-                        line: 9,
-                        character: 20,
-                    },
-                },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
-            },
-        ),
-        documentation: "Y does the y. It takes no arguments. But it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
-    },
-    Decl {
-        module: String(
             "bar",
         ),
         id: "fun",
@@ -193,6 +100,156 @@ expression: root_decls
             },
         ),
         documentation: "```zeek\nglobal fun: function(x: count): string;\n```",
+    },
+    Decl {
+        module: String(
+            "bar",
+        ),
+        id: "zeek_init",
+        fqid: "bar::zeek_init",
+        kind: EventDef(
+            Signature {
+                result: None,
+                args: [],
+            },
+        ),
+        is_export: Some(
+            false,
+        ),
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 15,
+                        character: 14,
+                    },
+                    end: Position {
+                        line: 17,
+                        character: 15,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 15,
+                        character: 20,
+                    },
+                    end: Position {
+                        line: 15,
+                        character: 29,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/foo/bar.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            },
+        ),
+        documentation: "```zeek\nevent zeek_init() { local x=1;\n                  # Comment.\n              }\n```",
+    },
+    Decl {
+        module: String(
+            "bar",
+        ),
+        id: "fun",
+        fqid: "bar::fun",
+        kind: FuncDef(
+            Signature {
+                result: Some(
+                    String,
+                ),
+                args: [
+                    Decl {
+                        module: None,
+                        id: "x",
+                        fqid: "x",
+                        kind: Variable,
+                        is_export: None,
+                        loc: Some(
+                            Location {
+                                range: Range {
+                                    start: Position {
+                                        line: 20,
+                                        character: 27,
+                                    },
+                                    end: Position {
+                                        line: 20,
+                                        character: 28,
+                                    },
+                                },
+                                selection_range: Range {
+                                    start: Position {
+                                        line: 20,
+                                        character: 27,
+                                    },
+                                    end: Position {
+                                        line: 20,
+                                        character: 35,
+                                    },
+                                },
+                                uri: Url {
+                                    scheme: "file",
+                                    cannot_be_a_base: false,
+                                    username: "",
+                                    password: None,
+                                    host: None,
+                                    port: None,
+                                    path: "/foo/bar.zeek",
+                                    query: None,
+                                    fragment: None,
+                                },
+                            },
+                        ),
+                        documentation: "```zeek\nx: count\n```",
+                    },
+                ],
+            },
+        ),
+        is_export: Some(
+            false,
+        ),
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 20,
+                        character: 14,
+                    },
+                    end: Position {
+                        line: 20,
+                        character: 59,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 20,
+                        character: 23,
+                    },
+                    end: Position {
+                        line: 20,
+                        character: 26,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/foo/bar.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            },
+        ),
+        documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
     },
     Decl {
         module: String(
@@ -336,15 +393,56 @@ expression: root_decls
     },
     Decl {
         module: String(
-            "bar",
+            "test",
         ),
-        id: "zeek_init",
-        fqid: "bar::zeek_init",
-        kind: EventDef(
-            Signature {
-                result: None,
-                args: [],
-            },
+        id: "Y",
+        fqid: "test::Y",
+        kind: Type(
+            [
+                Decl {
+                    module: None,
+                    id: "y",
+                    fqid: "test::Y::y",
+                    kind: Field,
+                    is_export: None,
+                    loc: Some(
+                        Location {
+                            range: Range {
+                                start: Position {
+                                    line: 11,
+                                    character: 18,
+                                },
+                                end: Position {
+                                    line: 11,
+                                    character: 19,
+                                },
+                            },
+                            selection_range: Range {
+                                start: Position {
+                                    line: 11,
+                                    character: 18,
+                                },
+                                end: Position {
+                                    line: 11,
+                                    character: 19,
+                                },
+                            },
+                            uri: Url {
+                                scheme: "file",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: None,
+                                port: None,
+                                path: "/foo/bar.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        },
+                    ),
+                    documentation: "A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
+                },
+            ],
         ),
         is_export: Some(
             false,
@@ -353,22 +451,22 @@ expression: root_decls
             Location {
                 range: Range {
                     start: Position {
-                        line: 15,
+                        line: 9,
                         character: 14,
                     },
                     end: Position {
-                        line: 17,
-                        character: 15,
+                        line: 12,
+                        character: 16,
                     },
                 },
                 selection_range: Range {
                     start: Position {
-                        line: 15,
-                        character: 20,
+                        line: 9,
+                        character: 19,
                     },
                     end: Position {
-                        line: 15,
-                        character: 29,
+                        line: 9,
+                        character: 20,
                     },
                 },
                 uri: Url {
@@ -384,7 +482,7 @@ expression: root_decls
                 },
             },
         ),
-        documentation: "```zeek\nevent zeek_init() { local x=1;\n                  # Comment.\n              }\n```",
+        documentation: "Y does the y. It takes no arguments. But it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
     },
     Decl {
         module: String(
@@ -432,103 +530,5 @@ expression: root_decls
             },
         ),
         documentation: "```zeek\nconst x = 1 &redef;\n```",
-    },
-    Decl {
-        module: String(
-            "bar",
-        ),
-        id: "fun",
-        fqid: "bar::fun",
-        kind: FuncDef(
-            Signature {
-                result: Some(
-                    String,
-                ),
-                args: [
-                    Decl {
-                        module: None,
-                        id: "x",
-                        fqid: "x",
-                        kind: Variable,
-                        is_export: None,
-                        loc: Some(
-                            Location {
-                                range: Range {
-                                    start: Position {
-                                        line: 20,
-                                        character: 27,
-                                    },
-                                    end: Position {
-                                        line: 20,
-                                        character: 28,
-                                    },
-                                },
-                                selection_range: Range {
-                                    start: Position {
-                                        line: 20,
-                                        character: 27,
-                                    },
-                                    end: Position {
-                                        line: 20,
-                                        character: 35,
-                                    },
-                                },
-                                uri: Url {
-                                    scheme: "file",
-                                    cannot_be_a_base: false,
-                                    username: "",
-                                    password: None,
-                                    host: None,
-                                    port: None,
-                                    path: "/foo/bar.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
-                            },
-                        ),
-                        documentation: "```zeek\nx: count\n```",
-                    },
-                ],
-            },
-        ),
-        is_export: Some(
-            false,
-        ),
-        loc: Some(
-            Location {
-                range: Range {
-                    start: Position {
-                        line: 20,
-                        character: 14,
-                    },
-                    end: Position {
-                        line: 20,
-                        character: 59,
-                    },
-                },
-                selection_range: Range {
-                    start: Position {
-                        line: 20,
-                        character: 23,
-                    },
-                    end: Position {
-                        line: 20,
-                        character: 26,
-                    },
-                },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
-            },
-        ),
-        documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
     },
 }

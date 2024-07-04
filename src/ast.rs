@@ -768,7 +768,9 @@ pub(crate) fn load_to_file(
 
 #[cfg(test)]
 mod test {
-    use std::{ops::Deref, path::PathBuf, str::FromStr, sync::Arc};
+    #![allow(clippy::unwrap_used)]
+
+    use std::{path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{Position, Range, Url};
@@ -1178,13 +1180,12 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert_eq!(
-            db.typ(
+            &*db.typ(
                 db.resolve(NodeLocation::from_node(uri.clone(), x1))
                     .unwrap()
             )
             .unwrap()
-            .id
-            .deref(),
+            .id,
             "X1"
         );
 
@@ -1193,10 +1194,9 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
         assert_eq!(
-            db.typ(db.resolve(NodeLocation::from_node(uri, x2)).unwrap())
+            &*db.typ(db.resolve(NodeLocation::from_node(uri, x2)).unwrap())
                 .unwrap()
-                .id
-                .deref(),
+                .id,
             "X2"
         );
     }

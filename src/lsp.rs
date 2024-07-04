@@ -1622,8 +1622,112 @@ impl InitializationOptions {
     }
 }
 
+const ERROR_CODE_IS_MISSING: i32 = 1;
+
+/// Extracts all errors in a AST.
+fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
+    tree.errors()
+        .into_iter()
+        .map(|err| {
+            let code = if err.is_missing() {
+                Some(ERROR_CODE_IS_MISSING)
+            } else {
+                None
+            }
+            .map(NumberOrString::Number);
+
+            Diagnostic::new(
+                err.range(),
+                Some(DiagnosticSeverity::WARNING),
+                code,
+                None,
+                err.error(),
+                None,
+                None,
+            )
+        })
+        .collect()
+}
+
+async fn references(db: Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+    /// Helper to compute all sources reachable from a given file.
+    fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
+        let mut loads = FxHashSet::default();
+        loads.extend(db.implicit_loads().iter().cloned());
+        loads.extend(db.loaded_files(f).iter().cloned());
+
+        let mut recursive_loads = FxHashSet::default();
+        for l in &loads {
+            recursive_loads.extend(db.loaded_files_recursive(l.clone()).iter().cloned());
+        }
+        loads.extend(recursive_loads.into_iter());
+
+        loads
+    }
+
+    let Some(decl_loc) = decl.loc.as_ref() else {
+        return FxHashSet::default();
+    };
+    let decl_uri = &decl_loc.uri;
+
+    let locs: Vec<_> = {
+        let locs: Vec<_> = db
+            .files()
+            .iter()
+            .filter(|f| {
+                // If the file we look at does not load the file with the decl, no references to it
+                // can exist.
+                f == &decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
+            })
+            .map(|f| {
+                let db = db.snapshot();
+                let decl = decl.clone();
+                let f = f.clone();
+                tokio::spawn(async move {
+                    Some(
+                        db.ids(f)
+                            .iter()
+                            .filter_map(|loc| {
+                                // Prefilter ids so that they at least somewhere contain the text
+                                // of the decl.
+                                let tree = db.parse(loc.uri.clone())?;
+                                let source = db.source(loc.uri.clone())?;
+                                let txt = tree
+                                    .root_node()
+                                    .named_descendant_for_point_range(loc.range)?
+                                    .utf8_text(source.as_bytes())
+                                    .ok()?;
+                                if !txt.contains(decl.id.as_ref()) {
+                                    return None;
+                                }
+
+                                db.resolve(loc.clone()).and_then(|resolved| {
+                                    if resolved != decl {
+                                        return None;
+                                    }
+
+                                    Some(loc.clone())
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+            })
+            .collect();
+        futures::future::join_all(locs).await
+    };
+
+    locs.into_iter()
+        .filter_map(std::result::Result::ok)
+        .flatten()
+        .flatten()
+        .collect()
+}
+
 #[cfg(test)]
 pub(crate) mod test {
+    #![allow(clippy::unwrap_used)]
+
     use std::{
         path::{Path, PathBuf},
         sync::Arc,
@@ -1762,12 +1866,11 @@ global GLOBAL::Y = 3;
             .await;
 
         // Sort results for debug output diffing.
-        let result = match result {
-            Ok(Some(CompletionResponse::Array(mut r))) => {
-                r.sort_by(|a, b| a.label.cmp(&b.label));
-                r
-            }
-            _ => panic!(),
+        let result = if let Ok(Some(CompletionResponse::Array(mut r))) = result {
+            r.sort_by(|a, b| a.label.cmp(&b.label));
+            r
+        } else {
+            unreachable!()
         };
 
         assert_debug_snapshot!(result);
@@ -2423,7 +2526,7 @@ event x::foo() {}",
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
 
-        let source = r#"
+        let source = r"
 const x: count = 0;
 global x: count = 0;
 option x: bool = T;
@@ -2431,7 +2534,7 @@ option x: bool = T;
 const x = 0;
 global x = 0;
 option x = T;
-        "#;
+        ";
 
         db.add_file((*uri).clone(), source);
 
@@ -2648,7 +2751,7 @@ levenshtein_distance("", "");
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
 
-        let source = r#"
+        let source = r"
 @load ./strings
 module foo;
 export {
@@ -2656,7 +2759,7 @@ const x = 123;
 }
 const y = x;
 const z = x;
-            "#;
+            ";
 
         db.add_file((*uri).clone(), source);
         db.add_file(
@@ -2679,106 +2782,4 @@ const z = x;
                 .await
         );
     }
-}
-
-const ERROR_CODE_IS_MISSING: i32 = 1;
-
-/// Extracts all errors in a AST.
-fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
-    tree.errors()
-        .into_iter()
-        .map(|err| {
-            let code = if err.is_missing() {
-                Some(ERROR_CODE_IS_MISSING)
-            } else {
-                None
-            }
-            .map(NumberOrString::Number);
-
-            Diagnostic::new(
-                err.range(),
-                Some(DiagnosticSeverity::WARNING),
-                code,
-                None,
-                err.error(),
-                None,
-                None,
-            )
-        })
-        .collect()
-}
-
-async fn references(db: Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
-    /// Helper to compute all sources reachable from a given file.
-    fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
-        let mut loads = FxHashSet::default();
-        loads.extend(db.implicit_loads().iter().cloned());
-        loads.extend(db.loaded_files(f).iter().cloned());
-
-        let mut recursive_loads = FxHashSet::default();
-        for l in &loads {
-            recursive_loads.extend(db.loaded_files_recursive(l.clone()).iter().cloned());
-        }
-        loads.extend(recursive_loads.into_iter());
-
-        loads
-    }
-
-    let Some(decl_loc) = decl.loc.as_ref() else {
-        return FxHashSet::default();
-    };
-    let decl_uri = &decl_loc.uri;
-
-    let locs: Vec<_> = {
-        let locs: Vec<_> = db
-            .files()
-            .iter()
-            .filter(|f| {
-                // If the file we look at does not load the file with the decl, no references to it
-                // can exist.
-                f == &decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
-            })
-            .map(|f| {
-                let db = db.snapshot();
-                let decl = decl.clone();
-                let f = f.clone();
-                tokio::spawn(async move {
-                    Some(
-                        db.ids(f)
-                            .iter()
-                            .filter_map(|loc| {
-                                // Prefilter ids so that they at least somewhere contain the text
-                                // of the decl.
-                                let tree = db.parse(loc.uri.clone())?;
-                                let source = db.source(loc.uri.clone())?;
-                                let txt = tree
-                                    .root_node()
-                                    .named_descendant_for_point_range(loc.range)?
-                                    .utf8_text(source.as_bytes())
-                                    .ok()?;
-                                if !txt.contains(decl.id.as_ref()) {
-                                    return None;
-                                }
-
-                                db.resolve(loc.clone()).and_then(|resolved| {
-                                    if resolved != decl {
-                                        return None;
-                                    }
-
-                                    Some(loc.clone())
-                                })
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-            })
-            .collect();
-        futures::future::join_all(locs).await
-    };
-
-    locs.into_iter()
-        .filter_map(std::result::Result::ok)
-        .flatten()
-        .flatten()
-        .collect()
 }

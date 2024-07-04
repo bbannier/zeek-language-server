@@ -1305,6 +1305,8 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used)]
+
     use std::sync::Arc;
 
     use crate::{lsp::TestDatabase, parse::Parse, query::Node, Files};

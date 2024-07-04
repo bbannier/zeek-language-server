@@ -51,6 +51,8 @@ fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used)]
+
     use {
         crate::{lsp::TestDatabase, parse::Parse},
         insta::assert_debug_snapshot,

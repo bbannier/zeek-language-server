@@ -224,6 +224,8 @@ pub(crate) async fn format(doc: &str) -> Result<String> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used)]
+
     use crate::zeek;
     use std::{io::Write, path::PathBuf};
 

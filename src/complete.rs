@@ -403,6 +403,8 @@ fn completion_text<'a>(node: Node, source: &'a str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used)]
+
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{
         CompletionContext, CompletionItemKind, CompletionParams, CompletionResponse,
@@ -657,11 +659,7 @@ mod test {
                 unreachable!("expected response with array");
             };
             xs.into_iter()
-                .filter(|x| {
-                    x.kind
-                        .map(|k| k != CompletionItemKind::KEYWORD)
-                        .unwrap_or(false)
-                })
+                .filter(|x| x.kind.is_some_and(|k| k != CompletionItemKind::KEYWORD))
                 .collect::<Vec<_>>()
         }));
     }
@@ -691,7 +689,7 @@ mod test {
                 partial_result_params: PartialResultParams::default(),
                 context: None,
             }
-        ))
+        ));
     }
 
     #[test]
@@ -723,9 +721,10 @@ mod test {
         )
         .unwrap();
 
-        match x {
-            CompletionResponse::Array(xs) => assert_eq!(xs.len(), 1),
-            _ => unreachable!(),
+        if let CompletionResponse::Array(xs) = x {
+            assert_eq!(xs.len(), 1);
+        } else {
+            unreachable!()
         }
 
         assert_debug_snapshot!(complete(
@@ -866,12 +865,11 @@ f",
         );
 
         // Sort results for debug output diffing.
-        let result = match result {
-            Some(CompletionResponse::Array(mut r)) => {
-                r.sort_by(|a, b| a.label.cmp(&b.label));
-                r
-            }
-            _ => panic!(),
+        let result = if let Some(CompletionResponse::Array(mut r)) = result {
+            r.sort_by(|a, b| a.label.cmp(&b.label));
+            r
+        } else {
+            unreachable!()
         };
 
         assert_debug_snapshot!(result);

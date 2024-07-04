@@ -96,7 +96,7 @@ mod server {
         });
 
         c.bench_function("server::completion", |b| {
-            b.to_async(&runtime).iter(|| completion(&db, uri.clone()))
+            b.to_async(&runtime).iter(|| completion(&db, uri.clone()));
         });
     }
 
@@ -155,7 +155,7 @@ levenshtein_distance("", "");
                     },
                 })
                 .await
-            })
+            });
         });
 
         c.bench_function("server::reference::unexported_var", |b| {
@@ -172,7 +172,7 @@ levenshtein_distance("", "");
                     },
                 })
                 .await
-            })
+            });
         });
 
         c.bench_function("server::reference::exported_var", |b| {
@@ -200,9 +200,8 @@ levenshtein_distance("", "");
                 };
                 if x.is_empty() {
                     tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
-                    return;
-                };
-            })
+                }
+            });
         });
     }
 
@@ -210,11 +209,11 @@ levenshtein_distance("", "");
         let runtime = super::runtime();
 
         c.bench_function("server::initial_index", |b| {
-            b.to_async(&runtime).iter(|| initial_index());
+            b.to_async(&runtime).iter(initial_index);
         });
 
         c.bench_function("server::visible_files", |b| {
-            b.to_async(&runtime).iter(|| visible_files())
+            b.to_async(&runtime).iter(visible_files);
         });
     }
 
@@ -237,11 +236,11 @@ mod zeek {
         let runtime = super::runtime();
 
         c.bench_function("zeek::system_files", |b| {
-            b.to_async(&runtime).iter(|| system_files());
+            b.to_async(&runtime).iter(system_files);
         });
 
         c.bench_function("zeek::prefixes", |b| {
-            b.to_async(&runtime).iter(|| prefixes());
+            b.to_async(&runtime).iter(prefixes);
         });
     }
     criterion_group!(zeek, bench);

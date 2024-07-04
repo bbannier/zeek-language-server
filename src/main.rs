@@ -29,6 +29,7 @@ struct Args {
     filter: tracing::Level,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn init_logging(args: &Args) -> Result<WorkerGuard> {
     let (writer, guard) = tracing_appender::non_blocking(std::io::stderr());
 

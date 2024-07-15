@@ -17,7 +17,7 @@ default = []
 telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp"]
 
 [dependencies]
-clap = { version = "4.5.8", features = ["std", "derive", "help"], default-features = false }
+clap = { version = "4.5.9", features = ["std", "derive", "help"], default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.30" }
 itertools = "0.13.0"

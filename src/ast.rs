@@ -455,6 +455,11 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         }
 
         "expr" => {
+            // Try to interpret expr as a cast `_ as @type`.
+            if let Some(typ) = query::typ_from_cast(node, source.as_bytes()) {
+                return db.resolve_type(typ, Some(location.clone()));
+            }
+
             return node
                 .named_child_not("nl")
                 .and_then(|c| db.resolve(NodeLocation::from_node(uri.clone(), c)));
@@ -1429,6 +1434,32 @@ global x2 = f2();
 
         let x = root
             .named_descendant_for_position(Position::new(4, 19))
+            .unwrap();
+        assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri, x))
+            .and_then(|d| db.typ(d)));
+    }
+
+    #[test]
+    fn typ_cast() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "
+            global a : count = 42;
+            global x = a as string;
+            ",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let x = root
+            .named_descendant_for_position(Position::new(2, 19))
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
         assert_debug_snapshot!(db

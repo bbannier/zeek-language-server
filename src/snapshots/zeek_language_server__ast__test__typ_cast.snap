@@ -1,0 +1,17 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_node(uri, x)).and_then(|d| db.typ(d))"
+---
+Some(
+    Decl {
+        module: Global,
+        id: "string",
+        fqid: "string",
+        kind: Builtin(
+            String,
+        ),
+        is_export: None,
+        loc: None,
+        documentation: "Builtin type 'string'",
+    },
+)

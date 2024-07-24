@@ -856,6 +856,21 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
     })
 }
 
+/// Try to get the cast target type from an expr in `n` assuming it holds `_ as @type`.
+pub(crate) fn typ_from_cast(n: Node, source: &[u8]) -> Option<Type> {
+    let query = tree_sitter::Query::new(&language_zeek(), r#"(expr (expr) "as" (type)@typ)"#)
+        .expect("invalid query");
+
+    let c_typ = query
+        .capture_index_for_name("typ")
+        .expect("typ should be captured");
+
+    tree_sitter::QueryCursor::new()
+        .matches(&query, n.0, source)
+        .find_map(|c| c.nodes_for_capture_index(c_typ).next().map(Node::from))
+        .and_then(|t| typ(t, source))
+}
+
 fn typ_from_text(text: &str) -> Option<Type> {
     Some(match text {
         "addr" => Type::Addr,

@@ -434,7 +434,7 @@ impl LanguageServer for Backend {
         })
         .await;
 
-        // Check prerequistes and set system prefixes.
+        // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
             Ok(prefixes) => {
                 self.with_state_mut(move |state| {

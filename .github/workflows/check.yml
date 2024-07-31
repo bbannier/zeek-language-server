@@ -54,9 +54,9 @@ jobs:
             brew install zeek; \
           fi
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
       - name: Test all features
-        run: cargo test --all-features
+        run: cargo test --all-features --workspace
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
         env:

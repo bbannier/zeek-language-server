@@ -14,7 +14,7 @@
 //! "#;
 //! let mut parser = Parser::new();
 //! parser
-//!     .set_language(tree_sitter_zeek::language_zeek())
+//!     .set_language(&tree_sitter_zeek::language_zeek())
 //!     .expect("Error loading Zeek grammar");
 //! let parsed = parser.parse(code, None).unwrap();
 //! let root = parsed.root_node();

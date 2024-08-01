@@ -1,7 +1,6 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::LazyLock};
 
 use itertools::Itertools;
-use once_cell::sync::Lazy;
 use regex::Captures;
 
 #[must_use]
@@ -20,29 +19,30 @@ pub fn markdownify(rst: &str) -> String {
 }
 
 fn external_link(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"`(\S+(\s+\S+)*)\s+<(.*)>`__").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"`(\S+(\s+\S+)*)\s+<(.*)>`__").expect("invalid regexp")
+    });
 
     RE.replace_all(rst, "[$1]($3)")
 }
 
 fn inline_code(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"``([^`]+)``").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"``([^`]+)``").expect("invalid regexp"));
 
     RE.replace_all(rst, "`$1`")
 }
 
 fn unwrap(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"(\S)(\n)(\S)").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(\S)(\n)(\S)").expect("invalid regexp"));
 
     RE.replace_all(rst, "$1 $3")
 }
 
 fn zeek_id(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r":zeek:id:`([^`]+)`").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r":zeek:id:`([^`]+)`").expect("invalid regexp"));
 
     RE.replace_all(rst, |cap: &Captures| {
         docs_search(cap.get(1).expect("id should be captured").as_str())
@@ -50,8 +50,8 @@ fn zeek_id(rst: &str) -> Cow<str> {
 }
 
 fn zeek_keyword(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r":zeek:keyword:`([^`]+)`").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r":zeek:keyword:`([^`]+)`").expect("invalid regexp"));
 
     RE.replace_all(rst, |cap: &Captures| {
         docs_search(cap.get(1).expect("id should be captured").as_str())
@@ -59,8 +59,8 @@ fn zeek_keyword(rst: &str) -> Cow<str> {
 }
 
 fn zeek_see_inline(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r":zeek:see:`([^`]+)`").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r":zeek:see:`([^`]+)`").expect("invalid regexp"));
 
     RE.replace_all(rst, |cap: &Captures| {
         docs_search(cap.get(1).expect("id should be captured").as_str())
@@ -68,8 +68,9 @@ fn zeek_see_inline(rst: &str) -> Cow<str> {
 }
 
 fn zeek_see_block(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+zeek:see::(.*)$").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?m)^\.\.\s+zeek:see::(.*)$").expect("invalid regexp")
+    });
 
     RE.replace_all(rst, |caps: &Captures| {
         let refs = caps
@@ -81,15 +82,15 @@ fn zeek_see_block(rst: &str) -> Cow<str> {
 }
 
 fn note(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+(note::)(.*)$").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?m)^\.\.\s+(note::)(.*)$").expect("invalid regexp"));
 
     RE.replace_all(rst, "**Note:**$2")
 }
 
 fn todo(rst: &str) -> Cow<str> {
-    static RE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"(?m)^\.\.\s+(todo::)(.*)$").expect("invalid regexp"));
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?m)^\.\.\s+(todo::)(.*)$").expect("invalid regexp"));
 
     RE.replace_all(rst, "**TODO:**$2")
 }

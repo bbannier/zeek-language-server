@@ -1,10 +1,10 @@
-use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Stdio,
     str,
+    sync::LazyLock,
 };
 
 use eyre::{eyre, Result};
@@ -113,8 +113,9 @@ pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
     file: P1,
     cwd: P2,
 ) -> Result<Vec<CheckResult>> {
-    static ERRLINE: Lazy<regex::Regex> =
-        Lazy::new(|| regex::Regex::new(r"error in (\S*), line (\d+): (.*)$").expect("valid regex"));
+    static ERRLINE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"error in (\S*), line (\d+): (.*)$").expect("valid regex")
+    });
 
     let check = tokio::process::Command::new("zeek")
         .current_dir(cwd)

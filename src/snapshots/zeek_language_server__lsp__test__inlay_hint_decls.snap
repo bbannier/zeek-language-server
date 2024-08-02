@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.inlay_hint(InlayHintParams {\n            text_document: TextDocumentIdentifier::new((*uri).clone()),\n            range: Range::new(Position::new(0, 0), Position::new(5, 0)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.inlay_hint(InlayHintParams {\n            text_document: TextDocumentIdentifier::new((*uri).clone()),\n            range: Range::new(Position::new(5, 0), Position::new(7, 0)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
 ---
 Ok(
     Some(
@@ -29,23 +29,6 @@ Ok(
                 },
                 label: String(
                     ": <integer>",
-                ),
-                kind: Some(
-                    Type,
-                ),
-                text_edits: None,
-                tooltip: None,
-                padding_left: None,
-                padding_right: None,
-                data: None,
-            },
-            InlayHint {
-                position: Position {
-                    line: 7,
-                    character: 8,
-                },
-                label: String(
-                    ": bool",
                 ),
                 kind: Some(
                     Type,

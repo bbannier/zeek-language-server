@@ -1376,40 +1376,33 @@ impl LanguageServer for Backend {
                 state
                     .function_calls(uri.clone())
                     .iter()
-                    .filter_map(|c| {
-                        if c.f.range.start > range.end || c.f.range.end < range.start {
-                            return None;
-                        }
-
-                        match &state.resolve(c.f.clone())?.kind {
-                            DeclKind::FuncDef(s)
-                            | DeclKind::FuncDecl(s)
-                            | DeclKind::HookDef(s)
-                            | DeclKind::HookDecl(s)
-                            | DeclKind::EventDef(s)
-                            | DeclKind::EventDecl(s) => Some(
-                                c.args
-                                    .iter()
-                                    .zip(s.args.iter())
-                                    .map(|(p, a)| InlayHint {
-                                        position: p.range.start,
-                                        label: InlayHintLabel::String(format!("{}:", a.id)),
-                                        kind: Some(InlayHintKind::PARAMETER),
-                                        text_edits: None,
-                                        tooltip: Some(InlayHintTooltip::MarkupContent(
-                                            MarkupContent {
-                                                kind: MarkupKind::Markdown,
-                                                value: a.documentation.to_string(),
-                                            },
-                                        )),
-                                        padding_left: None,
-                                        padding_right: Some(true),
-                                        data: None,
-                                    })
-                                    .collect::<Vec<_>>(),
-                            ),
-                            _ => None,
-                        }
+                    .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
+                    .filter_map(|c| match &state.resolve(c.f.clone())?.kind {
+                        DeclKind::FuncDef(s)
+                        | DeclKind::FuncDecl(s)
+                        | DeclKind::HookDef(s)
+                        | DeclKind::HookDecl(s)
+                        | DeclKind::EventDef(s)
+                        | DeclKind::EventDecl(s) => Some(
+                            c.args
+                                .iter()
+                                .zip(s.args.iter())
+                                .map(|(p, a)| InlayHint {
+                                    position: p.range.start,
+                                    label: InlayHintLabel::String(format!("{}:", a.id)),
+                                    kind: Some(InlayHintKind::PARAMETER),
+                                    text_edits: None,
+                                    tooltip: Some(InlayHintTooltip::MarkupContent(MarkupContent {
+                                        kind: MarkupKind::Markdown,
+                                        value: a.documentation.to_string(),
+                                    })),
+                                    padding_left: None,
+                                    padding_right: Some(true),
+                                    data: None,
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                        _ => None,
                     })
                     .flatten(),
             );
@@ -1420,12 +1413,12 @@ impl LanguageServer for Backend {
                 let decls = state.untyped_var_decls(uri.clone());
                 decls
                     .iter()
+                    .filter(|d| {
+                        d.loc.as_ref().is_some_and(|r| {
+                            r.range.start >= range.start && r.range.end <= range.end
+                        })
+                    })
                     .filter_map(|d| {
-                        let r = d.loc.as_ref()?.range;
-                        if r.start > range.end || r.end < range.start {
-                            return None;
-                        }
-
                         let t = state.typ(Arc::new(d.clone()))?;
                         Some(InlayHint {
                             position: d.loc.as_ref().map(|l| l.selection_range.end)?,

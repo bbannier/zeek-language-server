@@ -526,7 +526,7 @@ impl LanguageServer for Backend {
 
         self.progress(
             progress_token.clone(),
-            Some("refresing sources".to_string()),
+            Some("refreshing sources".to_string()),
         )
         .await;
 

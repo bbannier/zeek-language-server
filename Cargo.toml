@@ -10,14 +10,14 @@ license = "GPL-3.0-only"
 criterion = { version = "0.5.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
 insta = "1.39.0"
 tempfile = "3.10.1"
-wiremock = "0.6.0"
+wiremock = "0.6.1"
 
 [features]
 default = []
 telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp"]
 
 [dependencies]
-clap = { version = "4.5.9", features = ["std", "derive", "help"], default-features = false }
+clap = { version = "4.5.13", features = ["std", "derive", "help"], default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.30" }
 itertools = "0.13.0"
@@ -33,7 +33,7 @@ rustc-hash = "2.0.0"
 salsa = "0.16.1"
 semver = { version = "1.0.23", default-features = false }
 serde = { version = "1.0.204", default-features = false }
-serde_json = { default-features = false, version = "1.0.121" }
+serde_json = { default-features = false, version = "1.0.122" }
 smol_str = "0.2.2"
 tokio = { version = "1.39.2", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp = { version = "0.20.0", features = ["runtime-tokio"], default-features = false }

@@ -1371,54 +1371,64 @@ impl LanguageServer for Backend {
 
         let state = self.state_snapshot().await;
 
-        if state.initialization_options().inlay_hints_parameters {
-            hints.extend(
-                state
-                    .function_calls(uri.clone())
-                    .iter()
-                    .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
-                    .filter_map(|c| match &state.resolve(c.f.clone())?.kind {
-                        DeclKind::FuncDef(s)
-                        | DeclKind::FuncDecl(s)
-                        | DeclKind::HookDef(s)
-                        | DeclKind::HookDecl(s)
-                        | DeclKind::EventDef(s)
-                        | DeclKind::EventDecl(s) => Some(
-                            c.args
-                                .iter()
-                                .zip(s.args.iter())
-                                .map(|(p, a)| InlayHint {
-                                    position: p.range.start,
-                                    label: InlayHintLabel::String(format!("{}:", a.id)),
-                                    kind: Some(InlayHintKind::PARAMETER),
-                                    text_edits: None,
-                                    tooltip: Some(InlayHintTooltip::MarkupContent(MarkupContent {
-                                        kind: MarkupKind::Markdown,
-                                        value: a.documentation.to_string(),
-                                    })),
-                                    padding_left: None,
-                                    padding_right: Some(true),
-                                    data: None,
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
-                        _ => None,
+        let params = if state.initialization_options().inlay_hints_parameters {
+            state
+                .function_calls(uri.clone())
+                .iter()
+                .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
+                .cloned()
+                .map(|c| {
+                    let state = state.snapshot();
+                    tokio::spawn(async move {
+                        match &state.resolve(c.f.clone())?.kind {
+                            DeclKind::FuncDef(s)
+                            | DeclKind::FuncDecl(s)
+                            | DeclKind::HookDef(s)
+                            | DeclKind::HookDecl(s)
+                            | DeclKind::EventDef(s)
+                            | DeclKind::EventDecl(s) => Some(
+                                c.args
+                                    .into_iter()
+                                    .zip(s.args.iter())
+                                    .map(|(p, a)| InlayHint {
+                                        position: p.range.start,
+                                        label: InlayHintLabel::String(format!("{}:", a.id)),
+                                        kind: Some(InlayHintKind::PARAMETER),
+                                        text_edits: None,
+                                        tooltip: Some(InlayHintTooltip::MarkupContent(
+                                            MarkupContent {
+                                                kind: MarkupKind::Markdown,
+                                                value: a.documentation.to_string(),
+                                            },
+                                        )),
+                                        padding_left: None,
+                                        padding_right: Some(true),
+                                        data: None,
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
+                            _ => None,
+                        }
                     })
-                    .flatten(),
-            );
-        }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::default()
+        };
 
-        if state.initialization_options().inlay_hints_variables {
-            hints.extend({
-                let decls = state.untyped_var_decls(uri.clone());
-                decls
-                    .iter()
-                    .filter(|d| {
-                        d.loc.as_ref().is_some_and(|r| {
-                            r.range.start >= range.start && r.range.end <= range.end
-                        })
-                    })
-                    .filter_map(|d| {
+        let vars = if state.initialization_options().inlay_hints_variables {
+            state
+                .untyped_var_decls(uri.clone())
+                .iter()
+                .filter(|d| {
+                    d.loc
+                        .as_ref()
+                        .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
+                })
+                .cloned()
+                .map(|d| {
+                    let state = state.snapshot();
+                    tokio::spawn(async move {
                         let t = state.typ(Arc::new(d.clone()))?;
                         Some(InlayHint {
                             position: d.loc.as_ref().map(|l| l.selection_range.end)?,
@@ -1431,9 +1441,33 @@ impl LanguageServer for Backend {
                             data: None,
                         })
                     })
-                    .collect::<Vec<_>>()
-            });
-        }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::default()
+        };
+
+        let (params, vars) = futures::future::join(
+            async {
+                futures::future::join_all(params)
+                    .await
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .flatten()
+                    .flatten()
+            },
+            async {
+                futures::future::join_all(vars)
+                    .await
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .flatten()
+            },
+        )
+        .await;
+
+        hints.extend(params);
+        hints.extend(vars);
 
         Ok(Some(hints))
     }

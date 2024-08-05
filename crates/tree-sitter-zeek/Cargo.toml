@@ -11,4 +11,4 @@ tree-sitter = "0.22.6"
 
 [build-dependencies]
 cc = "1.1.7"
-regex = "1.10.5"
+regex = "1.10.6"

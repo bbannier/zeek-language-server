@@ -84,6 +84,7 @@ class ZeekLanguageServer {
       const stdout = child_process.execFileSync(file, ["--version"]).toString();
       return stdout.startsWith(expectOut);
     } catch (error) {
+      console.debug(`check for 'zeek-language-server failed': ${error}`);
       return false;
     }
   }
@@ -254,6 +255,7 @@ async function checkDependencies(): Promise<void> {
     try {
       child_process.execFileSync("zeek-format", ["--version"]);
     } catch (error) {
+      console.debug(`check for 'zeek-format' failed': ${error}`);
       const installZeekFormat = "Install zeek-format";
       const doNotCheck = "Do not check again";
       const selected = await window.showInformationMessage(

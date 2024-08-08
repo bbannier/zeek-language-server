@@ -57,6 +57,8 @@ pub struct Database {
     storage: salsa::Storage<Self>,
 }
 
+unsafe impl Sync for Database {}
+
 pub enum SourceUpdate {
     Remove(Arc<Url>),
     Update(Arc<Url>, Str),
@@ -134,7 +136,7 @@ impl Debug for Database {
 #[derive(Debug, Default)]
 pub struct Backend {
     pub client: Option<tower_lsp::Client>,
-    state: tokio::sync::Mutex<Database>,
+    state: tokio::sync::RwLock<Database>,
 }
 
 enum ParseResult {
@@ -167,14 +169,14 @@ impl Backend {
     }
 
     pub async fn state_snapshot(&self) -> Snapshot<Database> {
-        self.state.lock().await.snapshot()
+        self.state.read().await.snapshot()
     }
 
     pub async fn with_state_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut Database) -> R,
     {
-        let mut db = self.state.lock().await;
+        let mut db = self.state.write().await;
         f(&mut db)
     }
 
@@ -1811,7 +1813,7 @@ pub(crate) mod test {
 
     pub(crate) fn serve(database: TestDatabase) -> Backend {
         Backend {
-            state: tokio::sync::Mutex::new(database.0),
+            state: tokio::sync::RwLock::new(database.0),
             ..Backend::default()
         }
     }

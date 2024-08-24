@@ -32,7 +32,7 @@ rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.0.0"
 salsa = "0.16.1"
 semver = { version = "1.0.23", default-features = false }
-serde = { version = "1.0.204", default-features = false }
+serde = { version = "1.0.209", default-features = false }
 serde_json = { default-features = false, version = "1.0.122" }
 smol_str = "0.2.2"
 tokio = { version = "1.39.2", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }

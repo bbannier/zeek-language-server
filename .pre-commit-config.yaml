@@ -11,7 +11,7 @@ repos:
     hooks:
       - id: gitlint
   - repo: https://github.com/crate-ci/typos
-    rev: v1.23.6
+    rev: v1.24.1
     hooks:
       - id: typos
         exclude: "vscode/package-lock.json"

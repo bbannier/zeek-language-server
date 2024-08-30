@@ -49,6 +49,16 @@ Additionally, an extension VSIX file is created for each
 startup the extension will automatically download the server binary for the
 release.
 
+#### Emacs
+
+For installation instructions on Emacs, see
+[here](README.emacs.md).
+
+#### JetBrains IDEs
+
+For installation instructions on JetBrains IDEs, see
+[here](README.intellij.md).
+
 #### Other editors
 
 We provide [binaries for

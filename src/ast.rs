@@ -337,7 +337,14 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 1 => db.resolve_type((**id).clone(), loc),
                 _ => None,
             },
-            Type::Set(_) => db.resolve_type(Type::Count, loc),
+            Type::Set(xs) => {
+                // TODO(bbannier): Right now we only resolve indices over sets of one key.
+                if xs.len() == 1 {
+                    xs.first().and_then(|x| db.resolve_type(x.clone(), loc))
+                } else {
+                    None
+                }
+            }
             Type::List(_) => None,        // Not implemented in Zeek.
             Type::Table(_ks, _v) => None, // TODO(bbannier): Implement resolving for loops over tables.
             _ => None,

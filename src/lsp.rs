@@ -663,6 +663,7 @@ impl LanguageServer for Backend {
         })
         .await;
 
+        // Diagnostics are already triggered from `file_changed`.
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
         }

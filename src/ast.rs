@@ -6,7 +6,7 @@ use std::{
 };
 
 use tower_lsp::lsp_types::Url;
-use tracing::{error, instrument};
+use tracing::{instrument, warn};
 
 use crate::{
     parse::Parse,
@@ -618,7 +618,9 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
         if let Some(implicit_load) = implicit_file {
             loads.push(implicit_load);
         } else {
-            error!("could not resolve load of '{essential_input}'");
+            // Not being able to resolve the load is potentially not an
+            // error since this might race with prefixes being loaded.
+            warn!("could not resolve load of '{essential_input}'");
             continue;
         };
     }

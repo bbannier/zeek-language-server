@@ -2474,7 +2474,15 @@ event x::foo() {}",
         let uri_unknown = Url::from_file_path("/unknown.zeek").unwrap();
         let uri = Url::from_file_path("/x.zeek").unwrap();
 
-        db.add_file(uri.clone(), "global x = 42;");
+        db.add_file(
+            uri.clone(),
+            "
+            global x = 42;
+
+            module foo;
+            global y = 4711;
+            ",
+        );
         let server = serve(db);
 
         // Nothing reported for unknown files.

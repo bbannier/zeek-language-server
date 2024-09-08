@@ -1,15 +1,15 @@
 ---
 source: src/lsp.rs
-expression: "server.document_symbol(DocumentSymbolParams {\n            text_document: TextDocumentIdentifier::new(uri),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n        }).await"
+expression: "server.document_symbol(DocumentSymbolParams\n{\n    text_document: TextDocumentIdentifier::new(uri),\n    work_done_progress_params: WorkDoneProgressParams::default(),\n    partial_result_params: PartialResultParams::default(),\n}).await"
 ---
 Ok(
     Some(
         Nested(
             [
                 DocumentSymbol {
-                    name: "x",
+                    name: "foo",
                     detail: None,
-                    kind: Variable,
+                    kind: Namespace,
                     tags: None,
                     deprecated: None,
                     range: Range {
@@ -19,17 +19,76 @@ Ok(
                         },
                         end: Position {
                             line: 0,
-                            character: 14,
+                            character: 0,
                         },
                     },
                     selection_range: Range {
                         start: Position {
                             line: 0,
-                            character: 7,
+                            character: 0,
                         },
                         end: Position {
                             line: 0,
-                            character: 8,
+                            character: 0,
+                        },
+                    },
+                    children: Some(
+                        [
+                            DocumentSymbol {
+                                name: "y",
+                                detail: None,
+                                kind: Variable,
+                                tags: None,
+                                deprecated: None,
+                                range: Range {
+                                    start: Position {
+                                        line: 4,
+                                        character: 12,
+                                    },
+                                    end: Position {
+                                        line: 4,
+                                        character: 28,
+                                    },
+                                },
+                                selection_range: Range {
+                                    start: Position {
+                                        line: 4,
+                                        character: 19,
+                                    },
+                                    end: Position {
+                                        line: 4,
+                                        character: 20,
+                                    },
+                                },
+                                children: None,
+                            },
+                        ],
+                    ),
+                },
+                DocumentSymbol {
+                    name: "x",
+                    detail: None,
+                    kind: Variable,
+                    tags: None,
+                    deprecated: None,
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            character: 12,
+                        },
+                        end: Position {
+                            line: 1,
+                            character: 26,
+                        },
+                    },
+                    selection_range: Range {
+                        start: Position {
+                            line: 1,
+                            character: 19,
+                        },
+                        end: Position {
+                            line: 1,
+                            character: 20,
                         },
                     },
                     children: None,

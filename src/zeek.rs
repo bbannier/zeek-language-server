@@ -43,7 +43,7 @@ async fn dir(dir: ZeekDir) -> Result<PathBuf> {
     let dir = str::from_utf8(&output.stdout)?
         .lines()
         .next()
-        .ok_or_else(|| eyre!("'zeek-config --script_dir' returned no output"))?;
+        .ok_or_else(|| eyre!("'zeek-config {flag}' returned no output"))?;
 
     Ok(dir.into())
 }

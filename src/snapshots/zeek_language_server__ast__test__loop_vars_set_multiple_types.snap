@@ -1,0 +1,21 @@
+---
+source: src/ast.rs
+expression: typ
+---
+Decl {
+    module: Global,
+    id: "set[count, string, bool]",
+    fqid: "set[count, string, bool]",
+    kind: Builtin(
+        Set(
+            [
+                Count,
+                String,
+                Bool,
+            ],
+        ),
+    ),
+    is_export: None,
+    loc: None,
+    documentation: "Builtin type 'set[count, string, bool]'",
+}

@@ -43,7 +43,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         == 0
     {
         // If we are completing at the end of a line the end of the node will be on the next
-        // line. Instead search the next node _before the_start_ of the current node.
+        // line. Instead, search the next node _before the_start_ of the current node.
         let start = node.range().start.character;
         if start == 0 {
             break;

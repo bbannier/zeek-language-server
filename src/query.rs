@@ -209,6 +209,16 @@ impl Hash for NodeLocation {
     }
 }
 
+impl From<NodeLocation> for Location {
+    fn from(node_loc: NodeLocation) -> Self {
+        Location {
+            range: node_loc.range,
+            selection_range: node_loc.range,
+            uri: node_loc.uri,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ModuleId {
     String(Str),

@@ -10,7 +10,7 @@ use tracing::{instrument, warn};
 
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, NodeLocation, Query, Type},
+    query::{self, Decl, DeclKind, Location, NodeLocation, Query, Type},
     zeek, Str,
 };
 
@@ -203,7 +203,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
             module: query::ModuleId::Global,
             id: id.clone(),
             fqid: id.clone(),
-            kind: DeclKind::Builtin(typ),
+            kind: DeclKind::Builtin(typ.clone()),
             is_export: None,
             loc: None,
             documentation: format!("Builtin type '{id}'").as_str().into(),
@@ -248,7 +248,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
                 })
                 .collect::<Option<Vec<_>>>()?;
             let xs = xs.into_iter().join(", ");
-            builtin_type(format!("set[{xs}]").into(), typ)
+            builtin_type(format!("set[{xs}]").into(), typ.clone())
         }
         Type::Time => builtin_type("time".into(), typ),
         Type::Timer => builtin_type("timer".into(), typ),
@@ -337,14 +337,17 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 1 => db.resolve_type((**id).clone(), loc),
                 _ => None,
             },
-            Type::Set(xs) => {
-                // TODO(bbannier): Right now we only resolve indices over sets of one key.
-                if xs.len() == 1 {
-                    xs.first().and_then(|x| db.resolve_type(x.clone(), loc))
-                } else {
-                    None
+            Type::Set(xs) => match xs.len() {
+                0 => None,
+                1 => xs.first().and_then(|x| db.resolve_type(x.clone(), loc)),
+                _ => {
+                    if *i < xs.len() {
+                        db.resolve_type(xs[*i].clone(), loc)
+                    } else {
+                        None
+                    }
                 }
-            }
+            },
             Type::List(_) => None,        // Not implemented in Zeek.
             Type::Table(_ks, _v) => None, // TODO(bbannier): Implement resolving for loops over tables.
             _ => None,
@@ -418,6 +421,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     let uri = location.uri.clone();
     let tree = db.parse(uri.clone())?;
@@ -438,7 +442,6 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 Some(location),
             );
         }
-
         "hostname" => {
             return db.resolve_type(Type::Set(vec![Type::Addr]), Some(location));
         }
@@ -491,9 +494,49 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 _ => return None,
             }
         }
+        "for_expr" => {
+            let children = node
+                .named_children_not("nl")
+                .into_iter()
+                .collect::<Vec<_>>();
+            let loop_vars = &children[0];
+            let loop_expr = &children[1];
+
+            let expr_type = db.resolve(NodeLocation::from_node(uri.clone(), *loop_expr))?;
+            let expr_type = db.typ(expr_type)?;
+
+            match &expr_type.kind {
+                DeclKind::Builtin(Type::Set(element_types)) => {
+                    let mut resolved_vars = Vec::new();
+                    for (i, typ) in element_types.iter().enumerate() {
+                        // Loop variables should be resolved based on order
+                        let var_name = loop_vars
+                            .named_child(&i.to_string())
+                            .and_then(|n| {
+                                n.utf8_text(source.as_bytes()).ok().map(ToString::to_string)
+                            })
+                            .unwrap_or_else(|| format!("var_{i}_{typ:?}"));
+                        let var_decl = Arc::new(Decl {
+                            module: query::ModuleId::Global,
+                            id: var_name.clone().into(),
+                            fqid: var_name.into(),
+                            kind: DeclKind::LoopIndex(i, expr_type.id.to_string()),
+                            is_export: None,
+                            loc: Some(Location::from(NodeLocation::from_node(
+                                uri.clone(),
+                                *loop_vars,
+                            ))),
+                            documentation: format!("Loop variable of type {typ:?}").into(),
+                        });
+                        resolved_vars.push(var_decl);
+                    }
+                    return resolved_vars.into_iter().next();
+                }
+                _ => return None,
+            }
+        }
         _ => {}
     }
-
     // If the node is part of a field access or check resolve it in the referenced record.
     if let Some(p) = node.parent() {
         if p.kind() == "field_access" || p.kind() == "field_check" {
@@ -503,7 +546,6 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
     // Try to find a decl with name of the given node up the tree.
     let id: Str = node.utf8_text(source.as_bytes()).ok()?.into();
-
     if let Some(r) = db.resolve_id(id.clone(), location.clone()) {
         // If we have found something which can have separate declaration and definition
         // return the declaration if possible. At this point this must be in another file.
@@ -1763,6 +1805,88 @@ event zeek_init() { for (v in vs) ; }
             .unwrap();
         assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
         let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
+    }
+
+    #[test]
+    fn loop_vars_set_iteration_order() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            r#"
+global vs: set[string, count] = set("a", 1);
+event zeek_init() { for (v in vs) ; }
+                  "#,
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let vs = root
+            .named_descendant_for_position(Position::new(2, 31))
+            .unwrap();
+        assert_eq!(vs.utf8_text(source.as_bytes()), Ok("vs"));
+        let decl = db
+            .resolve(NodeLocation::from_node(uri.clone(), vs))
+            .unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
+    }
+    #[test]
+    fn loop_vars_set_multiple_types() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            r#"
+global vs: set[count, string, bool] = set(1, "a", T);
+event zeek_init() { for ([c, s, b] in vs) ; }
+                     "#,
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let vs = root
+            .named_descendant_for_position(Position::new(2, 39))
+            .unwrap();
+        assert_eq!(vs.utf8_text(source.as_bytes()), Ok("vs"));
+        let decl = db
+            .resolve(NodeLocation::from_node(uri.clone(), vs))
+            .unwrap();
+        let typ = db.typ(decl).unwrap();
+        assert_debug_snapshot!(typ);
+    }
+    #[test]
+    fn loop_vars_set_non_unique_keys() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            r#"
+global vs: set[count, count] = set(1, 2);
+event zeek_init() { for ([c1, c2] in vs) { print c1, c2; } }
+            "#,
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let vs = root
+            .named_descendant_for_position(Position::new(1, 7))
+            .unwrap();
+        assert_eq!(vs.utf8_text(source.as_bytes()), Ok("vs"));
+        let decl = db
+            .resolve(NodeLocation::from_node(uri.clone(), vs))
+            .unwrap();
         let typ = db.typ(decl).unwrap();
         assert_debug_snapshot!(typ);
     }

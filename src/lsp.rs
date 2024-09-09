@@ -1732,7 +1732,7 @@ async fn references(db: Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLo
                                     .named_descendant_for_point_range(loc.range)?
                                     .utf8_text(source.as_bytes())
                                     .ok()?;
-                                if !txt.contains(decl.id.as_ref()) {
+                                if !txt.contains(decl.id.as_str()) {
                                     return None;
                                 }
 

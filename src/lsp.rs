@@ -1784,10 +1784,9 @@ pub(crate) mod test {
     use tower_lsp::{
         lsp_types::{
             CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
-            FormattingOptions, HoverParams, InitializeParams, InlayHintParams, PartialResultParams,
-            Position, Range, ReferenceContext, ReferenceParams, RenameParams,
-            TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
-            WorkspaceSymbolParams,
+            FormattingOptions, HoverParams, InlayHintParams, PartialResultParams, Position, Range,
+            ReferenceContext, ReferenceParams, RenameParams, TextDocumentIdentifier,
+            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -2445,7 +2444,6 @@ event x::foo() {}",
     #[tokio::test]
     async fn get_latest_release() {
         let server = serve(TestDatabase::default());
-        let _ = server.initialize(InitializeParams::default()).await;
 
         {
             // Good response from server.

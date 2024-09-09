@@ -849,11 +849,13 @@ impl LanguageServer for Backend {
         };
 
         let modules = {
+            let db = self.state_snapshot().await;
+
             // Even though a valid source file can only contain a single module, one can still make
             // declarations in other modules. Sort declarations by module so users get a clean view.
             // Then show declarations under their module, or at the top-level if they aren't exported
             // into a module.
-            let decls = self.state_snapshot().await.decls(uri);
+            let decls = db.decls(uri);
             let mut decls = decls
                 .iter()
                 // Filter out top-level enum members since they are also exposed inside their enum here.

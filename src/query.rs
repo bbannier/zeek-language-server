@@ -211,7 +211,7 @@ impl Hash for NodeLocation {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ModuleId {
-    String(String),
+    String(Str),
     Global,
     None,
 }

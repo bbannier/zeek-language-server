@@ -10,7 +10,7 @@ license = "GPL-3.0-only"
 criterion = { version = "0.5.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
 insta = "1.40.0"
 tempfile = "3.12.0"
-wiremock = "0.6.1"
+wiremock = "0.6.2"
 
 [features]
 default = []

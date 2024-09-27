@@ -344,7 +344,7 @@ impl Backend {
         Some(latest)
     }
 
-    /// This wrapper around `zeek::check` directly publishing diagnostics.
+    /// This is wrapper around `zeek::check` directly publishing diagnostics.
     async fn check(&self, uri: Url, version: Option<i32>) {
         // If we have not client to publish to there is no need to run checks.
         let Some(client) = &self.client else {
@@ -377,7 +377,7 @@ impl Backend {
         let checks = match checks {
             Ok(xs) => xs,
             Err(e) => {
-                self.warn_message(e).await;
+                error!("could not check file with 'zeek': {e}");
                 return;
             }
         };

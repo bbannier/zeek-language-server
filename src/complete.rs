@@ -16,6 +16,7 @@ use tower_lsp::lsp_types::{
 };
 use tree_sitter_zeek::KEYWORDS;
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<CompletionResponse> {
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
@@ -58,7 +59,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         };
     }
 
-    let items = None.or_else(|| {
+    let mut items = None.or_else(|| {
         // If we are completing after `$` try to return all fields for client-side filtering.
         // TODO(bbannier): we should also handle `$` in record initializations.
 
@@ -121,18 +122,19 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
             None
         }
     ).or_else(||
-        {
-           // We are just completing some arbitrary identifier at this point.
-           let mut anys = complete_any(state, root, node, uri);
-
-           // FIXME(bbannier): we should always return snippet completions.
-           if let Some(text) = completion_text(node, &source,false) {
-                anys.extend(complete_snippet(text).into_iter());
-           }
-
-           Some(anys)
-        }
+        // We are just completing some arbitrary identifier at this point.
+        Some(complete_any(state, root, node, uri))
     );
+
+    // Snippet completions are always added.
+    if let Some(text) = completion_text(node, &source, false) {
+        let snippets = complete_snippet(text);
+        if !snippets.is_empty() {
+            let mut items_ = items.unwrap_or_default();
+            items_.extend_from_slice(&snippets);
+            items = Some(items_);
+        }
+    }
 
     items
         .map(|items| {

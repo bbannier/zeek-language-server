@@ -264,6 +264,10 @@ fn complete_snippet(text: &str) -> Vec<CompletionItem> {
             ],
         ),
         (
+            "enum",
+            vec!["type ${1:Name}: enum {", "\t${2:value},", "};"],
+        ),
+        (
             "switch",
             vec![
                 "switch ( ${1:var} )",
@@ -997,7 +1001,7 @@ f",
     fn snippet() {
         for input in [
             "rec", "swit", "for", "when", "notice", "function", "event", "if", "@if", "@ifdef",
-            "@ifndef",
+            "@ifndef", "enum",
         ] {
             fn only_snippets(xs: CompletionResponse) -> Vec<CompletionItem> {
                 match xs {

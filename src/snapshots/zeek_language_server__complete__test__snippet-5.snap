@@ -1,0 +1,34 @@
+---
+source: src/complete.rs
+expression: result
+---
+Some(
+    [
+        CompletionItem {
+            label: "notice",
+            label_details: None,
+            kind: Some(
+                Snippet,
+            ),
+            detail: None,
+            documentation: None,
+            deprecated: None,
+            preselect: None,
+            sort_text: None,
+            filter_text: None,
+            insert_text: Some(
+                "NOTICE([\\$note=$1,\n\t\\$msg=fmt(\"${3:msg}\", ${4:args}),\n\t\\$conn=${5:c},\n\t\\$sub=fmt(\"${6:msg}\", ${7:args})]);",
+            ),
+            insert_text_format: Some(
+                Snippet,
+            ),
+            insert_text_mode: None,
+            text_edit: None,
+            additional_text_edits: None,
+            command: None,
+            commit_characters: None,
+            data: None,
+            tags: None,
+        },
+    ],
+)

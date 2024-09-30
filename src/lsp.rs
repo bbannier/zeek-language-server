@@ -1554,7 +1554,7 @@ fn word_at_position(source: &str, position: Position) -> Option<String> {
     let a = a.split_whitespace().last().unwrap_or_default();
     let b = b.split_whitespace().next().unwrap_or_default();
 
-    dbg!(Some(format!("{a}{b}")))
+    Some(format!("{a}{b}"))
 }
 
 fn fuzzy_search_symbol(db: &Snapshot<Database>, symbol: &str) -> Vec<(f32, Decl)> {

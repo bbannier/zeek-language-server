@@ -1,0 +1,34 @@
+---
+source: src/complete.rs
+expression: result
+---
+Some(
+    [
+        CompletionItem {
+            label: "switch",
+            label_details: None,
+            kind: Some(
+                Snippet,
+            ),
+            detail: None,
+            documentation: None,
+            deprecated: None,
+            preselect: None,
+            sort_text: None,
+            filter_text: None,
+            insert_text: Some(
+                "switch ( ${1:var} )\n\t{\n\tcase ${2:case1}:\n\t\t${3:#code}\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n\t}",
+            ),
+            insert_text_format: Some(
+                Snippet,
+            ),
+            insert_text_mode: None,
+            text_edit: None,
+            additional_text_edits: None,
+            command: None,
+            commit_characters: None,
+            data: None,
+            tags: None,
+        },
+    ],
+)

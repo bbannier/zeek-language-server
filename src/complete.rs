@@ -12,10 +12,11 @@ use crate::{
 use itertools::Itertools;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
-    CompletionResponse, Documentation, MarkupContent, Position, Url,
+    CompletionResponse, Documentation, InsertTextFormat, MarkupContent, Position, Url,
 };
 use tree_sitter_zeek::KEYWORDS;
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<CompletionResponse> {
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
@@ -28,7 +29,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let root = tree.root_node();
     let mut node = root.descendant_for_position(position)?;
 
-    let text = completion_text(node, &source);
+    let text = completion_text(node, &source, true);
 
     // If the node has no interesting text try to find an earlier node with text.
     while node
@@ -58,7 +59,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         };
     }
 
-    None.or_else(|| {
+    let mut items = None.or_else(|| {
         // If we are completing after `$` try to return all fields for client-side filtering.
         // TODO(bbannier): we should also handle `$` in record initializations.
 
@@ -123,12 +124,30 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     ).or_else(||
         // We are just completing some arbitrary identifier at this point.
         Some(complete_any(state, root, node, uri))
-    )
-    .map(|items|
-        items.into_iter()
-            .filter(|i| text.map_or(true, |t| rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0))
-            .collect::<Vec<_>>())
-    .map(CompletionResponse::from)
+    );
+
+    // Snippet completions are always added.
+    if let Some(text) = completion_text(node, &source, false) {
+        let snippets = complete_snippet(text);
+        if !snippets.is_empty() {
+            let mut items_ = items.unwrap_or_default();
+            items_.extend_from_slice(&snippets);
+            items = Some(items_);
+        }
+    }
+
+    items
+        .map(|items| {
+            items
+                .into_iter()
+                .filter(|i| {
+                    text.map_or(true, |t| {
+                        rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .map(CompletionResponse::from)
 }
 
 /// Complete a field after `$` or `?$`
@@ -234,6 +253,110 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
         .collect::<Vec<_>>()
 }
 
+fn complete_snippet(text: &str) -> Vec<CompletionItem> {
+    let snippets = vec![
+        (
+            "record",
+            vec![
+                "type ${1:Name}: record {",
+                "\t${2:field_name}: ${3:field_type};",
+                "};",
+            ],
+        ),
+        (
+            "enum",
+            vec!["type ${1:Name}: enum {", "\t${2:value},", "};"],
+        ),
+        (
+            "switch",
+            vec![
+                "switch ( ${1:var} )",
+                "\t{",
+                "\tcase ${2:case1}:",
+                "\t\t${3:#code}",
+                "\t\tbreak;",
+                "\tdefault:",
+                "\t\tbreak;",
+                "\t}",
+            ],
+        ),
+        (
+            "for",
+            vec!["for ( ${1:x} in ${2:xs} )", "\t{", "\t${3:#code}", "\t}"],
+        ),
+        (
+            "when",
+            vec![
+                "when ( ${1:cond} )",
+                "\t{",
+                "\t${2:#code}",
+                "\t}",
+                "timeout ${3:duration}",
+                "\t{",
+                "\t${4:#code}",
+                "\t}",
+            ],
+        ),
+        (
+            "notice",
+            vec![
+                "NOTICE([\\$note=$1,",
+                "\t\\$msg=fmt(\"${3:msg}\", ${4:args}),",
+                "\t\\$conn=${5:c},",
+                "\t\\$sub=fmt(\"${6:msg}\", ${7:args})]);",
+            ],
+        ),
+        (
+            "function",
+            vec![
+                "function ${1:function_name}(${2:${3:arg_name}: ${4:arg_type}}): ${5:return_type}",
+                "\t{",
+                "\t${6:#code}",
+                "\t}",
+            ],
+        ),
+        (
+            "event",
+            vec![
+                "event ${1:zeek_init}(${2:${3:arg_name}: ${4:arg_type}})",
+                "\t{",
+                "\t${5:#code}",
+                "\t}",
+            ],
+        ),
+        ("if", vec!["if ( ${1:cond} )", "\t{", "\t${0:#code}", "\t}"]),
+        ("@if", vec!["@if ( ${1:cond} )", "\t${0:#code}", "@endif"]),
+        (
+            "@ifdef",
+            vec!["@ifdef ( ${1:cond} )", "\t${0:#code}", "@endif"],
+        ),
+        (
+            "@ifndef",
+            vec!["@ifndef ( ${1:cond} )", "\t${0:#code}", "@endif"],
+        ),
+    ];
+
+    snippets
+        .into_iter()
+        .filter_map(|(trigger, completion)| {
+            if trigger.contains(text) {
+                let label = trigger.into();
+                let insert_text = Some(completion.join("\n"));
+
+                Some(CompletionItem {
+                    label,
+                    insert_text,
+                    kind: Some(CompletionItemKind::SNIPPET),
+                    insert_text_format: Some(InsertTextFormat::SNIPPET),
+                    ..CompletionItem::default()
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn complete_any(
     state: &Database,
     root: Node,
@@ -251,7 +374,7 @@ fn complete_any(
         .and_then(|m| m.named_child("id"))
         .and_then(|id| id.utf8_text(source.as_bytes()).ok());
 
-    let text_at_completion = completion_text(node, &source);
+    let text_at_completion = completion_text(node, &source, true);
 
     loop {
         for d in query::decls_(node, uri.clone(), source.as_bytes()) {
@@ -386,8 +509,8 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
     }
 }
 
-fn completion_text<'a>(node: Node, source: &'a str) -> Option<&'a str> {
-    if node.kind() == "source_file" {
+fn completion_text<'a>(node: Node, source: &'a str, reject_top_level: bool) -> Option<&'a str> {
+    if reject_top_level && node.kind() == "source_file" {
         return None;
     }
 
@@ -406,9 +529,9 @@ mod test {
 
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{
-        CompletionContext, CompletionItemKind, CompletionParams, CompletionResponse,
-        CompletionTriggerKind, PartialResultParams, Position, TextDocumentIdentifier,
-        TextDocumentPositionParams, Url, WorkDoneProgressParams,
+        CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
+        CompletionResponse, CompletionTriggerKind, PartialResultParams, Position,
+        TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
     };
 
     use crate::{complete::complete, lsp::test::TestDatabase};
@@ -872,5 +995,47 @@ f",
         };
 
         assert_debug_snapshot!(result);
+    }
+
+    #[test]
+    fn snippet() {
+        for input in [
+            "rec", "swit", "for", "when", "notice", "function", "event", "if", "@if", "@ifdef",
+            "@ifndef", "enum",
+        ] {
+            fn only_snippets(xs: CompletionResponse) -> Vec<CompletionItem> {
+                match xs {
+                    CompletionResponse::Array(xs) => xs
+                        .into_iter()
+                        .filter(|x| x.kind == Some(CompletionItemKind::SNIPPET))
+                        .collect::<Vec<_>>(),
+                    CompletionResponse::List(xs) => xs
+                        .items
+                        .into_iter()
+                        .filter(|x| x.kind == Some(CompletionItemKind::SNIPPET))
+                        .collect(),
+                }
+            }
+
+            let mut db = TestDatabase::default();
+            let uri = Url::from_file_path("/x.zeek").unwrap();
+            db.add_file(uri.clone(), input);
+
+            let result = complete(
+                &db.0,
+                CompletionParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri),
+                        Position::new(0, u32::try_from(input.len()).unwrap()),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: None,
+                },
+            )
+            .map(only_snippets);
+
+            assert_debug_snapshot!(result);
+        }
     }
 }

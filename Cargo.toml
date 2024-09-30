@@ -26,7 +26,7 @@ opentelemetry-otlp = { version = "0.15.0", features = ["grpc-tonic", "trace"], d
 opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio", "trace"], default-features = false, optional = true }
 path-clean = "1.0.1"
 rayon = "1.10.0"
-regex = { default-features = false, version = "1.10.6" }
+regex = { default-features = false, version = "1.11.0" }
 reqwest = { version = "0.12.7", default-features = false }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.0.0"

@@ -1,0 +1,34 @@
+---
+source: src/complete.rs
+expression: result
+---
+Some(
+    [
+        CompletionItem {
+            label: "event",
+            label_details: None,
+            kind: Some(
+                Snippet,
+            ),
+            detail: None,
+            documentation: None,
+            deprecated: None,
+            preselect: None,
+            sort_text: None,
+            filter_text: None,
+            insert_text: Some(
+                "event ${1:zeek_init}(${2:${3:arg_name}: ${4:arg_type}})\n\t{\n\t${5:#code}\n\t}",
+            ),
+            insert_text_format: Some(
+                Snippet,
+            ),
+            insert_text_mode: None,
+            text_edit: None,
+            additional_text_edits: None,
+            command: None,
+            commit_characters: None,
+            data: None,
+            tags: None,
+        },
+    ],
+)

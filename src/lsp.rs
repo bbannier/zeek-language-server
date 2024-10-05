@@ -1,4 +1,4 @@
-use crate::{
+pub(crate) use crate::{
     ast::{load_to_file, Ast},
     complete::complete,
     parse::Parse,
@@ -32,11 +32,13 @@ use tower_lsp::{
         InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip, Location,
         MarkedString, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf,
         ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ReferenceParams, RenameParams, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Url, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
+        ProgressToken, Range, ReferenceParams, RenameParams, SemanticTokensFullOptions,
+        SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+        SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, SignatureHelp,
+        SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
+        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
+        WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server,
 };
@@ -474,6 +476,15 @@ impl LanguageServer for Backend {
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(initialization_options.references)),
                 rename_provider: Some(OneOf::Left(initialization_options.rename)),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: semantic_tokens::legend(),
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..SemanticTokensOptions::default()
+                        },
+                    ),
+                ),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1546,6 +1557,21 @@ impl LanguageServer for Backend {
 
         Ok(Some(WorkspaceEdit::new(changes)))
     }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+
+        let Some(source) = self.state_snapshot().await.source(uri.into()) else {
+            return Ok(None);
+        };
+
+        let legend = semantic_tokens::legend();
+        semantic_tokens::highlight(&source, &legend)
+            .map(|hl| Some(SemanticTokensResult::Tokens(hl)))
+    }
 }
 
 fn word_at_position(source: &str, position: Position) -> Option<String> {
@@ -1770,6 +1796,153 @@ async fn references(db: Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLo
         .collect()
 }
 
+mod semantic_tokens {
+    use itertools::Itertools;
+    use tower_lsp::{
+        jsonrpc::Error,
+        lsp_types::{
+            Position, Range, SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend,
+        },
+    };
+    use tracing::error;
+    use tree_sitter_highlight::{Highlight, HighlightEvent};
+
+    pub(crate) fn legend() -> SemanticTokensLegend {
+        let token_types = highlights().map(SemanticTokenType::from).collect();
+
+        SemanticTokensLegend {
+            token_types,
+            ..SemanticTokensLegend::default()
+        }
+    }
+
+    fn highlights() -> impl Iterator<Item = &'static str> {
+        tree_sitter_zeek::HIGHLIGHT_QUERY
+            .lines()
+            .flat_map(|line| line.split_whitespace())
+            .filter_map(|xs| {
+                let xs = xs.strip_prefix('@')?;
+                Some(xs.strip_suffix(')').unwrap_or(xs))
+            })
+            .unique()
+    }
+
+    pub(crate) fn highlight(
+        source: &str,
+        legend: &SemanticTokensLegend,
+    ) -> super::Result<SemanticTokens> {
+        let mut zeek_config = tree_sitter_highlight::HighlightConfiguration::new(
+            tree_sitter_zeek::language_zeek(),
+            "zeek",
+            tree_sitter_zeek::HIGHLIGHT_QUERY,
+            "",
+            "",
+        )
+        .map_err(|e| {
+            error!("failed to construct highlighter configuration: {e}");
+            Error::internal_error()
+        })?;
+        zeek_config.configure(&highlights().collect::<Vec<_>>());
+
+        let line_index = line_index::LineIndex::new(source);
+
+        let mut cur_ty = None;
+        let mut cur_range = None;
+        let mut data = Vec::new();
+
+        for event in tree_sitter_highlight::Highlighter::new()
+            .highlight(&zeek_config, source.as_bytes(), None, |_| None)
+            .map_err(|e| {
+                error!("failed to highlight source: {e}");
+                Error::internal_error()
+            })?
+        {
+            match event.map_err(|e| {
+                error!("failed to highlight event: {e}");
+                Error::internal_error()
+            })? {
+                HighlightEvent::HighlightStart(Highlight(idx)) => {
+                    cur_ty = Some(idx);
+                }
+                HighlightEvent::Source { start, end } => {
+                    let (Ok(start), Ok(end)) = (u32::try_from(start), u32::try_from(end)) else {
+                        return Err(Error::internal_error());
+                    };
+
+                    let start_ = line_index.line_col(start.into());
+                    let end_ = line_index.line_col(end.into());
+
+                    cur_range = Some((
+                        Range::new(
+                            Position::new(start_.line, start_.col),
+                            Position::new(end_.line, end_.col),
+                        ),
+                        end - start,
+                    ));
+                }
+                HighlightEvent::HighlightEnd => {
+                    cur_ty = None;
+                    cur_range = None;
+                }
+            }
+
+            if let (Some(cur_ty), Some(cur_range)) = (cur_ty, cur_range) {
+                data.push((cur_ty, cur_range));
+            }
+        }
+
+        let highlight_names: Vec<_> = highlights().collect();
+        let data: Vec<_> = data
+            .into_iter()
+            .filter_map(|(ty, range)| {
+                let name = highlight_names.get(ty)?;
+                let ty = SemanticTokenType::from(*name);
+
+                // Skip token types we didn't previously advertise.
+                #[allow(clippy::cast_possible_truncation)]
+                let token_type = legend.token_types.iter().position(|x| *x == ty)? as u32;
+
+                Some((token_type, range))
+            })
+            .sorted_by(|a, b| Ord::cmp(&a.1 .0.start, &b.1 .0.start))
+            .collect();
+
+        let mut tokens = Vec::new();
+        let mut prev: Option<(u32, Range)> = None;
+        for (token_type, (range, length)) in data {
+            let token = if let Some((_, prev_range)) = prev {
+                let delta_line = range.start.line - prev_range.start.line;
+                let delta_start =
+                    range.start.character - u32::from(delta_line == 0) * prev_range.start.character;
+                SemanticToken {
+                    delta_line,
+                    delta_start,
+                    length,
+                    token_type,
+                    ..SemanticToken::default()
+                }
+            } else {
+                SemanticToken {
+                    delta_line: range.start.line,
+                    delta_start: range.start.character,
+                    length: range.end.character - range.start.character,
+                    token_type,
+                    ..SemanticToken::default()
+                }
+            };
+
+            tokens.push(token);
+
+            prev = Some((token_type, range));
+        }
+
+        Ok(SemanticTokens {
+            data: tokens,
+            ..SemanticTokens::default()
+        })
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test {
     #![allow(clippy::unwrap_used)]
@@ -1785,10 +1958,11 @@ pub(crate) mod test {
     use serde_json::json;
     use tower_lsp::{
         lsp_types::{
-            CompletionParams, CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse,
-            FormattingOptions, HoverParams, InlayHintParams, PartialResultParams, Position, Range,
-            ReferenceContext, ReferenceParams, RenameParams, TextDocumentIdentifier,
-            TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceSymbolParams,
+            ClientCapabilities, CompletionParams, CompletionResponse, DocumentSymbolParams,
+            DocumentSymbolResponse, FormattingOptions, HoverParams, InlayHintParams,
+            PartialResultParams, Position, Range, ReferenceContext, ReferenceParams, RenameParams,
+            SemanticTokensParams, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+            WorkDoneProgressParams, WorkspaceSymbolParams,
         },
         LanguageServer,
     };
@@ -2830,6 +3004,33 @@ const z = x;
                     ),
                     new_name: "ABC".into(),
                     work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn semantic_tokens_full() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+
+        let source = r"
+        # foo
+        function foo() {}
+        function bar() {} function baz() {}
+        ";
+
+        db.add_file(uri.clone(), source);
+        db.0.set_capabilities(Arc::new(ClientCapabilities::default()));
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .semantic_tokens_full(SemanticTokensParams {
+                    text_document: TextDocumentIdentifier::new(uri),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
                 })
                 .await
         );

@@ -90,3 +90,11 @@ This installs a binary `zeek-language-server` which provides the full server.
 
 See [these instructions](./DEBUGGING.md) for VS Code setup and the list of
 features (some of which are VS Code specific).
+
+## Development
+
+This server provides support for highlighting via [tree-sitter highlighting
+queries](https://tree-sitter.github.io/tree-sitter/syntax-highlighting). To
+tweak existing or add new queries one needs to edit the files in
+[`crates/tree-sitter-zeek/vendor`](https://github.com/bbannier/zeek-language-server/tree/main/crates/tree-sitter-zeek/vendor),
+and perform a bug of the submodule.

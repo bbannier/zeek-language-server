@@ -332,29 +332,33 @@ export async function activate(context: ExtensionContext): Promise<void> {
     checkForUpdates = path.length > 0;
   }
 
-  const inlayHintsVariables = configuration.get<boolean>(
+  const inlay_hints_variables = configuration.get<boolean>(
     "inlayHints.variables.enabled",
   );
-  const inlayHintsParameters = configuration.get<boolean>(
+  const inlay_hints_parameters = configuration.get<boolean>(
     "inlayHints.parameters.enabled",
   );
   const references = configuration.get<boolean>("references.enabled");
   const rename = configuration.get<boolean>("rename.enabled");
-
-  const serverOptions: ServerOptions = {
-    run: serverExecutable,
-    debug: serverExecutable,
-  };
+  const semantic_highlighting = configuration.get<boolean>(
+    "semantic_highlighting.enabled",
+  );
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "zeek" }],
     initializationOptions: {
       check_for_updates: checkForUpdates,
-      inlay_hints_parameters: inlayHintsParameters,
-      inlay_hints_variables: inlayHintsVariables,
+      inlay_hints_parameters,
+      inlay_hints_variables,
       references,
       rename,
+      semantic_highlighting,
     },
+  };
+
+  const serverOptions: ServerOptions = {
+    run: serverExecutable,
+    debug: serverExecutable,
   };
 
   CLIENT = new LanguageClient(

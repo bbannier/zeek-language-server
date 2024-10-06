@@ -8,7 +8,7 @@ pub(crate) use crate::{
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use salsa::{ParallelDatabase, Snapshot};
+use salsa::ParallelDatabase;
 use semver::Version;
 use serde::Deserialize;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
@@ -773,10 +773,10 @@ impl LanguageServer for Backend {
                 let try_update = |contents: &mut Vec<_>| {
                     let symbol = word_at_position(&source, position)?;
 
-                    let mut x = fuzzy_search_symbol(&state.snapshot(), &symbol);
+                    let mut x = fuzzy_search_symbol(&state, &symbol);
                     x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
 
-                    if let Some(docs) = fuzzy_search_symbol(&state.snapshot(), &symbol)
+                    if let Some(docs) = fuzzy_search_symbol(&state, &symbol)
                         .iter()
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
@@ -901,7 +901,7 @@ impl LanguageServer for Backend {
 
         let symbols = {
             let state = self.state.read().await;
-            fuzzy_search_symbol(&state.snapshot(), &query)
+            fuzzy_search_symbol(&state, &query)
                 .into_iter()
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
@@ -983,7 +983,7 @@ impl LanguageServer for Backend {
                     let Some(symbol) = word_at_position(&source, position) else {
                         return Ok(None);
                     };
-                    fuzzy_search_symbol(&state.snapshot(), &symbol)
+                    fuzzy_search_symbol(&state, &symbol)
                         .iter()
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
@@ -1496,7 +1496,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let references = references(&state.snapshot(), decl).await;
+        let references = references(&state, decl).await;
 
         Ok(Some(
             references
@@ -1524,7 +1524,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let references = references(&state.snapshot(), decl).await;
+        let references = references(&state, decl).await;
 
         let new_name = params.new_name;
 
@@ -1571,7 +1571,7 @@ fn word_at_position(source: &str, position: Position) -> Option<String> {
     Some(format!("{a}{b}"))
 }
 
-fn fuzzy_search_symbol(db: &Snapshot<Database>, symbol: &str) -> Vec<(f32, Decl)> {
+fn fuzzy_search_symbol(db: &Database, symbol: &str) -> Vec<(f32, Decl)> {
     let files = db.files();
     files
         .iter()
@@ -1709,9 +1709,9 @@ fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
         .collect()
 }
 
-async fn references(db: &Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
-    fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
+    fn all_sources(f: Arc<Url>, db: &Database) -> FxHashSet<Arc<Url>> {
         let mut loads = FxHashSet::default();
         loads.extend(db.implicit_loads().iter().cloned());
         loads.extend(db.loaded_files(f).iter().cloned());
@@ -1941,7 +1941,6 @@ pub(crate) mod test {
     };
 
     use insta::assert_debug_snapshot;
-    use salsa::{ParallelDatabase, Snapshot};
     use semver::Version;
     use serde_json::json;
     use tower_lsp::{
@@ -1979,8 +1978,8 @@ pub(crate) mod test {
             self.0.set_prefixes(Arc::new(prefixes.clone()));
         }
 
-        pub(crate) fn snapshot(self) -> Snapshot<lsp::Database> {
-            self.0.snapshot()
+        pub(crate) fn snapshot(self) -> lsp::Database {
+            self.0
         }
     }
 

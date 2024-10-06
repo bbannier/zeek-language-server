@@ -31,6 +31,8 @@ The server interprets the following `initializationOptions`:
   Whether to enable _Go To References_.
 - `rename` (default: `false`):
   Whether to enable _Rename_.
+- `semantic_highlighting` (default: `true`)
+  Enable semantic highlighting.
 
   **WARNING**: Since typically Zeek scripts have incomplete `@load` statements
   the provided list is very likely incomplete. Use a tool like `grep` to search

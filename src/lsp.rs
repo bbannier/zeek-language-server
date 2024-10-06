@@ -170,25 +170,14 @@ impl Backend {
         self.client_message(MessageType::INFO, message).await;
     }
 
-    pub async fn state_snapshot(&self) -> Snapshot<Database> {
-        self.state.read().await.snapshot()
-    }
-
-    pub async fn with_state_mut<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut Database) -> R,
-    {
-        let mut db = self.state.write().await;
-        f(&mut db)
-    }
-
     async fn progress_begin<T>(&self, title: T) -> Option<ProgressToken>
     where
         T: Into<String> + std::fmt::Display,
     {
         // Short circuit progress report if client doesn't support it.
         if !self
-            .state_snapshot()
+            .state
+            .read()
             .await
             .capabilities()
             .window
@@ -263,7 +252,7 @@ impl Backend {
 
     async fn file_changed(&self, uri: Arc<Url>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
-            let state = self.state_snapshot().await;
+            let state = self.state.read().await;
             let diags = {
                 state.file_changed(uri.clone());
 
@@ -300,7 +289,7 @@ impl Backend {
             .into_par_iter()
             .filter_map(|f| Url::from_file_path(f.path).ok());
 
-        let workspace_folders = self.state_snapshot().await.workspace_folders();
+        let workspace_folders = self.state.read().await.workspace_folders();
 
         let workspace_files = workspace_folders
             .par_iter()
@@ -361,7 +350,8 @@ impl Backend {
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
         let workspace_folder = self
-            .state_snapshot()
+            .state
+            .read()
             .await
             .workspace_folders()
             .first()
@@ -419,7 +409,8 @@ impl LanguageServer for Backend {
             .workspace_folders
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
-        self.with_state_mut(move |state| {
+        {
+            let mut state = self.state.write().await;
             state.set_workspace_folders(Arc::new(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
             state.set_initialization_options(Arc::new(
@@ -428,17 +419,11 @@ impl LanguageServer for Backend {
                     .and_then(|options| serde_json::from_value(options).ok())
                     .unwrap_or_else(InitializationOptions::new),
             ));
-        })
-        .await;
+        }
 
         // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
-            Ok(prefixes) => {
-                self.with_state_mut(move |state| {
-                    state.set_prefixes(Arc::new(prefixes));
-                })
-                .await;
-            }
+            Ok(prefixes) => self.state.write().await.set_prefixes(Arc::new(prefixes)),
             Err(e) => {
                 self.warn_message(format!(
                     "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
@@ -447,7 +432,7 @@ impl LanguageServer for Backend {
             }
         }
 
-        let initialization_options = self.state_snapshot().await.initialization_options();
+        let initialization_options = self.state.read().await.initialization_options();
         let has_zeek_format = zeek::has_format().await;
 
         Ok(InitializeResult {
@@ -500,7 +485,8 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         // Check whether a newer release is available.
         if self
-            .state_snapshot()
+            .state
+            .read()
             .await
             .initialization_options()
             .check_for_updates
@@ -580,7 +566,7 @@ impl LanguageServer for Backend {
             let changes = removals.chain(updates).collect::<Vec<_>>();
 
             // Update files.
-            self.with_state_mut(|s| s.update_sources(&changes)).await;
+            self.state.write().await.update_sources(&changes);
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -591,9 +577,9 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files = self.state_snapshot().await.files();
+        let files = self.state.read().await.files();
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
         {
             let preloaded_decls = {
                 let span = trace_span!("preloading");
@@ -618,7 +604,7 @@ impl LanguageServer for Backend {
         // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
-        let _implicit = self.state_snapshot().await.implicit_decls();
+        let _implicit = self.state.read().await.implicit_decls();
 
         self.progress_end(progress_token).await;
     }
@@ -628,17 +614,17 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri.clone());
 
         // Update source.
-        self.with_state_mut(|state| {
-            state.update_sources(&[SourceUpdate::Update(
+        self.state
+            .write()
+            .await
+            .update_sources(&[SourceUpdate::Update(
                 uri.clone(),
                 params.text_document.text.into(),
             )]);
-        })
-        .await;
 
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
-        let _implicit = self.state_snapshot().await.implicit_decls();
+        let _implicit = self.state.read().await.implicit_decls();
 
         let file_changed = self.file_changed(uri).await;
 
@@ -668,13 +654,13 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         // Update source.
-        self.with_state_mut(|state| {
-            state.update_sources(&[SourceUpdate::Update(
+        self.state
+            .write()
+            .await
+            .update_sources(&[SourceUpdate::Update(
                 uri.clone(),
                 changes.text.as_str().into(),
             )]);
-        })
-        .await;
 
         // Diagnostics are already triggered from `file_changed`.
         if let Err(e) = self.file_changed(uri).await {
@@ -700,7 +686,7 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let Some(source) = state.source(uri.clone()) else {
             return Ok(None);
@@ -787,10 +773,10 @@ impl LanguageServer for Backend {
                 let try_update = |contents: &mut Vec<_>| {
                     let symbol = word_at_position(&source, position)?;
 
-                    let mut x = fuzzy_search_symbol(&state, &symbol);
+                    let mut x = fuzzy_search_symbol(&state.snapshot(), &symbol);
                     x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
 
-                    if let Some(docs) = fuzzy_search_symbol(&state, &symbol)
+                    if let Some(docs) = fuzzy_search_symbol(&state.snapshot(), &symbol)
                         .iter()
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
@@ -862,7 +848,7 @@ impl LanguageServer for Backend {
         };
 
         let modules = {
-            let db = self.state_snapshot().await;
+            let db = self.state.read().await;
 
             // Even though a valid source file can only contain a single module, one can still make
             // declarations in other modules. Sort declarations by module so users get a clean view.
@@ -914,8 +900,8 @@ impl LanguageServer for Backend {
         let query = params.query.to_lowercase();
 
         let symbols = {
-            let state = self.state_snapshot().await;
-            fuzzy_search_symbol(&state, &query)
+            let state = self.state.read().await;
+            fuzzy_search_symbol(&state.snapshot(), &query)
                 .into_iter()
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
@@ -940,7 +926,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
         Ok(complete(&state, params))
     }
 
@@ -953,7 +939,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let tree = state.parse(uri.clone());
         let Some(tree) = tree.as_ref() else {
@@ -997,7 +983,7 @@ impl LanguageServer for Backend {
                     let Some(symbol) = word_at_position(&source, position) else {
                         return Ok(None);
                     };
-                    fuzzy_search_symbol(&state, &symbol)
+                    fuzzy_search_symbol(&state.snapshot(), &symbol)
                         .iter()
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
@@ -1018,7 +1004,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position_params.text_document.uri);
         let position = params.text_document_position_params.position;
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let Some(source) = state.source(uri.clone()) else {
             return Ok(None);
@@ -1151,7 +1137,7 @@ impl LanguageServer for Backend {
             folds
         }
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
         let tree = state.parse(Arc::new(params.text_document.uri));
 
         Ok(tree.map(|t| compute_folds(t.root_node(), false)))
@@ -1161,7 +1147,7 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let source = state.source(uri.clone());
 
@@ -1189,7 +1175,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.state_snapshot().await.source(uri.clone());
+        let source = self.state.read().await.source(uri.clone());
 
         let Some(source) = source else {
             return Ok(None);
@@ -1226,7 +1212,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let tree = state.parse(uri.clone());
         let Some(tree) = tree.as_ref() else {
@@ -1283,7 +1269,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let tree = state.parse(uri.clone());
         let Some(tree) = tree.as_ref() else {
@@ -1348,7 +1334,7 @@ impl LanguageServer for Backend {
         };
 
         let uri = Arc::new(params.text_document.uri);
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
         let Some(missing) = state.parse(uri.clone()).and_then(|t| {
             t.root_node().errors().into_iter().find_map(|err| {
                 // Filter out `MISSING` nodes at the diagnostic.
@@ -1387,7 +1373,7 @@ impl LanguageServer for Backend {
 
         let mut hints = Vec::new();
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let params = if state.initialization_options().inlay_hints_parameters {
             state
@@ -1497,7 +1483,7 @@ impl LanguageServer for Backend {
 
         // TODO(bbannier): respect `params.context.include_declaration`.
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let tree = state.parse(uri.clone());
         let Some(tree) = tree.as_ref() else {
@@ -1510,7 +1496,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let references = references(state, decl).await;
+        let references = references(&state.snapshot(), decl).await;
 
         Ok(Some(
             references
@@ -1525,7 +1511,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        let state = self.state_snapshot().await;
+        let state = self.state.read().await;
 
         let tree = state.parse(uri.clone());
         let Some(tree) = tree.as_ref() else {
@@ -1538,7 +1524,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let references = references(state, decl).await;
+        let references = references(&state.snapshot(), decl).await;
 
         let new_name = params.new_name;
 
@@ -1566,7 +1552,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
 
-        let Some(source) = self.state_snapshot().await.source(uri.into()) else {
+        let Some(source) = self.state.read().await.source(uri.into()) else {
             return Ok(None);
         };
 
@@ -1731,7 +1717,7 @@ fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
         .collect()
 }
 
-async fn references(db: Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+async fn references(db: &Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
     fn all_sources(f: Arc<Url>, db: &Snapshot<Database>) -> FxHashSet<Arc<Url>> {
         let mut loads = FxHashSet::default();

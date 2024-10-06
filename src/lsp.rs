@@ -1619,7 +1619,7 @@ pub async fn run() {
         ..Backend::default()
     });
 
-    Server::new(stdin, stdout, socket).serve(service).await
+    Server::new(stdin, stdout, socket).serve(service).await;
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1737,7 +1737,7 @@ async fn references(db: &Snapshot<Database>, decl: Arc<Decl>) -> FxHashSet<NodeL
             .filter(|f| {
                 // If the file we look at does not load the file with the decl, no references to it
                 // can exist.
-                f == &decl_uri || all_sources(Arc::clone(f), &db).contains(decl_uri)
+                f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri)
             })
             .map(|f| {
                 let db = db.snapshot();

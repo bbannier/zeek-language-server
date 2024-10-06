@@ -1619,7 +1619,15 @@ pub async fn run() {
         ..Backend::default()
     });
 
-    Server::new(stdin, stdout, socket).serve(service).await;
+    // Run a sequential server.
+    //
+    // Even though `Backend` protects its state with a mutex mutating uses of `Database` could
+    // still deadlock if a `Snapshot<Database>` is held on the same thread. Make that impossible by
+    // only handling exactly one request at a time.
+    Server::new(stdin, stdout, socket)
+        .concurrency_level(1)
+        .serve(service)
+        .await;
 }
 
 #[allow(clippy::struct_excessive_bools)]

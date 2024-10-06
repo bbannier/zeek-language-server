@@ -340,6 +340,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
   );
   const references = configuration.get<boolean>("references.enabled");
   const rename = configuration.get<boolean>("rename.enabled");
+  const semantic_highlighting = configuration.get<boolean>(
+    "semantic_highlighting.enabled",
+  );
 
   const serverOptions: ServerOptions = {
     run: serverExecutable,
@@ -354,6 +357,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       inlay_hints_variables: inlayHintsVariables,
       references,
       rename,
+      semantic_highlighting,
     },
   };
 

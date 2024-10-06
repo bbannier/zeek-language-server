@@ -105,6 +105,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Whether to enable _Rename_.\n\n**WARNING**: Since typically Zeek scripts have incomplete `@load` statements this operation might not rename all identifiers. It might work reasonably well for e.g., renaming a local identifiers. You can use _Go To References_ to preview all identifiers which would be renamed. Use a tool like `grep` to search and rename all uses of an identifier."
+        },
+        "zeekLanguageServer.semantic_highlighting.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable semantic highlighting"
         }
       }
     },

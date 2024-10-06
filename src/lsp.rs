@@ -476,15 +476,17 @@ impl LanguageServer for Backend {
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(initialization_options.references)),
                 rename_provider: Some(OneOf::Left(initialization_options.rename)),
-                semantic_tokens_provider: Some(
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                semantic_tokens_provider: if initialization_options.semantic_highlighting {
+                    Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
                             legend: semantic_tokens::legend(),
                             full: Some(SemanticTokensFullOptions::Bool(true)),
                             ..SemanticTokensOptions::default()
                         },
-                    ),
-                ),
+                    ))
+                } else {
+                    None
+                },
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -1660,6 +1662,9 @@ pub struct InitializationOptions {
 
     #[serde(default = "InitializationOptions::_default_rename")]
     rename: bool,
+
+    #[serde(default = "InitializationOptions::_semantic_highlighting")]
+    semantic_highlighting: bool,
 }
 
 impl InitializationOptions {
@@ -1670,6 +1675,7 @@ impl InitializationOptions {
             inlay_hints_parameters: true,
             references: false,
             rename: false,
+            semantic_highlighting: true,
         }
     }
 
@@ -1691,6 +1697,10 @@ impl InitializationOptions {
 
     const fn _default_rename() -> bool {
         Self::new().rename
+    }
+
+    const fn _semantic_highlighting() -> bool {
+        Self::new().semantic_highlighting
     }
 }
 
@@ -2843,6 +2853,7 @@ const x = 1;
                 inlay_hints_parameters: true,
                 references: false,
                 rename: false,
+                semantic_highlighting: true,
             }
         );
 
@@ -2894,6 +2905,15 @@ const x = 1;
             serde_json::from_value::<InitializationOptions>(json!({"rename": true})).unwrap(),
             InitializationOptions {
                 rename: true,
+                ..InitializationOptions::new()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(json!({"semantic_highlighting": true}))
+                .unwrap(),
+            InitializationOptions {
+                semantic_highlighting: true,
                 ..InitializationOptions::new()
             }
         );

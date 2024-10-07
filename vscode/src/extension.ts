@@ -343,6 +343,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const semantic_highlighting = configuration.get<boolean>(
     "semantic_highlighting.enabled",
   );
+  const debug_ast_nodes = configuration.get<boolean>("debug.AST_nodes");
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "zeek" }],
@@ -353,6 +354,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       references,
       rename,
       semantic_highlighting,
+      debug_ast_nodes,
     },
   };
 

@@ -110,6 +110,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Enable semantic highlighting"
+        },
+        "zeekLanguageServer.debug.AST_nodes": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable debug output of AST nodes on hover"
         }
       }
     },

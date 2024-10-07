@@ -707,18 +707,7 @@ impl LanguageServer for Backend {
             Error::internal_error()
         })?;
 
-        let mut contents = vec![
-            #[cfg(all(debug_assertions, not(test)))]
-            MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
-                value: text.into(),
-                language: "zeek".into(),
-            }),
-            #[cfg(all(debug_assertions, not(test)))]
-            MarkedString::LanguageString(tower_lsp::lsp_types::LanguageString {
-                value: node.to_sexp(),
-                language: "lisp".into(),
-            }),
-        ];
+        let mut contents = Vec::new();
 
         match node.kind() {
             "id" => {
@@ -790,6 +779,26 @@ impl LanguageServer for Backend {
                 try_update(&mut contents);
             }
             _ => {}
+        }
+
+        // In debug builds always debug AST nodes; in release mode honor the client config.
+        #[cfg(all(debug_assertions, not(test)))]
+        let debug_ast_nodes = true;
+        #[cfg(not(all(debug_assertions, not(test))))]
+        let debug_ast_nodes = self
+            .state
+            .read()
+            .await
+            .initialization_options()
+            .debug_ast_nodes;
+
+        if debug_ast_nodes {
+            contents.push(MarkedString::LanguageString(
+                tower_lsp::lsp_types::LanguageString {
+                    value: node.to_sexp(),
+                    language: "lisp".into(),
+                },
+            ));
         }
 
         let hover = Hover {
@@ -1660,6 +1669,9 @@ pub struct InitializationOptions {
 
     #[serde(default = "InitializationOptions::_semantic_highlighting")]
     semantic_highlighting: bool,
+
+    #[serde(default = "InitializationOptions::_debug_ast_nodes")]
+    debug_ast_nodes: bool,
 }
 
 impl InitializationOptions {
@@ -1671,6 +1683,7 @@ impl InitializationOptions {
             references: false,
             rename: false,
             semantic_highlighting: true,
+            debug_ast_nodes: false,
         }
     }
 
@@ -1696,6 +1709,10 @@ impl InitializationOptions {
 
     const fn _semantic_highlighting() -> bool {
         Self::new().semantic_highlighting
+    }
+
+    const fn _debug_ast_nodes() -> bool {
+        Self::new().debug_ast_nodes
     }
 }
 
@@ -2851,6 +2868,7 @@ const x = 1;
                 references: false,
                 rename: false,
                 semantic_highlighting: true,
+                debug_ast_nodes: false,
             }
         );
 
@@ -2911,6 +2929,15 @@ const x = 1;
                 .unwrap(),
             InitializationOptions {
                 semantic_highlighting: true,
+                ..InitializationOptions::new()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_value::<InitializationOptions>(json!({"debug_ast_nodes": true}))
+                .unwrap(),
+            InitializationOptions {
+                debug_ast_nodes: true,
                 ..InitializationOptions::new()
             }
         );

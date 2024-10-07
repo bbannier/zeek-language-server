@@ -34,6 +34,9 @@ The server interprets the following `initializationOptions`:
 - `semantic_highlighting` (default: `true`)
   Enable semantic highlighting.
 
+- `debug_ast_nodes` (default: `false`)
+  Enable debug output of AST nodes on hover
+
   **WARNING**: Since typically Zeek scripts have incomplete `@load` statements
   the provided list is very likely incomplete. Use a tool like `grep` to search
   for all references of an identifier.

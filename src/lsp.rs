@@ -579,27 +579,26 @@ impl LanguageServer for Backend {
             .await;
         let files = self.state.read().await.files();
 
-        let state = self.state.read().await;
-        {
-            let preloaded_decls = {
-                let span = trace_span!("preloading");
-                let _enter = span.enter();
+        let preloaded_decls = {
+            let span = trace_span!("preloading");
+            let _enter = span.enter();
 
-                files
-                    .iter()
-                    .map(|f| {
-                        let f = f.clone();
-                        let db = state.snapshot();
-                        tokio::spawn(async move {
-                            let _x = db.decls(f.clone());
-                            let _x = db.loads(f.clone());
-                            let _x = db.loaded_files(f);
-                        })
+            let state = self.state.read().await;
+
+            files
+                .iter()
+                .map(|f| {
+                    let f = f.clone();
+                    let db = state.snapshot();
+                    tokio::spawn(async move {
+                        let _x = db.decls(f.clone());
+                        let _x = db.loads(f.clone());
+                        let _x = db.loaded_files(f);
                     })
-                    .collect::<Vec<_>>()
-            };
-            futures::future::join_all(preloaded_decls).await;
-        }
+                })
+                .collect::<Vec<_>>()
+        };
+        futures::future::join_all(preloaded_decls).await;
 
         // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
@@ -1625,7 +1624,7 @@ pub async fn run() {
     // still deadlock if a `Snapshot<Database>` is held on the same thread. Make that impossible by
     // only handling exactly one request at a time.
     Server::new(stdin, stdout, socket)
-        .concurrency_level(1)
+        // .concurrency_level(1)
         .serve(service)
         .await;
 }

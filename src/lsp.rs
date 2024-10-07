@@ -1366,6 +1366,7 @@ impl LanguageServer for Backend {
         .into()])))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = Arc::new(params.text_document.uri);
         let range = params.range;
@@ -1393,20 +1394,42 @@ impl LanguageServer for Backend {
                                 c.args
                                     .into_iter()
                                     .zip(s.args.iter())
-                                    .map(|(p, a)| InlayHint {
-                                        position: p.range.start,
-                                        label: InlayHintLabel::String(format!("{}:", a.id)),
-                                        kind: Some(InlayHintKind::PARAMETER),
-                                        text_edits: None,
-                                        tooltip: Some(InlayHintTooltip::MarkupContent(
-                                            MarkupContent {
-                                                kind: MarkupKind::Markdown,
-                                                value: a.documentation.to_string(),
-                                            },
-                                        )),
-                                        padding_left: None,
-                                        padding_right: Some(true),
-                                        data: None,
+                                    .filter_map(|(p, a)| {
+                                        // If the argument has the same name and type as the
+                                        // parameter do not set an inlay hint.
+                                        if state.resolve(p.clone()).is_some_and(|arg| {
+                                            if arg.id != a.id {
+                                                return false;
+                                            }
+
+                                            if let (Some(typ_arg), Some(typ_par)) =
+                                                (state.typ(arg), state.typ(Arc::new(a.clone())))
+                                            {
+                                                if typ_arg != typ_par {
+                                                    return false;
+                                                }
+                                            }
+
+                                            true
+                                        }) {
+                                            return None;
+                                        }
+
+                                        Some(InlayHint {
+                                            position: p.range.start,
+                                            label: InlayHintLabel::String(format!("{}:", a.id)),
+                                            kind: Some(InlayHintKind::PARAMETER),
+                                            text_edits: None,
+                                            tooltip: Some(InlayHintTooltip::MarkupContent(
+                                                MarkupContent {
+                                                    kind: MarkupKind::Markdown,
+                                                    value: a.documentation.to_string(),
+                                                },
+                                            )),
+                                            padding_left: None,
+                                            padding_right: Some(true),
+                                            data: None,
+                                        })
                                     })
                                     .collect::<Vec<_>>(),
                             ),
@@ -1945,6 +1968,7 @@ pub(crate) mod test {
     use std::{
         path::{Path, PathBuf},
         sync::Arc,
+        u32,
     };
 
     use insta::assert_debug_snapshot;
@@ -2724,6 +2748,8 @@ event x::foo() {}",
 
         function g(x: count): count { return x; }
         g(1) + g(1);
+        global x: count;
+        g(x); # No hint here.
         "#;
 
         db.add_file((*uri).clone(), source);
@@ -2734,7 +2760,7 @@ event x::foo() {}",
             server
                 .inlay_hint(InlayHintParams {
                     text_document: TextDocumentIdentifier::new((*uri).clone()),
-                    range: Range::new(Position::new(0, 0), Position::new(3, 0)),
+                    range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
                 .await

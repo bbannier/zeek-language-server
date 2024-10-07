@@ -1395,23 +1395,10 @@ impl LanguageServer for Backend {
                                     .into_iter()
                                     .zip(s.args.iter())
                                     .filter_map(|(p, a)| {
-                                        // If the argument has the same name and type as the
-                                        // parameter do not set an inlay hint.
-                                        if state.resolve(p.clone()).is_some_and(|arg| {
-                                            if arg.id != a.id {
-                                                return false;
-                                            }
-
-                                            if let (Some(typ_arg), Some(typ_par)) =
-                                                (state.typ(arg), state.typ(Arc::new(a.clone())))
-                                            {
-                                                if typ_arg != typ_par {
-                                                    return false;
-                                                }
-                                            }
-
-                                            true
-                                        }) {
+                                        // If the argument has the same name as the parameter do
+                                        // not set an inlay hint.
+                                        let arg = state.resolve(p.clone())?;
+                                        if arg.id == a.id {
                                             return None;
                                         }
 

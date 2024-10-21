@@ -19,7 +19,7 @@ telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "ope
 [dependencies]
 clap = { version = "4.5.20", features = ["std", "derive", "help"], default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
-futures = { default-features = false, version = "0.3.30" }
+futures = { default-features = false, version = "0.3.31" }
 itertools = "0.13.0"
 line-index = { version = "0.1.1", default-features = false }
 opentelemetry = { version = "0.22.0", features = ["trace"], optional = true }

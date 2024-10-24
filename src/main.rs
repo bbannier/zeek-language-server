@@ -3,15 +3,16 @@ use {
     eyre::Result,
     tracing::info,
     tracing_appender::non_blocking::WorkerGuard,
-    tracing_subscriber::{layer::SubscriberExt, prelude::*},
+    tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt},
     zeek_language_server::lsp::run,
 };
 
 #[cfg(feature = "telemetry")]
 use {
-    opentelemetry::KeyValue,
+    opentelemetry::{trace::TracerProvider, KeyValue},
     opentelemetry_otlp::WithExportConfig,
     opentelemetry_sdk::{trace, Resource},
+    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
 };
 
 #[derive(Parser, Debug)]
@@ -52,10 +53,11 @@ fn init_logging(args: &Args) -> Result<WorkerGuard> {
                             .tonic()
                             .with_endpoint(&args.collector_endpoint),
                     )
-                    .with_trace_config(trace::config().with_resource(Resource::new(vec![
-                        KeyValue::new("service.name", env!("CARGO_BIN_NAME")),
+                    .with_trace_config(trace::Config::default().with_resource(Resource::new([
+                        KeyValue::new(SERVICE_NAME, env!("CARGO_BIN_NAME")),
                     ])))
-                    .install_batch(opentelemetry_sdk::runtime::Tokio)?,
+                    .install_batch(opentelemetry_sdk::runtime::Tokio)?
+                    .tracer(""),
             ),
         );
 

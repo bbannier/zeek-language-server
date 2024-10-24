@@ -2358,7 +2358,7 @@ dependencies = [
 
 [[package]]
 name = "zeek-language-server"
-version = "0.56.3"
+version = "0.57.0"
 dependencies = [
  "clap",
  "criterion",

@@ -1,7 +1,52 @@
 ---
 source: src/ast.rs
-assertion_line: 776
-expression: "super::resolve(&db, i2, uri.clone())"
-
+expression: "db.resolve(NodeLocation::from_node(uri.clone(), i2))"
 ---
-None
+Some(
+    Decl {
+        module: None,
+        id: "i",
+        fqid: "i",
+        kind: LoopIndex(
+            0,
+            "vector(1, 2, 3)",
+        ),
+        is_export: None,
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 5,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 6,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 5,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 6,
+                    },
+                },
+                uri: Url {
+                    scheme: "file",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: None,
+                    port: None,
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            },
+        ),
+        documentation: "Index 0 of `vector(1, 2, 3)`",
+    },
+)

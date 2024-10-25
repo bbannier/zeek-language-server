@@ -1010,45 +1010,72 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Dec
 }
 
 /// Extract for loop parameters on the given node.
-// TODO(bbannier): Loop parameters should be visible in scopes above the current block.
 fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
-    if node.kind() != "for" {
-        return FxHashSet::default();
-    }
-
-    let params = node.named_children("id");
-
-    if params.is_empty() || params.len() > 2 {
-        return FxHashSet::default();
-    }
-
-    let Some(init) = node
-        .named_child("expr")
-        .and_then(|n| n.utf8_text(source).ok())
-    else {
-        return FxHashSet::default();
+    let query = match tree_sitter::Query::new(
+        &language_zeek(),
+        r#"
+        (for
+          "("
+          .
+          [
+              ((id)@idx . ("," . (id)@idx)*)
+          ]
+          .
+          "in"
+          .
+          (expr)@init
+        )
+        "#,
+    ) {
+        Ok(q) => q,
+        Err(e) => {
+            error!("could not construct query: {}", e);
+            return FxHashSet::default();
+        }
     };
 
-    params
-        .into_iter()
-        .enumerate()
-        .filter_map(|(i, n)| {
-            let id: Str = n.utf8_text(source).ok()?.into();
-            Some(Decl {
-                module: ModuleId::None,
-                id: id.clone(),
-                fqid: id,
-                kind: DeclKind::LoopIndex(i, init.to_string()),
-                is_export: None,
-                loc: Some(Location {
-                    range: n.range(),
-                    selection_range: n.range(),
-                    uri: uri.clone(),
-                }),
-                documentation: format!("Index {i} of `{init}`").as_str().into(),
-            })
+    let c_idx = query
+        .capture_index_for_name("idx")
+        .expect("idx should be captured");
+
+    let c_init = query
+        .capture_index_for_name("init")
+        .expect("init should be captured");
+
+    tree_sitter::QueryCursor::new()
+        .matches(&query, node.0, source)
+        .find_map(|c| {
+            let init = c
+                .nodes_for_capture_index(c_init)
+                .next()
+                .and_then(|n| n.utf8_text(source).ok())?;
+
+            Some(
+                c.nodes_for_capture_index(c_idx)
+                    .enumerate()
+                    .filter_map(|(i, n)| {
+                        let n: Node = n.into();
+
+                        let id: Str = n.utf8_text(source).ok()?.into();
+
+                        Some(Decl {
+                            module: ModuleId::None,
+                            id: id.clone(),
+                            fqid: id,
+                            kind: DeclKind::LoopIndex(i, init.to_string()),
+                            is_export: None,
+                            loc: Some(Location {
+                                range: n.range(),
+                                selection_range: n.range(),
+                                uri: uri.clone(),
+                            }),
+                            documentation: format!("Index {i} of `{init}`").into(),
+                        })
+                    })
+                    .collect(),
+            )
         })
-        .collect()
+        .unwrap_or_default()
 }
 
 #[instrument]

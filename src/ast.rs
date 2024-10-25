@@ -1495,9 +1495,6 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         assert_eq!(i1.utf8_text(source.as_bytes()), Ok("i"));
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i1)));
 
-        // TODO(bbannier): In Zeek we should be able to see the loop parameter after the loop, but
-        // currently don't. It seems one should be able to see the loop var eve if the loop is
-        // wrapped in `{...}`, unsure how to model that.
         let i2 = root
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();

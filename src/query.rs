@@ -27,8 +27,15 @@ pub enum DeclKind {
     Variable,
     Field,
     EnumMember,
-    LoopIndex(usize, String), // Stores loop index `i` for a given init expression.
+    Index(Index, String), // Result of an indexing operation for a given init expression.
     Builtin(Type),
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
+pub enum Index {
+    Loop(usize),
+    TableKey(usize),
+    TableValue,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
@@ -1019,6 +1026,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
           .
           [
               ((id)@idx . ("," . (id)@idx)*)
+              ("[" (id)@key . ("," (id)@key)* . (id)@value)
           ]
           .
           "in"
@@ -1038,6 +1046,14 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
         .capture_index_for_name("idx")
         .expect("idx should be captured");
 
+    let c_key = query
+        .capture_index_for_name("key")
+        .expect("key should be captured");
+
+    let c_value = query
+        .capture_index_for_name("value")
+        .expect("value should be captured");
+
     let c_init = query
         .capture_index_for_name("init")
         .expect("init should be captured");
@@ -1050,26 +1066,49 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
                 .next()
                 .and_then(|n| n.utf8_text(source).ok())?;
 
+            let idx = c
+                .nodes_for_capture_index(c_idx)
+                .enumerate()
+                .map(|(i, n)| (n, Index::Loop(i)));
+
+            let key = c
+                .nodes_for_capture_index(c_key)
+                .enumerate()
+                .map(|(i, n)| (n, Index::TableKey(i)));
+
+            let value = c
+                .nodes_for_capture_index(c_value)
+                .map(|n| (n, Index::TableValue));
+
             Some(
-                c.nodes_for_capture_index(c_idx)
-                    .enumerate()
-                    .filter_map(|(i, n)| {
+                idx.chain(key)
+                    .chain(value)
+                    .filter_map(|(n, kind)| {
                         let n: Node = n.into();
 
                         let id: Str = n.utf8_text(source).ok()?.into();
+
+                        let documentation = match kind {
+                            Index::Loop(i) => format!("Index {i} of `{init}`"),
+                            Index::TableKey(i) => format!("Key {i} of `{init}`"),
+                            Index::TableValue => format!("Value of `{init}`"),
+                        }
+                        .into();
+
+                        let kind = DeclKind::Index(kind, init.into());
 
                         Some(Decl {
                             module: ModuleId::None,
                             id: id.clone(),
                             fqid: id,
-                            kind: DeclKind::LoopIndex(i, init.to_string()),
+                            kind,
                             is_export: None,
                             loc: Some(Location {
                                 range: n.range(),
                                 selection_range: n.range(),
                                 uri: uri.clone(),
                             }),
-                            documentation: format!("Index {i} of `{init}`").into(),
+                            documentation,
                         })
                     })
                     .collect(),

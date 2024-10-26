@@ -492,7 +492,7 @@ fn to_completion_item(d: &Decl) -> CompletionItem {
 
 fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
     match kind {
-        DeclKind::Global | DeclKind::Variable | DeclKind::Redef | DeclKind::LoopIndex(_, _) => {
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef | DeclKind::Index(_, _) => {
             CompletionItemKind::VARIABLE
         }
         DeclKind::Option => CompletionItemKind::PROPERTY,

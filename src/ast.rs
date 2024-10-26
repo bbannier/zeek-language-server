@@ -10,7 +10,7 @@ use tracing::{instrument, warn};
 
 use crate::{
     parse::Parse,
-    query::{self, Decl, DeclKind, NodeLocation, Query, Type},
+    query::{self, Decl, DeclKind, Index, NodeLocation, Query, Type},
     zeek, Str,
 };
 
@@ -291,7 +291,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
     })
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     // If we see a type decl with location we are likely dealing with a builtin type already which
     // cannot be further resolved; return it directly.
@@ -312,7 +312,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         .root_node()
         .named_descendant_for_point_range(loc.range)?;
 
-    if let DeclKind::LoopIndex(i, from) = &decl.kind {
+    if let DeclKind::Index(i, from) = &decl.kind {
         let from = db
             .resolve_id(
                 from.as_str().into(),
@@ -330,16 +330,33 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             .as_ref()
             .map(|l| NodeLocation::from_range(l.uri.clone(), l.range));
 
+        let idx = match *i {
+            Index::Loop(i) => Some(i),
+            _ => None,
+        };
+
         #[allow(clippy::match_same_arms)]
         return match typ {
-            Type::Vector(id) => match i {
+            Type::Vector(id) => match idx? {
                 0 => db.resolve_type(Type::Count, loc),
                 1 => db.resolve_type((**id).clone(), loc),
                 _ => None,
             },
-            Type::Set(xs) => xs.get(*i).and_then(|x| db.resolve_type(x.clone(), loc)),
-            Type::List(_) => None,        // Not implemented in Zeek.
-            Type::Table(_ks, _v) => None, // TODO(bbannier): Implement resolving for loops over tables.
+            Type::Set(xs) => xs.get(idx?).and_then(|x| db.resolve_type(x.clone(), loc)),
+            Type::List(_) => None, // Not implemented in Zeek.
+            Type::Table(ks, v) => {
+                let typ = match idx {
+                    Some(0) => ks.first()?,
+                    Some(1) => v,
+                    Some(_) => return None,
+                    None => match *i {
+                        Index::TableKey(i) => ks.get(i)?,
+                        Index::TableValue => v,
+                        Index::Loop(_) => return None, // Should not reach here.
+                    },
+                };
+                db.resolve_type(typ.clone(), loc)
+            }
             _ => None,
         };
     }
@@ -402,7 +419,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             DeclKind::Const
             | DeclKind::Field
             | DeclKind::Global
-            | DeclKind::LoopIndex(_, _)
+            | DeclKind::Index(_, _)
             | DeclKind::Variable => db.typ(d),
 
             // Other kinds we return directly.
@@ -1789,5 +1806,74 @@ event zeek_init() { for ([c, s] in vs) ; }
         let decl = db.resolve(NodeLocation::from_node(uri, s)).unwrap();
         let typ = db.typ(decl).unwrap();
         assert_debug_snapshot!(typ);
+    }
+
+    #[test]
+    fn loop_vars_table() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            r#"
+global t1: table[string] of count;
+global t2: table[string, double] of count;
+
+event zeek_init() { for ( k, v in t1 ) ; }
+event zeek_init() { for ( [ k1, k2 ], v in t2 ) ; }
+                     "#,
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        {
+            let k = root
+                .named_descendant_for_position(Position::new(4, 26))
+                .unwrap();
+            assert_eq!(k.utf8_text(source.as_bytes()), Ok("k"));
+            let decl = db.resolve(NodeLocation::from_node(uri.clone(), k)).unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+
+            let v = root
+                .named_descendant_for_position(Position::new(4, 29))
+                .unwrap();
+            assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
+            let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+        }
+
+        {
+            let k1 = root
+                .named_descendant_for_position(Position::new(5, 28))
+                .unwrap();
+            assert_eq!(k1.utf8_text(source.as_bytes()), Ok("k1"));
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), k1))
+                .unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+
+            let k2 = root
+                .named_descendant_for_position(Position::new(5, 32))
+                .unwrap();
+            assert_eq!(k2.utf8_text(source.as_bytes()), Ok("k2"));
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), k2))
+                .unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+
+            let v = root
+                .named_descendant_for_position(Position::new(5, 38))
+                .unwrap();
+            assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
+            let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+        }
     }
 }

@@ -7,8 +7,10 @@ Some(
         module: None,
         id: "tb",
         fqid: "tb",
-        kind: LoopIndex(
-            1,
+        kind: Index(
+            Loop(
+                1,
+            ),
             "table([1]=\"a\", [2]=\"b\")",
         ),
         is_export: None,

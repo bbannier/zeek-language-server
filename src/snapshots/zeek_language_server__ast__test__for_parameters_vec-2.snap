@@ -7,8 +7,10 @@ Some(
         module: None,
         id: "i",
         fqid: "i",
-        kind: LoopIndex(
-            0,
+        kind: Index(
+            Loop(
+                0,
+            ),
             "vector(1, 2, 3)",
         ),
         is_export: None,

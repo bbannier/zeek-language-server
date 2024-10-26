@@ -727,7 +727,7 @@ impl LanguageServer for Backend {
                         DeclKind::Variable => "variable",
                         DeclKind::Field => "field",
                         DeclKind::EnumMember => "enum member",
-                        DeclKind::LoopIndex(_, _) => "loop index",
+                        DeclKind::Index(_, _) => "indexing result",
                         DeclKind::Module => "module",
                         DeclKind::Builtin(_) => "builtin",
                     };
@@ -1611,7 +1611,7 @@ fn fuzzy_search_symbol(db: &Database, symbol: &str) -> Vec<(f32, Decl)> {
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
     match kind {
-        DeclKind::Global | DeclKind::Variable | DeclKind::Redef | DeclKind::LoopIndex(_, _) => {
+        DeclKind::Global | DeclKind::Variable | DeclKind::Redef | DeclKind::Index(_, _) => {
             SymbolKind::VARIABLE
         }
         DeclKind::Option => SymbolKind::PROPERTY,

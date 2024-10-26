@@ -342,7 +342,13 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 1 => db.resolve_type((**id).clone(), loc),
                 _ => None,
             },
-            Type::Set(xs) => xs.get(idx?).and_then(|x| db.resolve_type(x.clone(), loc)),
+            Type::Set(xs) => {
+                let idx = idx.or(match i {
+                    Index::Key(i) => Some(*i),
+                    _ => None,
+                })?;
+                xs.get(idx).and_then(|x| db.resolve_type(x.clone(), loc))
+            }
             Type::List(_) => None, // Not implemented in Zeek.
             Type::Table(ks, v) => {
                 let typ = match idx {
@@ -350,8 +356,8 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                     Some(1) => v,
                     Some(_) => return None,
                     None => match *i {
-                        Index::TableKey(i) => ks.get(i)?,
-                        Index::TableValue => v,
+                        Index::Key(i) => ks.get(i)?,
+                        Index::Value => v,
                         Index::Loop(_) => return None, // Should not reach here.
                     },
                 };
@@ -1820,6 +1826,7 @@ global t2: table[string, double] of count;
 
 event zeek_init() { for ( k, v in t1 ) ; }
 event zeek_init() { for ( [ k1, k2 ], v in t2 ) ; }
+event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                      "#,
         );
 
@@ -1872,6 +1879,28 @@ event zeek_init() { for ( [ k1, k2 ], v in t2 ) ; }
                 .unwrap();
             assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
             let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+        }
+
+        {
+            let k1 = root
+                .named_descendant_for_position(Position::new(6, 28))
+                .unwrap();
+            assert_eq!(k1.utf8_text(source.as_bytes()), Ok("k1"));
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), k1))
+                .unwrap();
+            let typ = db.typ(decl).unwrap();
+            assert_debug_snapshot!(typ);
+
+            let k2 = root
+                .named_descendant_for_position(Position::new(6, 32))
+                .unwrap();
+            assert_eq!(k2.utf8_text(source.as_bytes()), Ok("k2"));
+            let decl = db
+                .resolve(NodeLocation::from_node(uri.clone(), k2))
+                .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
         }

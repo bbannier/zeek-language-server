@@ -34,8 +34,8 @@ pub enum DeclKind {
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum Index {
     Loop(usize),
-    TableKey(usize),
-    TableValue,
+    Key(usize),
+    Value,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
@@ -1025,8 +1025,8 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
           "("
           .
           [
+              ("[" (id)@key . ("," (id)@key)* . "]". (id)?@value)
               ((id)@idx . ("," . (id)@idx)*)
-              ("[" (id)@key . ("," (id)@key)* . (id)@value)
           ]
           .
           "in"
@@ -1074,11 +1074,11 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
             let key = c
                 .nodes_for_capture_index(c_key)
                 .enumerate()
-                .map(|(i, n)| (n, Index::TableKey(i)));
+                .map(|(i, n)| (n, Index::Key(i)));
 
             let value = c
                 .nodes_for_capture_index(c_value)
-                .map(|n| (n, Index::TableValue));
+                .map(|n| (n, Index::Value));
 
             Some(
                 idx.chain(key)
@@ -1090,8 +1090,8 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
 
                         let documentation = match kind {
                             Index::Loop(i) => format!("Index {i} of `{init}`"),
-                            Index::TableKey(i) => format!("Key {i} of `{init}`"),
-                            Index::TableValue => format!("Value of `{init}`"),
+                            Index::Key(i) => format!("Key {i} of `{init}`"),
+                            Index::Value => format!("Value of `{init}`"),
                         }
                         .into();
 

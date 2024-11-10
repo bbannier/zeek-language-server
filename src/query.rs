@@ -249,12 +249,30 @@ impl<'a> Node<'a> {
     #[must_use]
     pub fn range(&self) -> Range {
         let r = self.0.range();
-
         #[allow(clippy::cast_possible_truncation)]
-        let position =
-            |p: tree_sitter::Point| -> Position { Position::new(p.row as u32, p.column as u32) };
+        let position = |p: tree_sitter::Point| -> Option<Position> {
+            let Ok(line) = u32::try_from(p.row) else {
+                error!("line overflowed");
+                return None;
+            };
 
-        Range::new(position(r.start_point), position(r.end_point))
+            let Ok(character) = u32::try_from(p.column) else {
+                error!("character overflowed");
+                return None;
+            };
+
+            Some(Position::new(line, character))
+        };
+
+        let Some(start) = position(r.start_point) else {
+            return Range::default();
+        };
+
+        let Some(end) = position(r.end_point) else {
+            return Range::default();
+        };
+
+        Range::new(start, end)
     }
 
     #[must_use]
@@ -262,7 +280,6 @@ impl<'a> Node<'a> {
         self.0.to_sexp()
     }
 
-    #[allow(clippy::missing_errors_doc)]
     pub fn utf8_text<'b>(&self, source: &'b [u8]) -> Result<&'b str, Utf8Error> {
         self.0.utf8_text(source)
     }

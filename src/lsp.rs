@@ -1026,8 +1026,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        #[allow(clippy::cast_possible_truncation)]
-        let line = if (line.len() + 1) as u32 > position.character {
+        let line = if u32::try_from(line.len() + 1).ok() > Some(position.character) {
             &line[..position.character as usize]
         } else {
             return Ok(None);
@@ -1042,8 +1041,8 @@ impl LanguageServer for Backend {
             .skip_while(|(_, c)| c != &'(')
             .nth(1)
             .and_then(|(i, _)| {
-                #[allow(clippy::cast_possible_truncation)]
-                let character = (line.len() - i - 1) as u32;
+                let character = u32::try_from(line.len() - i - 1).ok()?;
+
                 tree.root_node().named_descendant_for_position(Position {
                     character,
                     ..position
@@ -1053,8 +1052,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        #[allow(clippy::cast_possible_truncation)]
-        let active_parameter = Some(line.chars().filter(|c| c == &',').count() as u32);
+        let active_parameter = u32::try_from(line.chars().filter(|c| c == &',').count()).ok();
 
         let Ok(id) = node.utf8_text(source.as_bytes()) else {
             return Ok(None);
@@ -1921,8 +1919,8 @@ mod semantic_tokens {
                 let ty = SemanticTokenType::from(*name);
 
                 // Skip token types we didn't previously advertise.
-                #[allow(clippy::cast_possible_truncation)]
-                let token_type = legend.token_types.iter().position(|x| *x == ty)? as u32;
+                let token_type =
+                    u32::try_from(legend.token_types.iter().position(|x| *x == ty)?).ok()?;
 
                 Some((token_type, range))
             })

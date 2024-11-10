@@ -69,7 +69,6 @@ fn init_logging(args: &Args) -> Result<WorkerGuard> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[allow(unused)]
     let args = Args::parse();
 
     let _guard = init_logging(&args)?;

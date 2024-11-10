@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
 use std::{collections::VecDeque, fmt, hash::Hash, str::Utf8Error, sync::Arc};
+use streaming_iterator::{convert, StreamingIterator, StreamingIteratorMut};
 use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
@@ -802,7 +803,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
             }
 
             Some(
-                std::iter::once(Decl {
+                streaming_iterator::once(Decl {
                     module,
                     id,
                     fqid,
@@ -815,12 +816,15 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                     }),
                     documentation,
                 })
-                .chain(additional_decls.into_iter()),
+                .chain(convert(additional_decls.into_iter())),
             )
         })
         .flatten()
-        .chain(fn_param_decls(node, uri.clone(), source).into_iter())
-        .chain(loop_param_decls(node, &uri, source).into_iter())
+        .chain(convert(
+            fn_param_decls(node, uri.clone(), source).into_iter(),
+        ))
+        .chain(convert(loop_param_decls(node, &uri, source).into_iter()))
+        .cloned()
         .collect()
 }
 
@@ -891,8 +895,9 @@ pub(crate) fn typ_from_cast(n: Node, source: &[u8]) -> Option<Type> {
 
     tree_sitter::QueryCursor::new()
         .matches(&query, n.0, source)
-        .find_map(|c| c.nodes_for_capture_index(c_typ).next().map(Node::from))
-        .and_then(|t| typ(t, source))
+        .filter_map(|c| c.nodes_for_capture_index(c_typ).next().map(Node::from))
+        .next()
+        .and_then(|t| typ(*t, source))
 }
 
 fn typ_from_text(text: &str) -> Option<Type> {
@@ -944,6 +949,7 @@ fn modules(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                 documentation: format!("```zeek\n{id}\n```").as_str().into(),
             })
         })
+        .cloned()
         .collect()
 }
 
@@ -1077,7 +1083,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
 
     tree_sitter::QueryCursor::new()
         .matches(&query, node.0, source)
-        .find_map(|c| {
+        .filter_map(|c| {
             let init = c
                 .nodes_for_capture_index(c_init)
                 .next()
@@ -1131,6 +1137,8 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
                     .collect(),
             )
         })
+        .next()
+        .cloned()
         .unwrap_or_default()
 }
 
@@ -1152,6 +1160,7 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .matches(&query, node.0, source.as_bytes())
         .filter_map(|c| c.nodes_for_capture_index(c_file).next())
         .filter_map(|f| f.utf8_text(source.as_bytes()).ok())
+        .cloned()
         .collect()
 }
 
@@ -1247,6 +1256,7 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
 
                 Some(FunctionCall { f, args })
             })
+            .cloned()
             .collect(),
     )
 }
@@ -1316,6 +1326,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
                     documentation: empty.clone(),
                 })
             })
+            .cloned()
             .collect(),
     )
 }
@@ -1352,6 +1363,7 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
                 let m = m.nodes_for_capture_index(c_id).next()?;
                 Some(NodeLocation::from_node(uri.clone(), m.into()))
             })
+            .cloned()
             .collect(),
     )
 }

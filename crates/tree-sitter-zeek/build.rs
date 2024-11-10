@@ -2,11 +2,10 @@ use cc::Build;
 use regex::Regex;
 use std::{
     collections::HashSet,
-    env::{self, current_dir},
+    env::{self},
     fs::{self, File},
     io::{BufReader, Read},
     path::{Path, PathBuf},
-    process::Command,
 };
 
 fn generate_keywords(grammar: &Path) {
@@ -43,26 +42,22 @@ fn generate_keywords(grammar: &Path) {
 }
 
 fn main() {
-    let grammar = current_dir()
-        .unwrap()
-        .join("vendor")
+    let grammar = PathBuf::from("vendor")
         .join("tree-sitter-zeek")
         .join("grammar.js");
 
-    println!("cargo:rerun-if-changed=vendor/tree-sitter-zeek/grammar.js");
+    println!("cargo:rerun-if-changed={}", grammar.to_str().unwrap());
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    // Run `tree-sitter generate`.
-    assert!(Command::new("tree-sitter")
-        .arg("generate")
-        .arg(&grammar)
-        .current_dir(&out_dir)
-        .status()
-        .expect(
-            "failed to generate tree-sitter bindings, is tree-sitter CLI installed and in PATH?"
-        )
-        .success());
+    tree_sitter_generate::generate_parser_in_directory(
+        &out_dir,
+        Some(grammar.to_str().unwrap()),
+        tree_sitter::LANGUAGE_VERSION,
+        None,
+        None,
+    )
+    .expect("could not generate parser");
 
     // Compile tree-sitter C output.
     let src_dir = out_dir.join("src");

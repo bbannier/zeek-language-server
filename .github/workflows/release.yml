@@ -36,10 +36,6 @@ jobs:
         with:
           key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
 
-      - name: Install tree-sitter-cli
-        run: |
-          npm install -g tree-sitter-cli
-
       - name: Build binaries
         run: cargo build --release --locked --target ${{ matrix.target }}
         env:

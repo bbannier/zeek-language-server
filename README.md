@@ -74,8 +74,8 @@ A list of editor plugins can be found e.g.,
 
 ## Building from source
 
-This project requires Rust to build which can be set up e.g., with [rustup] and
-[tree-sitter](https://tree-sitter.github.io/) CLI tools.
+This project requires Rust to build which can be set up e.g., with
+[rustup](https://rustup.rs).
 
 The project can then be installed with
 
@@ -88,8 +88,6 @@ cargo install --git https://github.com/bbannier/zeek-language-server.git
 ```
 
 This installs a binary `zeek-language-server` which provides the full server.
-
-[rustup]: https://rustup.rs
 
 ## Debugging
 

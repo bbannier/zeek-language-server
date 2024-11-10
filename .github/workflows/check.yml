@@ -39,9 +39,6 @@ jobs:
         with:
           key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
 
-      - name: Install tree-sitter-cli
-        run: |
-          npm install -g tree-sitter-cli
       - name: Install Zeek
         run: |
           if [[ ${{ matrix.name }} == *linux* ]]; then \
@@ -80,9 +77,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: pre-commit-cargo-${{ hashFiles('Cargo.lock') }}
-      - name: Install tree-sitter-cli
-        run: |
-          npm install -g tree-sitter-cli
       - uses: actions/setup-python@v5
       - uses: pre-commit/action@v3.0.1
 

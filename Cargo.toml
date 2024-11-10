@@ -60,3 +60,9 @@ lto = "thin"
 [[bench]]
 name = "criterion"
 harness = false
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+missing_errors_doc = "allow"
+ignored_unit_patterns = "deny"

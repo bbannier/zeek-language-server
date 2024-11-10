@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: fmt
       - id: clippy
-        args: ["--all", "--all-features", "--", "-D", "clippy::pedantic"]
+        args: ["--all", "--all-features"]
       - id: cargo-check
   - repo: https://github.com/jorisroovers/gitlint
     rev: v0.19.1

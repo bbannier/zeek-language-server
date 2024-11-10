@@ -1,7 +1,3 @@
-#![deny(clippy::unwrap_used)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::ignored_unit_patterns)] // Creates a lot of false positives.
-
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{ClientCapabilities, Url};

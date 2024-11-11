@@ -195,7 +195,7 @@
     "@types/node": "^22.8.7",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
-    "@typescript-eslint/parser": "^8.12.2",
+    "@typescript-eslint/parser": "^8.13.0",
     "@vscode/vsce": "^3.2.1",
     "esbuild": "^0.24.0",
     "eslint": "^8.57.0",

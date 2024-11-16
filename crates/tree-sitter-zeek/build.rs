@@ -8,19 +8,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
-fn generate_keywords(grammar: &Path) {
-    let file = File::open(grammar).unwrap();
+fn generate_keywords(parser_c: &Path) {
+    let file = File::open(parser_c).unwrap();
     let mut buf_reader = BufReader::new(file);
     let mut contents = String::new();
     buf_reader.read_to_string(&mut contents).unwrap();
 
     let mut set: HashSet<String> = HashSet::new();
-    let re = Regex::new(r"'(@?&?[a-z]+-?_?[a-z]+)'").unwrap();
-    for cap in re.captures_iter(&contents) {
-        if cap[1].eq("zeek") || cap[1].eq("extras") {
-            continue;
-        }
-        set.insert(cap[1].to_string());
+    let re = Regex::new(r#"\[anon_sym_.*\] = "(.*)""#).unwrap();
+
+    for cs in re.captures_iter(&contents) {
+        set.insert(cs[1].replace("\\?", "?"));
     }
 
     let out_dir = env::var_os("OUT_DIR").unwrap();
@@ -62,11 +60,13 @@ fn main() {
     // Compile tree-sitter C output.
     let src_dir = out_dir.join("src");
 
+    let parser_c = src_dir.join("parser.c");
+
     Build::new()
-        .file(src_dir.join("parser.c"))
+        .file(&parser_c)
         .include(out_dir.join("src"))
         .warnings(false)
         .compile("tree-sitter-zeek");
 
-    generate_keywords(&grammar);
+    generate_keywords(&parser_c);
 }

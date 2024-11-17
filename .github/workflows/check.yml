@@ -106,3 +106,21 @@ jobs:
         with:
           path: vscode/*.vsix
           name: vscode_extension.zip
+
+  bench:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Zeek
+        run: |
+          echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_22.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
+          curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
+          sudo apt-get update; \
+          sudo apt-get install -y zeek; \
+          sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
+      - uses: boa-dev/criterion-compare-action@v3
+        with:
+          branchName: ${{ github.base_ref }}
+          benchName: "criterion"

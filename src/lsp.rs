@@ -1404,8 +1404,14 @@ impl LanguageServer for Backend {
                                     .filter_map(|(p, a)| {
                                         // If the argument has the same name as the parameter do
                                         // not set an inlay hint.
-                                        let arg = state.resolve(p.clone())?;
-                                        if arg.id == a.id {
+                                        let uri = p.uri;
+                                        let tree = state.parse(uri.clone())?;
+                                        let node = tree
+                                            .root_node()
+                                            .named_descendant_for_point_range(p.range)?;
+                                        let source = state.source(uri)?;
+                                        let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
+                                        if maybe_id == a.id {
                                             return None;
                                         }
 
@@ -2752,6 +2758,7 @@ event x::foo() {}",
         g(1) + g(1);
         global x: count;
         g(x); # No hint here.
+        g(x + 1); # Hint here.
         "#;
 
         db.add_file((*uri).clone(), source);

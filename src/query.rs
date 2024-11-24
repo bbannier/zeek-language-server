@@ -1,6 +1,12 @@
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
-use std::{collections::VecDeque, fmt, hash::Hash, str::Utf8Error, sync::Arc};
+use std::{
+    collections::VecDeque,
+    fmt,
+    hash::Hash,
+    str::Utf8Error,
+    sync::{Arc, LazyLock},
+};
 use streaming_iterator::{convert, StreamingIterator, StreamingIteratorMut};
 use tower_lsp::lsp_types::{Position, Range, Url};
 use tracing::{debug, error, instrument};
@@ -439,50 +445,47 @@ fn in_export(mut node: Node) -> bool {
 #[instrument]
 #[must_use]
 pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
-    let signature = "((formal_args)? (type)?@fn_result)@signature";
-    let signature = format!("[{signature} (func_params ({signature}))]");
-    let typ = format!("[(type {signature}?) {signature}]?@typ");
-    let query = match tree_sitter::Query::new(
-        &language_zeek(),
-        &format!(r#"(_ (_ (["global" "local"]?)@scope (id)@id {typ})@decl)@outer_node"#),
-    ) {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return FxHashSet::default();
-        }
-    };
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        let signature = "((formal_args)? (type)?@fn_result)@signature";
+        let signature = format!("[{signature} (func_params ({signature}))]");
+        let typ = format!("[(type {signature}?) {signature}]?@typ");
+        tree_sitter::Query::new(
+            &language_zeek(),
+            &format!(r#"(_ (_ (["global" "local"]?)@scope (id)@id {typ})@decl)@outer_node"#),
+        )
+        .expect("invalid query")
+    });
 
-    let c_scope = query
+    let c_scope = QUERY
         .capture_index_for_name("scope")
         .expect("scope should be captured");
 
-    let c_id = query
+    let c_id = QUERY
         .capture_index_for_name("id")
         .expect("id should be captured");
 
-    let c_typ = query
+    let c_typ = QUERY
         .capture_index_for_name("typ")
         .expect("typ should be captured");
 
-    let c_signature = query
+    let c_signature = QUERY
         .capture_index_for_name("signature")
         .expect("signature should be captured");
 
-    let c_fn_result = query
+    let c_fn_result = QUERY
         .capture_index_for_name("fn_result")
         .expect("fn_result should be captured");
 
-    let c_decl = query
+    let c_decl = QUERY
         .capture_index_for_name("decl")
         .expect("decl should be captured");
 
-    let c_outer_node = query
+    let c_outer_node = QUERY
         .capture_index_for_name("outer_node")
         .expect("outer node should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, node.0, source)
+        .matches(&QUERY, node.0, source)
         .filter_map(|c| {
             let decl = c.nodes_for_capture_index(c_decl).next()?;
             let decl: Node = decl.into();
@@ -886,15 +889,17 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
 
 /// Try to get the cast target type from an expr in `n` assuming it holds `_ as @type`.
 pub(crate) fn typ_from_cast(n: Node, source: &[u8]) -> Option<Type> {
-    let query = tree_sitter::Query::new(&language_zeek(), r#"(expr (expr) "as" (type)@typ)"#)
-        .expect("invalid query");
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(&language_zeek(), r#"(expr (expr) "as" (type)@typ)"#)
+            .expect("invalid query")
+    });
 
-    let c_typ = query
+    let c_typ = QUERY
         .capture_index_for_name("typ")
         .expect("typ should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, n.0, source)
+        .matches(&QUERY, n.0, source)
         .filter_map(|c| c.nodes_for_capture_index(c_typ).next().map(Node::from))
         .next()
         .and_then(|t| typ(*t, source))
@@ -922,20 +927,16 @@ fn typ_from_text(text: &str) -> Option<Type> {
 #[instrument]
 #[must_use]
 fn modules(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
-    let query = match tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)") {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return FxHashSet::default();
-        }
-    };
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)").expect("invalid query")
+    });
 
-    let c_id = query
+    let c_id = QUERY
         .capture_index_for_name("id")
         .expect("id should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, node.0, source)
+        .matches(&QUERY, node.0, source)
         .filter_map(|c| {
             let node_id = c.nodes_for_capture_index(c_id).next()?;
             let id = node_id.utf8_text(source).ok()?;
@@ -1041,9 +1042,10 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Dec
 
 /// Extract for loop parameters on the given node.
 fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
-    let query = match tree_sitter::Query::new(
-        &language_zeek(),
-        r#"
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(
+            &language_zeek(),
+            r#"
         (for
           "("
           .
@@ -1057,32 +1059,28 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
           (expr)@init
         )
         "#,
-    ) {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return FxHashSet::default();
-        }
-    };
+        )
+        .expect("invalid query")
+    });
 
-    let c_idx = query
+    let c_idx = QUERY
         .capture_index_for_name("idx")
         .expect("idx should be captured");
 
-    let c_key = query
+    let c_key = QUERY
         .capture_index_for_name("key")
         .expect("key should be captured");
 
-    let c_value = query
+    let c_value = QUERY
         .capture_index_for_name("value")
         .expect("value should be captured");
 
-    let c_init = query
+    let c_init = QUERY
         .capture_index_for_name("init")
         .expect("init should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, node.0, source)
+        .matches(&QUERY, node.0, source)
         .filter_map(|c| {
             let init = c
                 .nodes_for_capture_index(c_init)
@@ -1144,20 +1142,16 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
 
 #[instrument]
 fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
-    let query = match tree_sitter::Query::new(&language_zeek(), "(\"@load\") (file)@file") {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return Vec::new();
-        }
-    };
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(&language_zeek(), "(\"@load\") (file)@file").expect("invalid query")
+    });
 
-    let c_file = query
+    let c_file = QUERY
         .capture_index_for_name("file")
         .expect("file should be captured");
 
     tree_sitter::QueryCursor::new()
-        .matches(&query, node.0, source.as_bytes())
+        .matches(&QUERY, node.0, source.as_bytes())
         .filter_map(|c| c.nodes_for_capture_index(c_file).next())
         .filter_map(|f| f.utf8_text(source.as_bytes()).ok())
         .cloned()
@@ -1218,30 +1212,27 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
 
 #[instrument(skip(db))]
 fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
+    // Match things which look like function calls with arguments.
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
+            .expect("invalid query")
+    });
+
     let Some(tree) = db.parse(uri.clone()) else {
         return Arc::default();
-    };
-
-    // Match things which look like function calls with arguments.
-    let query = match tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn") {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return Arc::default();
-        }
     };
 
     let Some(source) = db.source(uri.clone()) else {
         return Arc::default();
     };
 
-    let c_fn = query
+    let c_fn = QUERY
         .capture_index_for_name("fn")
         .expect("call should be captured");
 
     Arc::new(
         tree_sitter::QueryCursor::new()
-            .matches(&query, tree.root_node().0, source.as_bytes())
+            .matches(&QUERY, tree.root_node().0, source.as_bytes())
             .filter_map(|c| {
                 let (f, args) = c.nodes_for_capture_index(c_fn).next().and_then(|n| {
                     let n: Node = n.into();
@@ -1263,20 +1254,17 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
 
 #[instrument(skip(db))]
 fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
+    // Match untyped var and const decls
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(
+            &language_zeek(),
+            "[(const_decl) (option_decl) (var_decl)] @var",
+        )
+        .expect("invalid query")
+    });
+
     let Some(tree) = db.parse(uri.clone()) else {
         return Arc::default();
-    };
-
-    // Match untyped var and const decls
-    let query = match tree_sitter::Query::new(
-        &language_zeek(),
-        "[(const_decl) (option_decl) (var_decl)] @var",
-    ) {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return Arc::default();
-        }
     };
 
     let Some(source) = db.source(uri.clone()) else {
@@ -1285,13 +1273,13 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
 
     let source = source.as_bytes();
 
-    let c_var = query
+    let c_var = QUERY
         .capture_index_for_name("var")
         .expect("call should be captured");
 
     Arc::new(
         tree_sitter::QueryCursor::new()
-            .matches(&query, tree.root_node().0, source)
+            .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m: Node = m.nodes_for_capture_index(c_var).next()?.into();
 
@@ -1333,17 +1321,13 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
 
 #[allow(clippy::needless_pass_by_value)]
 fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
+    // Match any id.
+    static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+        tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
+    });
+
     let Some(tree) = db.parse(uri.clone()) else {
         return Arc::default();
-    };
-
-    // Match any id.
-    let query = match tree_sitter::Query::new(&language_zeek(), "(id)@id") {
-        Ok(q) => q,
-        Err(e) => {
-            error!("could not construct query: {}", e);
-            return Arc::default();
-        }
     };
 
     let Some(source) = db.source(uri.clone()) else {
@@ -1352,13 +1336,13 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
 
     let source = source.as_bytes();
 
-    let c_id = query
+    let c_id = QUERY
         .capture_index_for_name("id")
         .expect("id should be captured");
 
     Arc::new(
         tree_sitter::QueryCursor::new()
-            .matches(&query, tree.root_node().0, source)
+            .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m = m.nodes_for_capture_index(c_id).next()?;
                 Some(NodeLocation::from_node(uri.clone(), m.into()))

@@ -619,27 +619,28 @@ fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<FxHashSet<Decl>>
 fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
     let mut loads = Vec::new();
 
-    // These loops looks horrible, but is okay since this function will be cached most of the time
-    // (unless global state changes).
+    let prefixes = db.prefixes();
+    let files = db.files();
+    let files: Vec<_> = files
+        .iter()
+        .filter_map(|f| Some((f, f.to_file_path().ok()?)))
+        .collect();
+
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
-        for f in &*db.files() {
-            let Ok(path) = f.to_file_path() else { continue };
+        let Some((f, path)) = files.iter().find(|(_, p)| p.ends_with(essential_input)) else {
+            continue;
+        };
 
-            if !path.ends_with(essential_input) {
-                continue;
-            }
-
-            for p in db.prefixes().iter() {
-                if path.strip_prefix(p).is_ok() {
-                    implicit_file = Some(f.clone());
-                    break;
-                }
+        for p in prefixes.iter() {
+            if path.strip_prefix(p).is_ok() {
+                implicit_file = Some(*f);
+                break;
             }
         }
 
         if let Some(implicit_load) = implicit_file {
-            loads.push(implicit_load);
+            loads.push(implicit_load.clone());
         } else {
             // Not being able to resolve the load is potentially not an
             // error since this might race with prefixes being loaded.

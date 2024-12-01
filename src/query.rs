@@ -1311,7 +1311,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
                         selection_range: m.named_child("id")?.range(),
                         uri: Arc::clone(&uri),
                     }),
-                    documentation: empty.clone(),
+                    documentation: empty,
                 })
             })
             .cloned()

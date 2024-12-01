@@ -480,7 +480,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         "expr" => {
             // Try to interpret expr as a cast `_ as @type`.
             if let Some(typ) = query::typ_from_cast(node, source.as_bytes()) {
-                return db.resolve_type(typ, Some(location.clone()));
+                return db.resolve_type(typ, Some(location));
             }
 
             return node

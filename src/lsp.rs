@@ -1384,6 +1384,7 @@ impl LanguageServer for Backend {
         let state = self.state.read().await;
 
         let params = if state.initialization_options().inlay_hints_parameters {
+            #[allow(clippy::redundant_clone)] // Used cloned iter for ownership with `tokio::spawn`
             state
                 .function_calls(Arc::clone(&uri))
                 .iter()
@@ -1444,6 +1445,7 @@ impl LanguageServer for Backend {
         };
 
         let vars = if state.initialization_options().inlay_hints_variables {
+            #[allow(clippy::redundant_clone)] // Used cloned iter for ownership with `tokio::spawn`
             state
                 .untyped_var_decls(Arc::clone(&uri))
                 .iter()

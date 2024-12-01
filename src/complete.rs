@@ -96,7 +96,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     }).or_else(||
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
-            return Some(state
+            Some(state
                 .possible_loads(uri.clone())
                 .iter()
                 .map(|load| CompletionItem {
@@ -104,7 +104,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                     kind: Some(CompletionItemKind::FILE),
                     ..CompletionItem::default()
                 })
-                .collect::<Vec<_>>());
+                .collect::<Vec<_>>())
         } else {
             None
         }

@@ -21,11 +21,39 @@ mod server {
         },
         LanguageServer,
     };
-    use zeek_language_server::lsp::Backend;
+    use zeek_language_server::lsp::{Backend, InitializationOptions};
 
     pub async fn initial_index() {
         let db = Backend::default();
         let _ = db.initialize(InitializeParams::default()).await;
+        // NOTE: Do not call `initialized` as that triggers preloading.
+        // db.initialized(InitializedParams {}).await;
+
+        db.did_change_watched_files(DidChangeWatchedFilesParams {
+            changes: db
+                .visible_files()
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|f| FileEvent::new(f, FileChangeType::CREATED))
+                .collect(),
+        })
+        .await;
+    }
+
+    pub async fn startup_no_preload() {
+        let options = InitializationOptions {
+            preload_files: false,
+            ..InitializationOptions::default()
+        };
+
+        let db = Backend::default();
+        let _ = db
+            .initialize(InitializeParams {
+                initialization_options: Some(json!(options)),
+                ..InitializeParams::default()
+            })
+            .await;
         // NOTE: Do not call `initialized` as that triggers preloading.
         // db.initialized(InitializedParams {}).await;
 
@@ -210,6 +238,10 @@ levenshtein_distance("", "");
 
         c.bench_function("server::initial_index", |b| {
             b.to_async(&runtime).iter(initial_index);
+        });
+
+        c.bench_function("server::startup_no_preload", |b| {
+            b.to_async(&runtime).iter(startup_no_preload);
         });
 
         c.bench_function("server::visible_files", |b| {

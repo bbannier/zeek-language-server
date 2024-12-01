@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use salsa::ParallelDatabase;
 use semver::Version;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp::{
     jsonrpc::{Error, Result},
@@ -113,7 +113,7 @@ impl Default for Database {
         db.set_prefixes(Arc::default());
         db.set_workspace_folders(Arc::default());
         db.set_capabilities(Arc::default());
-        db.set_initialization_options(Arc::new(InitializationOptions::new()));
+        db.set_initialization_options(Arc::new(InitializationOptions::default()));
 
         db
     }
@@ -417,7 +417,7 @@ impl LanguageServer for Backend {
                 params
                     .initialization_options
                     .and_then(|options| serde_json::from_value(options).ok())
-                    .unwrap_or_else(InitializationOptions::new),
+                    .unwrap_or_default(),
             ));
         }
 
@@ -1664,36 +1664,36 @@ pub async fn run() {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 /// Custom `initializationOptions` clients can send.
 pub struct InitializationOptions {
     #[serde(default = "InitializationOptions::_default_check_for_updates")]
-    check_for_updates: bool,
+    pub check_for_updates: bool,
 
     #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
-    inlay_hints_parameters: bool,
+    pub inlay_hints_parameters: bool,
 
     #[serde(default = "InitializationOptions::_default_inlay_hints_variables")]
-    inlay_hints_variables: bool,
+    pub inlay_hints_variables: bool,
 
     #[serde(default = "InitializationOptions::_default_references")]
-    references: bool,
+    pub references: bool,
 
     #[serde(default = "InitializationOptions::_default_rename")]
-    rename: bool,
+    pub rename: bool,
 
     #[serde(default = "InitializationOptions::_semantic_highlighting")]
-    semantic_highlighting: bool,
+    pub semantic_highlighting: bool,
 
     #[serde(default = "InitializationOptions::_debug_ast_nodes")]
-    debug_ast_nodes: bool,
+    pub debug_ast_nodes: bool,
 
     #[serde(default = "InitializationOptions::_preload_files")]
-    preload_files: bool,
+    pub preload_files: bool,
 }
 
-impl InitializationOptions {
-    const fn new() -> Self {
+impl Default for InitializationOptions {
+    fn default() -> Self {
         Self {
             check_for_updates: true,
             inlay_hints_variables: true,
@@ -1705,37 +1705,39 @@ impl InitializationOptions {
             preload_files: true,
         }
     }
+}
 
-    const fn _default_check_for_updates() -> bool {
-        Self::new().check_for_updates
+impl InitializationOptions {
+    fn _default_check_for_updates() -> bool {
+        Self::default().check_for_updates
     }
 
-    const fn _default_inlay_hints_parameters() -> bool {
-        Self::new().inlay_hints_parameters
+    fn _default_inlay_hints_parameters() -> bool {
+        Self::default().inlay_hints_parameters
     }
 
-    const fn _default_inlay_hints_variables() -> bool {
-        Self::new().inlay_hints_variables
+    fn _default_inlay_hints_variables() -> bool {
+        Self::default().inlay_hints_variables
     }
 
-    const fn _default_references() -> bool {
-        Self::new().references
+    fn _default_references() -> bool {
+        Self::default().references
     }
 
-    const fn _default_rename() -> bool {
-        Self::new().rename
+    fn _default_rename() -> bool {
+        Self::default().rename
     }
 
-    const fn _semantic_highlighting() -> bool {
-        Self::new().semantic_highlighting
+    fn _semantic_highlighting() -> bool {
+        Self::default().semantic_highlighting
     }
 
-    const fn _debug_ast_nodes() -> bool {
-        Self::new().debug_ast_nodes
+    fn _debug_ast_nodes() -> bool {
+        Self::default().debug_ast_nodes
     }
 
-    const fn _preload_files() -> bool {
-        Self::new().preload_files
+    fn _preload_files() -> bool {
+        Self::default().preload_files
     }
 }
 
@@ -2827,7 +2829,7 @@ option x = T;
 
     #[tokio::test]
     async fn inlay_hint_client_config() {
-        let default = lsp::InitializationOptions::new();
+        let default = lsp::InitializationOptions::default();
         let opts = vec![
             lsp::InitializationOptions {
                 inlay_hints_variables: false,
@@ -2884,7 +2886,7 @@ const x = 1;
         use serde_json::json;
 
         assert_eq!(
-            InitializationOptions::new(),
+            InitializationOptions::default(),
             InitializationOptions {
                 check_for_updates: true,
                 inlay_hints_variables: true,
@@ -2899,7 +2901,7 @@ const x = 1;
 
         assert_eq!(
             serde_json::from_value::<InitializationOptions>(json!({})).unwrap(),
-            InitializationOptions::new()
+            InitializationOptions::default()
         );
 
         assert_eq!(
@@ -2907,7 +2909,7 @@ const x = 1;
                 .unwrap(),
             InitializationOptions {
                 check_for_updates: false,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
 
@@ -2918,7 +2920,7 @@ const x = 1;
             .unwrap(),
             InitializationOptions {
                 inlay_hints_parameters: false,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
 
@@ -2929,7 +2931,7 @@ const x = 1;
             .unwrap(),
             InitializationOptions {
                 inlay_hints_variables: false,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
 
@@ -2937,7 +2939,7 @@ const x = 1;
             serde_json::from_value::<InitializationOptions>(json!({"references": true})).unwrap(),
             InitializationOptions {
                 references: true,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
 
@@ -2945,7 +2947,7 @@ const x = 1;
             serde_json::from_value::<InitializationOptions>(json!({"rename": true})).unwrap(),
             InitializationOptions {
                 rename: true,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
 
@@ -2954,7 +2956,7 @@ const x = 1;
                 .unwrap(),
             InitializationOptions {
                 semantic_highlighting: true,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
 
@@ -2963,7 +2965,7 @@ const x = 1;
                 .unwrap(),
             InitializationOptions {
                 debug_ast_nodes: true,
-                ..InitializationOptions::new()
+                ..InitializationOptions::default()
             }
         );
     }

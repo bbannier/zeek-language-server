@@ -569,41 +569,49 @@ impl LanguageServer for Backend {
             self.state.write().await.update_sources(&changes);
         }
 
-        // Preload expensive information. Ultimately we want to be able to load implicit
-        // declarations quickly since they are on the critical part of getting the user to useful
-        // completions right after server startup.
-        //
-        // We explicitly precompute per-file information here so we can parallelize this work.
+        if self
+            .state
+            .read()
+            .await
+            .initialization_options()
+            .preload_files
+        {
+            // Preload expensive information. Ultimately we want to be able to load implicit
+            // declarations quickly since they are on the critical part of getting the user to useful
+            // completions right after server startup.
+            //
+            // We explicitly precompute per-file information here so we can parallelize this work.
 
-        self.progress(progress_token.clone(), Some("declarations".to_string()))
-            .await;
-        let files = self.state.read().await.files();
+            self.progress(progress_token.clone(), Some("declarations".to_string()))
+                .await;
+            let files = self.state.read().await.files();
 
-        let preloaded_decls = {
-            let span = trace_span!("preloading");
-            let _enter = span.enter();
+            let preloaded_decls = {
+                let span = trace_span!("preloading");
+                let _enter = span.enter();
 
-            let state = self.state.read().await;
+                let state = self.state.read().await;
 
-            files
-                .iter()
-                .map(|f| {
-                    let f = Arc::clone(f);
-                    let db = state.snapshot();
-                    tokio::spawn(async move {
-                        let _x = db.decls(Arc::clone(&f));
-                        let _x = db.loads(Arc::clone(&f));
-                        let _x = db.loaded_files(f);
+                files
+                    .iter()
+                    .map(|f| {
+                        let f = Arc::clone(f);
+                        let db = state.snapshot();
+                        tokio::spawn(async move {
+                            let _x = db.decls(Arc::clone(&f));
+                            let _x = db.loads(Arc::clone(&f));
+                            let _x = db.loaded_files(f);
+                        })
                     })
-                })
-                .collect::<Vec<_>>()
-        };
-        futures::future::join_all(preloaded_decls).await;
+                    .collect::<Vec<_>>()
+            };
+            futures::future::join_all(preloaded_decls).await;
 
-        // Reload implicit declarations.
-        self.progress(progress_token.clone(), Some("implicit loads".to_string()))
-            .await;
-        let _implicit = self.state.read().await.implicit_decls();
+            // Reload implicit declarations.
+            self.progress(progress_token.clone(), Some("implicit loads".to_string()))
+                .await;
+            let _implicit = self.state.read().await.implicit_decls();
+        }
 
         self.progress_end(progress_token).await;
     }
@@ -1679,6 +1687,9 @@ pub struct InitializationOptions {
 
     #[serde(default = "InitializationOptions::_debug_ast_nodes")]
     debug_ast_nodes: bool,
+
+    #[serde(default = "InitializationOptions::_preload_files")]
+    preload_files: bool,
 }
 
 impl InitializationOptions {
@@ -1691,6 +1702,7 @@ impl InitializationOptions {
             rename: false,
             semantic_highlighting: true,
             debug_ast_nodes: false,
+            preload_files: true,
         }
     }
 
@@ -1720,6 +1732,10 @@ impl InitializationOptions {
 
     const fn _debug_ast_nodes() -> bool {
         Self::new().debug_ast_nodes
+    }
+
+    const fn _preload_files() -> bool {
+        Self::new().preload_files
     }
 }
 
@@ -2877,6 +2893,7 @@ const x = 1;
                 rename: false,
                 semantic_highlighting: true,
                 debug_ast_nodes: false,
+                preload_files: true,
             }
         );
 

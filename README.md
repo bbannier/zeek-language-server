@@ -29,17 +29,28 @@ The server interprets the following `initializationOptions`:
   Whether to show inlay hints for variable declarations
 - `references` (default: `false`):
   Whether to enable _Go To References_.
-- `rename` (default: `false`):
-  Whether to enable _Rename_.
-- `semantic_highlighting` (default: `true`)
-  Enable semantic highlighting.
-
-- `debug_ast_nodes` (default: `false`)
-  Enable debug output of AST nodes on hover
 
   **WARNING**: Since typically Zeek scripts have incomplete `@load` statements
   the provided list is very likely incomplete. Use a tool like `grep` to search
   for all references of an identifier.
+
+- `rename` (default: `false`):
+  Whether to enable _Rename_.
+
+  **WARNING**: Since typically Zeek scripts have incomplete `@load` statements
+  the provided list is very likely incomplete. Use a tool like `grep` to search
+  for all instances of an identifier.
+
+- `semantic_highlighting` (default: `true`):
+  Enable semantic highlighting.
+- `debug_ast_nodes` (default: `false`)
+  Enable debug output of AST nodes on hover
+- `preload_files` (default: `true`):
+  Whether to preload information from workspace and system files in the
+  background on startup. Preloading is done in parallel so this would
+  cause a short spike in CPU load on startup. Setting this option to `false`
+  disables this functionality and information is only computed when requested,
+  typically not in parallel.
 
 ### Editor setup
 

@@ -105,8 +105,8 @@ impl Ord for Location {
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Location {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        NodeLocation::from_range(self.uri.clone(), self.range).hash(state);
-        NodeLocation::from_range(self.uri.clone(), self.selection_range).hash(state);
+        NodeLocation::from_range(Arc::clone(&self.uri), self.range).hash(state);
+        NodeLocation::from_range(Arc::clone(&self.uri), self.selection_range).hash(state);
         self.uri.hash(state);
     }
 }
@@ -581,7 +581,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: arg_id_.range(),
                                 selection_range: arg.range(),
-                                uri: uri.clone(),
+                                uri: Arc::clone(&uri),
                             }),
                             documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                                 .as_str()
@@ -636,7 +636,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: id_.range(),
                                 selection_range: id_.range(),
-                                uri: uri.clone(),
+                                uri: Arc::clone(&uri),
                             }),
                             documentation,
 
@@ -677,7 +677,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range,
                                     selection_range,
-                                    uri: uri.clone(),
+                                    uri: Arc::clone(&uri),
                                 }),
                                 documentation,
                                 // An enum value is exported if its wrapping decl is exported.
@@ -765,7 +765,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range: id_.range(),
                                     selection_range: id_.range(),
-                                    uri: uri.clone(),
+                                    uri: Arc::clone(&uri),
                                 }),
                                 documentation,
 
@@ -815,7 +815,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                     loc: Some(Location {
                         range,
                         selection_range,
-                        uri: uri.clone(),
+                        uri: Arc::clone(&uri),
                     }),
                     documentation,
                 })
@@ -824,7 +824,7 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
         })
         .flatten()
         .chain(convert(
-            fn_param_decls(node, uri.clone(), source).into_iter(),
+            fn_param_decls(node, Arc::clone(&uri), source).into_iter(),
         ))
         .chain(convert(loop_param_decls(node, &uri, source).into_iter()))
         .cloned()
@@ -1030,7 +1030,7 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Dec
                 loc: Some(Location {
                     range: arg_id_.range(),
                     selection_range: arg.range(),
-                    uri: uri.clone(),
+                    uri: Arc::clone(&uri),
                 }),
                 documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                     .as_str()
@@ -1127,7 +1127,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl
                             loc: Some(Location {
                                 range: n.range(),
                                 selection_range: n.range(),
-                                uri: uri.clone(),
+                                uri: Arc::clone(uri),
                             }),
                             documentation,
                         })
@@ -1178,15 +1178,15 @@ pub trait Query: Parse {
 
 #[instrument(skip(db))]
 fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
-    let Some(source) = db.source(uri.clone()) else {
+    let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
-    let Some(tree) = db.parse(uri.clone()) else {
+    let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
-    let decls = decls_(tree.root_node(), uri.clone(), source.as_bytes());
+    let decls = decls_(tree.root_node(), Arc::clone(&uri), source.as_bytes());
     let modules = modules(tree.root_node(), uri, source.as_bytes());
 
     Arc::new(decls.into_iter().chain(modules.into_iter()).collect())
@@ -1194,7 +1194,7 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
 
 #[instrument(skip(db))]
 fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
-    let Some(tree) = db.parse(uri.clone()) else {
+    let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
@@ -1218,11 +1218,11 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
             .expect("invalid query")
     });
 
-    let Some(tree) = db.parse(uri.clone()) else {
+    let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(uri.clone()) else {
+    let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
@@ -1240,9 +1240,9 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
                         .named_child("expr_list")?
                         .named_children("expr")
                         .into_iter()
-                        .map(|a| NodeLocation::from_node(uri.clone(), a))
+                        .map(|a| NodeLocation::from_node(Arc::clone(&uri), a))
                         .collect::<Vec<_>>();
-                    Some((NodeLocation::from_node(uri.clone(), n), args))
+                    Some((NodeLocation::from_node(Arc::clone(&uri), n), args))
                 })?;
 
                 Some(FunctionCall { f, args })
@@ -1263,11 +1263,11 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
         .expect("invalid query")
     });
 
-    let Some(tree) = db.parse(uri.clone()) else {
+    let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(uri.clone()) else {
+    let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
@@ -1309,7 +1309,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
                     loc: Some(Location {
                         range: m.range(),
                         selection_range: m.named_child("id")?.range(),
-                        uri: uri.clone(),
+                        uri: Arc::clone(&uri),
                     }),
                     documentation: empty.clone(),
                 })
@@ -1326,11 +1326,11 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
     });
 
-    let Some(tree) = db.parse(uri.clone()) else {
+    let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(uri.clone()) else {
+    let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
 
@@ -1345,7 +1345,7 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m = m.nodes_for_capture_index(c_id).next()?;
-                Some(NodeLocation::from_node(uri.clone(), m.into()))
+                Some(NodeLocation::from_node(Arc::clone(&uri), m.into()))
             })
             .cloned()
             .collect(),

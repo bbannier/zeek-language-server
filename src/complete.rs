@@ -21,9 +21,9 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let source = state.source(uri.clone())?;
+    let source = state.source(Arc::clone(&uri))?;
 
-    let tree = state.parse(uri.clone())?;
+    let tree = state.parse(Arc::clone(&uri))?;
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
@@ -80,7 +80,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
             || node.parent().map_or(false, |p| {
                 p.kind() == "field_access" || p.kind() == "field_check"
             }) {
-            complete_field(state, node, uri.clone(), is_partial)
+            complete_field(state, node, Arc::clone(&uri), is_partial)
         } else {
             None
         }
@@ -97,7 +97,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
             Some(state
-                .possible_loads(uri.clone())
+                .possible_loads(Arc::clone(&uri))
                 .iter()
                 .map(|load| CompletionItem {
                     label: load.clone(),
@@ -117,7 +117,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 .and_then(|line| {
                     static RE: LazyLock<regex::Regex> = LazyLock::new(|| { regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp") });
                     Some(RE.captures(line)?.get(1)?.as_str())
-                }).map(|kind| complete_from_decls(state, uri.clone(), kind))
+                }).map(|kind| complete_from_decls(state, Arc::clone(&uri), kind))
         } else {
             None
         }
@@ -208,7 +208,7 @@ fn complete_field(
 
 fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<CompletionItem> {
     state
-        .decls(uri.clone())
+        .decls(Arc::clone(&uri))
         .iter()
         .chain(state.implicit_decls().iter())
         .chain(state.explicit_decls_recursive(uri).iter())
@@ -227,8 +227,8 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
                         .iter()
                         .filter_map(|d| {
                             let loc = &d.loc.as_ref()?;
-                            let tree = state.parse(loc.uri.clone())?;
-                            let source = state.source(loc.uri.clone())?;
+                            let tree = state.parse(Arc::clone(&loc.uri))?;
+                            let source = state.source(Arc::clone(&loc.uri))?;
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -363,7 +363,7 @@ fn complete_any(
     mut node: Node,
     uri: Arc<Url>,
 ) -> Vec<CompletionItem> {
-    let Some(source) = state.source(uri.clone()) else {
+    let Some(source) = state.source(Arc::clone(&uri)) else {
         return Vec::new();
     };
 
@@ -377,7 +377,7 @@ fn complete_any(
     let text_at_completion = completion_text(node, &source, true);
 
     loop {
-        for d in query::decls_(node, uri.clone(), source.as_bytes()) {
+        for d in query::decls_(node, Arc::clone(&uri), source.as_bytes()) {
             // Slightly fudge the ID we use for local declarations by removing the current
             // module from the FQID.
             let fqid = match current_module {

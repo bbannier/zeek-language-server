@@ -67,3 +67,4 @@ pedantic = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 missing_errors_doc = "allow"
 ignored_unit_patterns = "deny"
+clone_on_ref_ptr = "deny"

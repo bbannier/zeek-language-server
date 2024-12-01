@@ -76,10 +76,10 @@ impl Database {
         for u in updates {
             match u {
                 SourceUpdate::Update(uri, source) => {
-                    self.set_unsafe_source(uri.clone(), source.clone());
+                    self.set_unsafe_source(Arc::clone(uri), source.clone());
 
                     if !files.contains(uri) {
-                        files.insert(uri.clone());
+                        files.insert(Arc::clone(uri));
                         needs_files_update = true;
                     }
                 }
@@ -254,9 +254,9 @@ impl Backend {
         if let Some(client) = &self.client {
             let state = self.state.read().await;
             let diags = {
-                state.file_changed(uri.clone());
+                state.file_changed(Arc::clone(&uri));
 
-                if let Some(tree) = state.parse(uri.clone()) {
+                if let Some(tree) = state.parse(Arc::clone(&uri)) {
                     tree_diagnostics(&tree.root_node())
                 } else {
                     Vec::new()
@@ -588,11 +588,11 @@ impl LanguageServer for Backend {
             files
                 .iter()
                 .map(|f| {
-                    let f = f.clone();
+                    let f = Arc::clone(f);
                     let db = state.snapshot();
                     tokio::spawn(async move {
-                        let _x = db.decls(f.clone());
-                        let _x = db.loads(f.clone());
+                        let _x = db.decls(Arc::clone(&f));
+                        let _x = db.loads(Arc::clone(&f));
                         let _x = db.loaded_files(f);
                     })
                 })
@@ -617,7 +617,7 @@ impl LanguageServer for Backend {
             .write()
             .await
             .update_sources(&[SourceUpdate::Update(
-                uri.clone(),
+                Arc::clone(&uri),
                 params.text_document.text.into(),
             )]);
 
@@ -657,7 +657,7 @@ impl LanguageServer for Backend {
             .write()
             .await
             .update_sources(&[SourceUpdate::Update(
-                uri.clone(),
+                Arc::clone(&uri),
                 changes.text.as_str().into(),
             )]);
 
@@ -687,11 +687,11 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let Some(source) = state.source(uri.clone()) else {
+        let Some(source) = state.source(Arc::clone(&uri)) else {
             return Ok(None);
         };
 
-        let tree = state.parse(uri.clone());
+        let tree = state.parse(Arc::clone(&uri));
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
@@ -737,7 +737,7 @@ impl LanguageServer for Backend {
                         id = decl.fqid
                     )));
 
-                    if let Some(typ) = state.typ(decl.clone()) {
+                    if let Some(typ) = state.typ(Arc::clone(decl)) {
                         contents.push(MarkedString::String(format!("Type: `{}`", typ.fqid)));
                     }
 
@@ -949,14 +949,14 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let tree = state.parse(uri.clone());
+        let tree = state.parse(Arc::clone(&uri));
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(source) = state.source(uri.clone()) else {
+        let Some(source) = state.source(Arc::clone(&uri)) else {
             return Ok(None);
         };
 
@@ -1014,10 +1014,10 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let Some(source) = state.source(uri.clone()) else {
+        let Some(source) = state.source(Arc::clone(&uri)) else {
             return Ok(None);
         };
-        let Some(tree) = state.parse(uri.clone()) else {
+        let Some(tree) = state.parse(Arc::clone(&uri)) else {
             return Ok(None);
         };
 
@@ -1074,10 +1074,10 @@ impl LanguageServer for Backend {
 
         // Recompute `tree` and `source` in the context of the function declaration.
         let Some(loc) = &f.loc else { return Ok(None) };
-        let Some(tree) = state.parse(loc.uri.clone()) else {
+        let Some(tree) = state.parse(Arc::clone(&loc.uri)) else {
             return Ok(None);
         };
-        let Some(source) = state.source(loc.uri.clone()) else {
+        let Some(source) = state.source(Arc::clone(&loc.uri)) else {
             return Ok(None);
         };
 
@@ -1155,7 +1155,7 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let source = state.source(uri.clone());
+        let source = state.source(Arc::clone(&uri));
 
         let Some(source) = source else {
             return Ok(None);
@@ -1181,7 +1181,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.state.read().await.source(uri.clone());
+        let source = self.state.read().await.source(Arc::clone(&uri));
 
         let Some(source) = source else {
             return Ok(None);
@@ -1220,7 +1220,7 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let tree = state.parse(uri.clone());
+        let tree = state.parse(Arc::clone(&uri));
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
@@ -1229,7 +1229,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(decl) = state.resolve(NodeLocation::from_node(uri.clone(), node)) else {
+        let Some(decl) = state.resolve(NodeLocation::from_node(Arc::clone(&uri), node)) else {
             return Ok(None);
         };
 
@@ -1241,7 +1241,7 @@ impl LanguageServer for Backend {
                 }
                 // If we resolved to a definition, look for the declaration.
                 DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
-                    .decls(uri.clone())
+                    .decls(Arc::clone(&uri))
                     .iter()
                     .chain(state.implicit_decls().iter())
                     .chain(state.explicit_decls_recursive(uri).iter())
@@ -1277,7 +1277,7 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let tree = state.parse(uri.clone());
+        let tree = state.parse(Arc::clone(&uri));
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
@@ -1302,7 +1302,7 @@ impl LanguageServer for Backend {
             .iter()
             .flat_map(|f| {
                 state
-                    .decls(f.clone())
+                    .decls(Arc::clone(f))
                     .as_ref()
                     .clone()
                     .into_iter()
@@ -1341,7 +1341,7 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
         let state = self.state.read().await;
-        let Some(missing) = state.parse(uri.clone()).and_then(|t| {
+        let Some(missing) = state.parse(Arc::clone(&uri)).and_then(|t| {
             t.root_node().errors().into_iter().find_map(|err| {
                 // Filter out `MISSING` nodes at the diagnostic.
                 if err.is_missing() && err.range() == diag.range {
@@ -1385,7 +1385,7 @@ impl LanguageServer for Backend {
 
         let params = if state.initialization_options().inlay_hints_parameters {
             state
-                .function_calls(uri.clone())
+                .function_calls(Arc::clone(&uri))
                 .iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
                 .cloned()
@@ -1406,7 +1406,7 @@ impl LanguageServer for Backend {
                                         // If the argument has the same name as the parameter do
                                         // not set an inlay hint.
                                         let uri = p.uri;
-                                        let tree = state.parse(uri.clone())?;
+                                        let tree = state.parse(Arc::clone(&uri))?;
                                         let node = tree
                                             .root_node()
                                             .named_descendant_for_point_range(p.range)?;
@@ -1445,7 +1445,7 @@ impl LanguageServer for Backend {
 
         let vars = if state.initialization_options().inlay_hints_variables {
             state
-                .untyped_var_decls(uri.clone())
+                .untyped_var_decls(Arc::clone(&uri))
                 .iter()
                 .filter(|d| {
                     d.loc
@@ -1508,7 +1508,7 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let tree = state.parse(uri.clone());
+        let tree = state.parse(Arc::clone(&uri));
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
@@ -1536,14 +1536,14 @@ impl LanguageServer for Backend {
 
         let state = self.state.read().await;
 
-        let tree = state.parse(uri.clone());
+        let tree = state.parse(Arc::clone(&uri));
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(NodeLocation::from_node(uri.clone(), node)) else {
+        let Some(decl) = state.resolve(NodeLocation::from_node(Arc::clone(&uri), node)) else {
             return Ok(None);
         };
 
@@ -1599,7 +1599,7 @@ fn fuzzy_search_symbol(db: &Database, symbol: &str) -> Vec<(f32, Decl)> {
     files
         .iter()
         .flat_map(|uri| {
-            db.decls(uri.clone())
+            db.decls(Arc::clone(uri))
                 .iter()
                 .filter_map(|d| {
                     let rank = rust_fuzzy_search::fuzzy_compare(symbol, &d.fqid.to_lowercase());
@@ -1757,7 +1757,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
 
         let mut recursive_loads = FxHashSet::default();
         for l in &loads {
-            recursive_loads.extend(db.loaded_files_recursive(l.clone()).iter().cloned());
+            recursive_loads.extend(db.loaded_files_recursive(Arc::clone(l)).iter().cloned());
         }
         loads.extend(recursive_loads.into_iter());
 
@@ -1780,8 +1780,8 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
             })
             .map(|f| {
                 let db = db.snapshot();
-                let decl = decl.clone();
-                let f = f.clone();
+                let decl = Arc::clone(&decl);
+                let f = Arc::clone(f);
                 tokio::spawn(async move {
                     Some(
                         db.ids(f)
@@ -1789,8 +1789,8 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
                             .filter_map(|loc| {
                                 // Prefilter ids so that they at least somewhere contain the text
                                 // of the decl.
-                                let tree = db.parse(loc.uri.clone())?;
-                                let source = db.source(loc.uri.clone())?;
+                                let tree = db.parse(Arc::clone(&loc.uri))?;
+                                let source = db.source(Arc::clone(&loc.uri))?;
                                 let txt = tree
                                     .root_node()
                                     .named_descendant_for_point_range(loc.range)?

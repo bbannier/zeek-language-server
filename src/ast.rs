@@ -58,11 +58,11 @@ pub trait Ast: Parse + Query {
 #[instrument(skip(db))]
 fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
-    let tree = db.parse(uri.clone())?;
+    let tree = db.parse(Arc::clone(&uri))?;
     let scope = tree
         .root_node()
         .named_descendant_for_point_range(scope.range)?;
-    let source = db.source(uri.clone())?;
+    let source = db.source(Arc::clone(&uri))?;
 
     let node = scope;
 
@@ -97,7 +97,7 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
         decls.extend(
             // Find all decls with this name, defined before the node. We do this so that e.g.,
             // redefs in the same file are only in effect after they have been declared.
-            query::decls_(scope, uri.clone(), source.as_bytes())
+            query::decls_(scope, Arc::clone(&uri), source.as_bytes())
                 .into_iter()
                 .filter(|d| d.id == id || d.fqid == id)
                 .filter(|d| {
@@ -135,9 +135,9 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
 
     // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
     // into account.
-    let decls = db.decls(uri.clone());
+    let decls = db.decls(Arc::clone(&uri));
     let implicit_decls = db.implicit_decls();
-    let explicit_decls_recursive = db.explicit_decls_recursive(uri.clone());
+    let explicit_decls_recursive = db.explicit_decls_recursive(Arc::clone(&uri));
     let last_decl = if let Some(redef) = &result {
         redef
     } else {
@@ -306,7 +306,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     };
     let uri = &loc.uri;
 
-    let tree = db.parse(uri.clone())?;
+    let tree = db.parse(Arc::clone(uri))?;
 
     let node = tree
         .root_node()
@@ -316,7 +316,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         let from = db
             .resolve_id(
                 from.as_str().into(),
-                NodeLocation::from_node(uri.clone(), node),
+                NodeLocation::from_node(Arc::clone(uri), node),
             )
             .and_then(|r| db.typ(r))?;
 
@@ -328,7 +328,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         let loc = decl
             .loc
             .as_ref()
-            .map(|l| NodeLocation::from_range(l.uri.clone(), l.range));
+            .map(|l| NodeLocation::from_range(Arc::clone(&l.uri), l.range));
 
         let idx = match *i {
             Index::Loop(i) => Some(i),
@@ -368,9 +368,9 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     }
 
     let make_typ = |typ| {
-        let source = db.source(uri.clone())?;
+        let source = db.source(Arc::clone(uri))?;
         query::typ(typ, source.as_bytes())
-            .and_then(|t| db.resolve_type(t, Some(NodeLocation::from_node(uri.clone(), typ))))
+            .and_then(|t| db.resolve_type(t, Some(NodeLocation::from_node(Arc::clone(uri), typ))))
     };
 
     let d = match node.kind() {
@@ -381,7 +381,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 "type" => make_typ(typ),
                 "initializer" => typ
                     .named_child("expr")
-                    .and_then(|n| db.resolve(NodeLocation::from_node(uri.clone(), n))),
+                    .and_then(|n| db.resolve(NodeLocation::from_node(Arc::clone(uri), n))),
                 _ => None,
             }
         }
@@ -397,7 +397,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             // For function declarations produce the function's return type.
             DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_type(
                 sig.result.clone()?,
-                Some(NodeLocation::from_node(loc.uri.clone(), node)),
+                Some(NodeLocation::from_node(Arc::clone(&loc.uri), node)),
             ),
 
             // For enum members return the enum.
@@ -416,7 +416,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 }
 
                 db.resolve(NodeLocation::from_node(
-                    loc.uri.clone(),
+                    Arc::clone(&loc.uri),
                     n.named_child("id")?,
                 ))
             }
@@ -435,12 +435,12 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 }
 
 fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
-    let uri = location.uri.clone();
-    let tree = db.parse(uri.clone())?;
+    let uri = Arc::clone(&location.uri);
+    let tree = db.parse(Arc::clone(&uri))?;
     let node = tree
         .root_node()
         .named_descendant_for_point_range(location.range)?;
-    let source = db.source(uri.clone())?;
+    let source = db.source(Arc::clone(&uri))?;
 
     match node.kind() {
         // Builtin types.
@@ -485,7 +485,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
             return node
                 .named_child_not("nl")
-                .and_then(|c| db.resolve(NodeLocation::from_node(uri.clone(), c)));
+                .and_then(|c| db.resolve(NodeLocation::from_node(Arc::clone(&uri), c)));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
@@ -562,7 +562,11 @@ fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
     let prefixes = db.prefixes();
 
-    let loads: Vec<_> = db.loads(uri.clone()).iter().map(PathBuf::from).collect();
+    let loads: Vec<_> = db
+        .loads(Arc::clone(&uri))
+        .iter()
+        .map(PathBuf::from)
+        .collect();
 
     let mut loaded_files = Vec::new();
 
@@ -583,9 +587,9 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
         let mut new_files = Vec::new();
 
         for f in &files {
-            for load in db.loaded_files(f.clone()).as_ref() {
+            for load in db.loaded_files(Arc::clone(f)).as_ref() {
                 if !files.iter().any(|f| f.as_ref() == load.as_ref()) {
-                    new_files.push(load.clone());
+                    new_files.push(Arc::clone(load));
                 }
             }
         }
@@ -604,10 +608,10 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
 
 #[instrument(skip(db))]
 fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
-    let mut decls = (*db.decls(uri.clone())).clone();
+    let mut decls = (*db.decls(Arc::clone(&uri))).clone();
 
     for load in db.loaded_files_recursive(uri).as_ref() {
-        for decl in &*db.decls(load.clone()) {
+        for decl in &*db.decls(Arc::clone(load)) {
             decls.insert(decl.clone());
         }
     }
@@ -632,7 +636,7 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
 
             for p in db.prefixes().iter() {
                 if path.strip_prefix(p).is_ok() {
-                    implicit_file = Some(f.clone());
+                    implicit_file = Some(Arc::clone(f));
                     break;
                 }
             }
@@ -657,7 +661,7 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
 
     for implicit_load in db.implicit_loads().as_ref() {
         decls.extend(
-            db.explicit_decls_recursive(implicit_load.clone())
+            db.explicit_decls_recursive(Arc::clone(implicit_load))
                 .as_ref()
                 .iter()
                 .cloned(),
@@ -724,7 +728,7 @@ fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> 
     }
 
     let implicit_decls = db.implicit_decls();
-    let loaded_decls = db.explicit_decls_recursive(scope.clone());
+    let loaded_decls = db.explicit_decls_recursive(Arc::clone(&scope));
     let decls = db.decls(scope);
 
     let all_decls: FxHashSet<_> = implicit_decls
@@ -792,7 +796,7 @@ pub(crate) fn load_to_file(
         known_exactly
             .or(known_no_ext)
             .or(known_directory)
-            .map(|(f, _)| (*f).clone())
+            .map(|(f, _)| Arc::clone(f))
     })
 }
 
@@ -1820,14 +1824,14 @@ event zeek_init() { for ([c, s] in vs) ; }
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
         db.add_file(
             (*uri).clone(),
-            r#"
+            r"
 global t1: table[string] of count;
 global t2: table[string, double] of count;
 
 event zeek_init() { for ( k, v in t1 ) ; }
 event zeek_init() { for ( [ k1, k2 ], v in t2 ) ; }
 event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
-                     "#,
+                     ",
         );
 
         let db = db.0;

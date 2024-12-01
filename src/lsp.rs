@@ -1374,6 +1374,7 @@ impl LanguageServer for Backend {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[instrument]
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = Arc::new(params.text_document.uri);
         let range = params.range;

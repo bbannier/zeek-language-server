@@ -58,6 +58,11 @@ strip = true
 codegen-units = 1
 lto = "thin"
 
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+
 [[bench]]
 name = "criterion"
 harness = false

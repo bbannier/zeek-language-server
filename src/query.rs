@@ -965,35 +965,37 @@ fn compute_module_id(id: &str) -> ModuleId {
 
 /// Compute the module a node is in.
 #[must_use]
-fn parent_module(mut node: Node, source: &[u8]) -> Option<ModuleId> {
-    let mut module_id = None;
+fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
+    let Some(n) = node.parent() else {
+        return Some(ModuleId::None);
+    };
 
-    while let Some(n) = node.parent() {
-        if n.kind() == "source_file" {
-            // Found a source file. Now find the most recent
-            // module decl when looking backwards from `node`.
-            while let Some(m) = node.prev_sibling() {
-                if m.kind() == "module_decl" {
-                    module_id = Some(compute_module_id(
-                        m.named_children_not("nl")
-                            .into_iter()
-                            .next()?
-                            .utf8_text(source)
-                            .ok()?,
-                    ));
-                    break;
-                }
+    if n.kind() == "source_file" {
+        // Found a source file. Now find the most recent
+        // module decl when looking backwards from `node`.
+        let Some(m) = n
+            .named_children("module_decl")
+            .iter()
+            .filter(|m| m.range().end < node.range().start)
+            .min_by_key(|m| node.0.range().start_byte - m.0.range().end_byte)
+            .and_then(|m| {
+                Some(compute_module_id(
+                    m.named_children_not("nl")
+                        .into_iter()
+                        .next()?
+                        .utf8_text(source)
+                        .ok()?,
+                ))
+            })
+        else {
+            return Some(ModuleId::None);
+        };
 
-                // Go to sibling before.
-                node = m;
-            }
-        }
-
-        // Go one level higher.
-        node = n;
+        return Some(m);
     }
 
-    Some(module_id.unwrap_or(ModuleId::None))
+    // Go one level higher.
+    parent_module(n, source)
 }
 
 /// Extract declarations for function parameters on the given node.

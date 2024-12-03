@@ -1043,17 +1043,16 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Dec
 }
 
 /// Extract for loop parameters on the given node.
+#[instrument]
 fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
             &language_zeek(),
             r#"
         (for
-          "("
-          .
           [
-              ("[" (id)@key . ("," (id)@key)* . "]". (id)?@value)
-              ((id)@idx . ("," . (id)@idx)*)
+              ("[" . ( (id)@key . ","? )* . "]" . (id)?@value)
+              ( (id)@idx . ","? )*
           ]
           .
           "in"

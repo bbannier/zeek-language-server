@@ -12,6 +12,7 @@ pub fn markdownify(rst: &str) -> String {
     let rst = zeek_keyword(&rst);
     let rst = zeek_see_inline(&rst);
     let rst = zeek_see_block(&rst);
+    let rst = zeek_type(&rst);
     let rst = note(&rst);
     let rst = todo(&rst);
 
@@ -78,6 +79,18 @@ fn zeek_see_block(rst: &str) -> Cow<str> {
             .map(|ids| ids.as_str().split_whitespace().map(docs_search).join(" "))
             .unwrap_or_default();
         format!("**See also:** {refs}")
+    })
+}
+
+fn zeek_type(rst: &str) -> Cow<str> {
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r":zeek:type:`([^`]+)`").expect("invalid regexp"));
+
+    RE.replace_all(rst, |cap: &Captures| {
+        format!(
+            "`{}`",
+            cap.get(1).expect("type should be captured").as_str()
+        )
     })
 }
 
@@ -216,6 +229,16 @@ More text
                 abc = docs_search("abc"),
                 xyz = docs_search("xyz")
             )
+        );
+    }
+
+    #[test]
+    fn zeek_type() {
+        assert_eq!(markdownify(":zeek:type:`foo`"), "`foo`");
+
+        assert_eq!(
+            markdownify("A :zeek:type:`foo` next to a :zeek:type:`bar`"),
+            "A `foo` next to a `bar`"
         );
     }
 

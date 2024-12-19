@@ -120,7 +120,10 @@ jobs:
           curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
           sudo apt-get update; \
           sudo apt-get install -y zeek; \
-          sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
+          echo /opt/zeek/bin >> "${GITHUB_PATH}"; \
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-${{ hashFiles('Cargo.lock') }}
       - uses: boa-dev/criterion-compare-action@v3
         with:
           branchName: ${{ github.base_ref }}

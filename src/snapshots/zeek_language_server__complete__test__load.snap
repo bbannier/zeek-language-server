@@ -1,10 +1,37 @@
 ---
 source: src/complete.rs
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n    Position::new(0, 6),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n})"
+snapshot_kind: text
 ---
 Some(
     Array(
         [
+            CompletionItem {
+                label: "for",
+                label_details: None,
+                kind: Some(
+                    Snippet,
+                ),
+                detail: None,
+                documentation: None,
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: Some(
+                    "for ( ${1:x} in ${2:xs} )\n\t{\n\t${3:#code}\n\t}",
+                ),
+                insert_text_format: Some(
+                    Snippet,
+                ),
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
             CompletionItem {
                 label: "foo/b1",
                 label_details: None,
@@ -41,32 +68,6 @@ Some(
                 filter_text: None,
                 insert_text: None,
                 insert_text_format: None,
-                insert_text_mode: None,
-                text_edit: None,
-                additional_text_edits: None,
-                command: None,
-                commit_characters: None,
-                data: None,
-                tags: None,
-            },
-            CompletionItem {
-                label: "for",
-                label_details: None,
-                kind: Some(
-                    Snippet,
-                ),
-                detail: None,
-                documentation: None,
-                deprecated: None,
-                preselect: None,
-                sort_text: None,
-                filter_text: None,
-                insert_text: Some(
-                    "for ( ${1:x} in ${2:xs} )\n\t{\n\t${3:#code}\n\t}",
-                ),
-                insert_text_format: Some(
-                    Snippet,
-                ),
                 insert_text_mode: None,
                 text_edit: None,
                 additional_text_edits: None,

@@ -1,6 +1,7 @@
 ---
 source: src/complete.rs
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n    Position::new(11, 8),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n})"
+snapshot_kind: text
 ---
 Some(
     Array(

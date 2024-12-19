@@ -140,11 +140,28 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         .map(|items| {
             items
                 .into_iter()
-                .filter(|i| {
-                    text.map_or(true, |t| {
-                        rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) > 0.0
-                    })
+                .filter_map(|i| {
+                    // For each completion item compute a similarity score compare to a possibly
+                    // given input text. We convert to `u64` since `f64` does not implement `Ord`.
+                    // The score is negative so that good matches sort before worse ones.
+                    use conv::ConvUtil;
+
+                    let score = text.and_then(|t| {
+                        (rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t)
+                            * -100_000_000.)
+                            .approx_as::<i64>()
+                            .ok()
+                    });
+                    if score == Some(0) {
+                        // Drop items with no relation to input text.
+                        None
+                    } else {
+                        Some((i, score))
+                    }
                 })
+                // Prioritize items with good match, i.e. lower score.
+                .sorted_by_key(|(_, score)| *score)
+                .map(|(i, _)| i)
                 .collect::<Vec<_>>()
         })
         .map(CompletionResponse::from)

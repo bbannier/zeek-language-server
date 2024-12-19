@@ -1,6 +1,7 @@
 ---
 source: src/complete.rs
 expression: "complete(&db.0, CompletionParams { context: None, ..params })"
+snapshot_kind: text
 ---
 Some(
     Array(

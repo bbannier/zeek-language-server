@@ -382,15 +382,19 @@ impl Backend {
             .map(|c| {
                 // Zeek positions index starting with one.
                 let line = if c.line == 0 { 0 } else { c.line - 1 };
-
                 let position = Position::new(line, 0);
-                // TODO(bbannier): More granular severity, distinguish between warnings and errors.
+
+                let severity = Some(match c.kind {
+                    zeek::ErrorKind::Error => DiagnosticSeverity::ERROR,
+                    zeek::ErrorKind::Warning => DiagnosticSeverity::WARNING,
+                });
+
                 Diagnostic::new(
                     Range::new(position, position),
-                    None,
+                    severity,
                     None,
                     Some("zeek".to_string()),
-                    c.error,
+                    c.message,
                     None,
                     None,
                 )

@@ -98,7 +98,14 @@ pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
 pub struct CheckResult {
     pub file: String,
     pub line: u32,
-    pub error: String,
+    pub message: String,
+    pub kind: ErrorKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ErrorKind {
+    Warning,
+    Error,
 }
 
 /// Check the file for with Zeek from the given directory.
@@ -114,7 +121,7 @@ pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
     cwd: P2,
 ) -> Result<Vec<CheckResult>> {
     static ERRLINE: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"error in (\S*), line (\d+): (.*)$").expect("valid regex")
+        regex::Regex::new(r"(error|warning) in (\S*), line (\d+): (.*)$").expect("valid regex")
     });
 
     let check = tokio::process::Command::new("zeek")
@@ -130,10 +137,17 @@ pub async fn check<P1: AsRef<Path>, P2: AsRef<Path>>(
         .lines()
         .filter_map(|l| {
             ERRLINE.captures(l).and_then(|cap| {
+                let kind = match &cap[1] {
+                    "warning" => ErrorKind::Warning,
+                    "error" => ErrorKind::Error,
+                    _ => unreachable!(),
+                };
+
                 Some(CheckResult {
-                    file: cap[1].to_string(),
-                    line: cap[2].parse().ok()?,
-                    error: cap[3].to_string(),
+                    file: cap[2].to_string(),
+                    line: cap[3].parse().ok()?,
+                    message: cap[4].to_string(),
+                    kind,
                 })
             })
         })
@@ -247,18 +261,42 @@ mod test {
     }
 
     #[tokio::test]
-    async fn check() {
+    async fn check_error() {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         writeln!(file, "invalid code").unwrap();
 
         let checks = zeek::check(&file, std::env::current_dir().unwrap())
             .await
             .unwrap();
+
         assert_eq!(checks.len(), 1);
         let check = &checks[0];
         assert_eq!(check.file, file.path().to_string_lossy().to_string());
         assert_eq!(check.line, 1);
-        assert!(!check.error.is_empty());
+        assert!(!check.message.is_empty());
+        assert_eq!(check.kind, zeek::ErrorKind::Error);
+    }
+
+    #[tokio::test]
+    async fn check_warning() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "{}",
+            "event http_stats(c: connection, stats: http_stats_rec) { c$removal_hooks; }"
+        )
+        .unwrap();
+
+        let checks = zeek::check(&file, std::env::current_dir().unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(checks.len(), 1);
+        let check = &checks[0];
+        assert_eq!(check.file, file.path().to_string_lossy().to_string());
+        assert_eq!(check.line, 1);
+        assert!(!check.message.is_empty());
+        assert_eq!(check.kind, zeek::ErrorKind::Warning);
     }
 
     #[tokio::test]

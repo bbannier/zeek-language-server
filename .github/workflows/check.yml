@@ -41,14 +41,15 @@ jobs:
 
       - name: Install Zeek
         run: |
-          if [[ ${{ matrix.name }} == *linux* ]]; then \
-            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_22.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
-            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
-            sudo apt-get update; \
-            sudo apt-get install -y zeek; \
-            sudo echo /opt/zeek/bin >> ${GITHUB_PATH}; \
-          elif [[ ${{ matrix.name }} == *mac* ]]; then \
-            brew install zeek; \
+          # shellcheck disable=SC2193
+          if [[ ${{ matrix.name }} == *linux* ]]; then
+            echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_22.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list
+            curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null
+            sudo apt-get update
+            sudo apt-get install -y zeek
+            echo /opt/zeek/bin >> "${GITHUB_PATH}"
+          elif [[ ${{ matrix.name }} == *mac* ]]; then
+            brew install zeek
           fi
       - name: Test
         run: cargo test --workspace

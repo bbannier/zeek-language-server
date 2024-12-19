@@ -162,6 +162,29 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 // Prioritize items with good match, i.e. lower score.
                 .sorted_by_key(|(_, score)| *score)
                 .map(|(i, _)| i)
+                // For similar completions prefer to return the one with more docs (more likely to
+                // include the full documentation since we always include the source). This prevents us
+                // from emitting completions for implementations if we would also complete the
+                // declaration (likely with docs).
+                //
+                // Items with same kind and label should refer to the same underlying entity.
+                .chunk_by(|i| (i.kind, i.label.clone()))
+                .into_iter()
+                // Select the element with the longest documentation.
+                .map(|(_, x)| x)
+                .filter_map(|items| {
+                    items.max_by_key(|completion_item| {
+                        completion_item
+                            .documentation
+                            .as_ref()
+                            .map_or(0, |d| match d {
+                                Documentation::String(value)
+                                | Documentation::MarkupContent(MarkupContent { value, .. }) => {
+                                    value.len()
+                                }
+                            })
+                    })
+                })
                 .collect::<Vec<_>>()
         })
         .map(CompletionResponse::from)
@@ -547,7 +570,7 @@ mod test {
     use insta::assert_debug_snapshot;
     use tower_lsp::lsp_types::{
         CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
-        CompletionResponse, CompletionTriggerKind, PartialResultParams, Position,
+        CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams, Position,
         TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
     };
 
@@ -1054,5 +1077,50 @@ f",
 
             assert_debug_snapshot!(result);
         }
+    }
+
+    #[test]
+    fn declaration_and_definition() {
+        let mut db = TestDatabase::default();
+        let uri = Url::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+global foo: function();
+
+## DOCSTRING.
+function foo() {}
+
+event zeek_init() {
+    foo
+    }",
+        );
+
+        let Some(CompletionResponse::Array(result)) = complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(7, 8),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ) else {
+            panic!()
+        };
+
+        // We expect only one completion for this symbol.
+        let foo: Vec<_> = result.iter().filter(|r| r.label == "foo").collect();
+        assert_eq!(foo.len(), 1);
+
+        // We should get the completion with the documentation.
+        let Some(Documentation::MarkupContent(docs)) = foo[0].documentation.as_ref() else {
+            panic!()
+        };
+        assert!(docs.value.contains("DOCSTRING"));
+
+        // assert_debug_snapshot!(foo);
     }
 }

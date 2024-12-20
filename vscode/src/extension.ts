@@ -1,13 +1,13 @@
 import { inspect } from "util";
 import {
+  commands,
   ConfigurationTarget,
+  env,
   ExtensionContext,
   ProgressLocation,
   Uri,
-  workspace,
   window,
-  commands,
-  env,
+  workspace,
 } from "vscode";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -19,14 +19,11 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+import { XzReadableStream } from "xz-decompress";
+import * as tar from "tar";
 
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
-
-const PLATFORMS = {
-  linux: "x86_64-unknown-linux-gnu",
-  darwin: "x86_64-apple-darwin",
-};
 
 class ZeekLanguageServer {
   private readonly context: ExtensionContext;
@@ -89,47 +86,70 @@ class ZeekLanguageServer {
     }
   }
 
-  private async getDownloadUrl(): Promise<string> {
-    const platform = process.platform;
-    const variant = PLATFORMS[platform];
+  private getDownloadUrl(): string {
+    let arch = "";
+    switch (process.arch) {
+      case "arm64":
+        arch = "aarch64";
+        break;
 
-    if (variant) {
-      return `${BASE_URL}/v${this.version}/zeek-language-server-${variant}`;
-    } else {
-      log.error(`Unsupported platform ${platform}`);
-      return Promise.reject();
+      case "x64":
+        arch = "x86_64";
+        break;
+
+      default:
+        throw new Error(
+          `Unsupported platform ${process.platform} ${process.arch}`,
+        );
     }
+
+    let platform = "";
+    switch (process.platform) {
+      case "darwin":
+        platform = "apple-darwin";
+        break;
+
+      case "linux":
+        platform = "unknown-linux-gnu";
+        break;
+
+      case "win32":
+        platform = "pc-windows-msvc";
+        break;
+
+      default:
+        throw new Error(
+          `Unsupported platform ${process.platform} ${process.arch}`,
+        );
+    }
+
+    return `${BASE_URL}/v${this.version}/zeek-language-server-${arch}-${platform}.tar.xz`;
   }
 
   private async download(dest: string) {
-    const url = await this.getDownloadUrl();
+    const url = this.getDownloadUrl();
     log.info(`Downloading ${url} to ${dest}`);
 
-    if (fs.existsSync(dest)) {
-      fs.rmSync(dest);
-    } else {
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-    }
-
-    const params = {
-      title: "Downloading zeek-language-server binary",
-      location: ProgressLocation.Notification,
-      cancelable: false,
-    };
+    const dest_dir = path.dirname(dest);
+    fs.mkdirSync(dest_dir, { recursive: true });
 
     await window.withProgress(
-      params,
+      {
+        title: "Downloading zeek-language-server binary",
+        location: ProgressLocation.Window,
+        cancellable: true,
+      },
       async (progressHandle, cancellationHandle) => {
-        let lastPercent = 0;
-
         const response = await fetch(url);
-        const reader = response.body.getReader();
+        const content = new XzReadableStream(
+          response.body as ReadableStream<Uint8Array>,
+        );
+        const reader = content.getReader();
 
         cancellationHandle.onCancellationRequested(() => {
           reader.cancel("cancelled by user");
         });
 
-        const contentLength = parseInt(response.headers.get("Content-Length"));
         let receivedLength = 0;
         const chunks = []; // array of received binary chunks (comprises the body)
         for (;;) {
@@ -142,11 +162,7 @@ class ZeekLanguageServer {
           chunks.push(value);
           receivedLength += value.length;
 
-          const percent = (receivedLength / contentLength) * 100;
-          const message = `${percent.toFixed(0)}%`;
-          const increment = percent - lastPercent;
-          progressHandle.report({ message, increment });
-          lastPercent = percent;
+          progressHandle.report({ increment: 0 });
         }
 
         const chunksAll = new Uint8Array(receivedLength);
@@ -156,7 +172,18 @@ class ZeekLanguageServer {
           position += chunk.length;
         }
 
-        fs.writeFileSync(dest, chunksAll, { mode: 0o755 });
+        const tar_file = `${dest}.tmp.tar`;
+        fs.writeFileSync(tar_file, chunksAll);
+
+        await tar.extract({
+          file: tar_file,
+          strip: 1,
+          preserveOwner: false,
+          noMtime: true,
+          cwd: dest_dir,
+        });
+
+        fs.unlinkSync(tar_file);
       },
     );
   }
@@ -263,9 +290,9 @@ async function checkDependencies(): Promise<void> {
         installZeekFormat,
         doNotCheck,
       );
-      if (selected == installZeekFormat)
+      if (selected == installZeekFormat) {
         env.openExternal(Uri.parse("https://github.com/zeek/zeekscript"));
-      else if (selected == doNotCheck)
+      } else if (selected == doNotCheck) {
         await workspace
           .getConfiguration()
           .update(
@@ -273,18 +300,12 @@ async function checkDependencies(): Promise<void> {
             false,
             ConfigurationTarget.Global,
           );
+      }
     }
   }
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
-  // Do not attempt to start server on unsupported platforms.
-  const platform = process.platform;
-  if (!PLATFORMS[platform]) {
-    log.info(`IntelliSense is unsupported on platform ${platform}`);
-    return;
-  }
-
   // Register commands.
   context.subscriptions.push(commands.registerCommand("zeek.tryZeek", tryZeek));
 

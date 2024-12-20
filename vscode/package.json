@@ -203,5 +203,9 @@
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "vscode-languageclient": "^9.0.1"
+  },
+  "dependencies": {
+    "tar": "^7.4.3",
+    "xz-decompress": "^0.2.2"
   }
 }

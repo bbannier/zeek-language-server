@@ -1,0 +1,60 @@
+name: Publish vscode extension
+
+on:
+  push:
+    tags:
+      - "**[0-9]+.[0-9]+.[0-9]+*"
+
+jobs:
+  build:
+    name: Build vscode extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+
+      - name: Build vscode extension
+        run: |
+          cd vscode
+          npm install
+          npm run vsix
+
+      - name: Rename artifacts
+        run: |
+          mkdir artifacts
+          mv vscode/*.vsix artifacts
+
+      - name: Upload Release Assets
+        id: upload-release-assets
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: false
+          files: |
+            artifacts/*
+
+  publish:
+    name: Publish artifacts to Visual Studio Marketplace
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+      - run: |
+          cd vscode
+          npm install
+          npm install -g @vscode/vsce
+      - run: |
+          cd vscode
+          vsce package
+          vsce publish -p ${{ secrets.VSCODE_MARKETPLACE_TOKEN }}

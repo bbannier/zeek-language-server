@@ -1,4 +1,8 @@
-import { inspect } from "util";
+import { inspect } from "node:util";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as child_process from "node:child_process";
+import process from "node:process";
 import {
   commands,
   ConfigurationTarget,
@@ -9,9 +13,6 @@ import {
   window,
   workspace,
 } from "vscode";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as child_process from "node:child_process";
 
 import {
   Executable,
@@ -36,7 +37,7 @@ class ZeekLanguageServer {
 
   /** Finds the server binary. */
   public async getPath(): Promise<string> {
-    let pathFound: string;
+    let pathFound = "";
     const needCheckingPaths: string[] = [];
 
     // Check configured path.
@@ -59,7 +60,7 @@ class ZeekLanguageServer {
     needCheckingPaths.push(defaultPath);
 
     for (const path of needCheckingPaths) {
-      if (await this.check(path)) {
+      if (this.check(path)) {
         pathFound = path;
         break;
       }
@@ -74,7 +75,7 @@ class ZeekLanguageServer {
     return pathFound;
   }
 
-  private async check(file: string): Promise<boolean> {
+  private check(file: string): boolean {
     const expectOut = `zeek-language-server ${this.version}`;
 
     try {
@@ -218,7 +219,9 @@ const log = new (class {
 
 /** Publish the currently open document to try.zeek.org and open the result. */
 async function tryZeek(): Promise<void> {
-  const document = window.activeTextEditor.document;
+  const editor = window.activeTextEditor;
+  if (!editor) return;
+  const document = editor.document;
   const name = path.basename(document.uri.path);
   const content = document.getText();
 
@@ -311,22 +314,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   await checkDependencies();
 
-  // Start the server.
-  const serverExecutable: Executable = {
-    command:
-      process.env.__ZEEK_LSP_SERVER_DEBUG ??
-      (await new ZeekLanguageServer(context).getPath()),
-    args: [],
-  };
-
-  const env = {};
+  const env: { [key: string]: string } = {};
   const configuration = workspace.getConfiguration("zeekLanguageServer");
 
   const cfg_path = configuration.get<string>("zeekBinaryDirectory");
   const path = process.env["PATH"];
   if (cfg_path) {
     env["PATH"] = `${cfg_path}:${path}`;
-  } else {
+  } else if (path) {
     env["PATH"] = path;
   }
 
@@ -334,13 +329,24 @@ export async function activate(context: ExtensionContext): Promise<void> {
   if (zeekpath) {
     env["ZEEKPATH"] = zeekpath;
   } else {
-    env["ZEEKPATH"] = process.env["ZEEKPATH"];
+    const zeekpath = process.env["ZEEKPATH"];
+    if (zeekpath) env["ZEEKPATH"] = zeekpath;
   }
+
+  const server_args = [];
 
   const debugLogging = configuration.get<string>("debugLogging");
   if (debugLogging) {
-    serverExecutable.args.push("-f", debugLogging);
+    server_args.push("-f", debugLogging);
   }
+
+  // Start the server.
+  const serverExecutable: Executable = {
+    command:
+      process.env.__ZEEK_LSP_SERVER_DEBUG ??
+      (await new ZeekLanguageServer(context).getPath()),
+    args: server_args,
+  };
 
   if (Object.keys(env).length > 0) {
     log.info(env);
@@ -350,7 +356,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   let checkForUpdates = configuration.get<boolean>("checkForUpdates");
   if (checkForUpdates === undefined || checkForUpdates === null) {
     const path = configuration.get<string>("path");
-    checkForUpdates = path.length > 0;
+    checkForUpdates = path != null && path.length > 0;
   }
 
   const inlay_hints_variables = configuration.get<boolean>(

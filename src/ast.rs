@@ -642,14 +642,11 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
             }
         }
 
+        // Not being able to resolve the load is potentially not an
+        // error since this might race with prefixes being loaded.
         if let Some(implicit_load) = implicit_file {
             loads.push(implicit_load);
-        } else {
-            // Not being able to resolve the load is potentially not an
-            // error since this might race with prefixes being loaded.
-            warn!("could not resolve load of '{essential_input}'");
-            continue;
-        };
+        }
     }
 
     Arc::new(loads)

@@ -169,10 +169,6 @@
     ],
     "snippets": [
       {
-        "language": "zeek",
-        "path": "./snippets/zeek.json"
-      },
-      {
         "language": "sig",
         "path": "./snippets/sig.json"
       }

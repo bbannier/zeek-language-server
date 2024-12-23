@@ -5,8 +5,7 @@ use regex::Captures;
 
 #[must_use]
 pub fn markdownify(rst: &str) -> String {
-    let rst = unwrap(rst);
-    let rst = external_link(&rst);
+    let rst = external_link(rst);
     let rst = inline_code(&rst);
     let rst = zeek_id(&rst);
     let rst = zeek_keyword(&rst);
@@ -32,13 +31,6 @@ fn inline_code(rst: &str) -> Cow<str> {
         LazyLock::new(|| regex::Regex::new(r"``([^`]+)``").expect("invalid regexp"));
 
     RE.replace_all(rst, "`$1`")
-}
-
-fn unwrap(rst: &str) -> Cow<str> {
-    static RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"(\S)(\n)(\S)").expect("invalid regexp"));
-
-    RE.replace_all(rst, "$1 $3")
 }
 
 fn zeek_id(rst: &str) -> Cow<str> {
@@ -141,14 +133,6 @@ mod test {
             markdownify("``1 + 2`` and ``3 + 4``"),
             "`1 + 2` and `3 + 4`"
         );
-    }
-
-    #[test]
-    fn unwrap() {
-        assert_eq!(markdownify(""), "");
-        assert_eq!(markdownify("ab\n"), "ab\n");
-        assert_eq!(markdownify("ab\n\ncd\n"), "ab\n\ncd\n");
-        assert_eq!(markdownify("ab\ncd\n"), "ab cd\n");
     }
 
     #[test]
@@ -293,5 +277,15 @@ More text
 **TODO:** bar
 "
         );
+    }
+
+    #[test]
+    fn not_unwrap() {
+        // Do not wrap simple line breaks; zeekygen comments could contain e.g.,
+        // hardformatted tables and we want to preserve their formatting.
+        assert_eq!(markdownify(""), "");
+        assert_eq!(markdownify("ab\n"), "ab\n");
+        assert_eq!(markdownify("ab\n\ncd\n"), "ab\n\ncd\n");
+        assert_eq!(markdownify("ab\ncd\n"), "ab\ncd\n");
     }
 }

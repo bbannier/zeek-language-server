@@ -1617,6 +1617,39 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
     }
 
     #[test]
+    fn multiline_zeekygen_docs_not_wrapped() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        db.add_file(
+            (*uri).clone(),
+            "
+        ## Multiline
+        ## documentation.
+        global foo = 123;
+        foo;
+        ",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+        let root = tree.root_node();
+
+        let foo = root
+            .named_descendant_for_position(Position::new(4, 10))
+            .unwrap();
+        assert_eq!(foo.utf8_text(source.as_bytes()).unwrap(), "foo");
+
+        let decl = db.resolve(NodeLocation::from_node(uri, foo)).unwrap();
+        assert!(
+            decl.documentation
+                .starts_with("Multiline\ndocumentation.\n"),
+            "{docs}",
+            docs = &decl.documentation
+        );
+    }
+
+    #[test]
     fn resolve_type() {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());

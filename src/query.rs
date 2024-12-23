@@ -1406,6 +1406,7 @@ mod test {
 
     use crate::{lsp::TestDatabase, parse::Parse, query::Node, Files};
     use insta::assert_debug_snapshot;
+    use itertools::Itertools;
     use tower_lsp::lsp_types::{Position, Url};
 
     use super::Query;
@@ -1472,7 +1473,7 @@ mod test {
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
-        let root_decls = decls_(tree.root_node());
+        let root_decls: Vec<_> = decls_(tree.root_node()).into_iter().sorted().collect();
         assert_eq!(7, root_decls.len());
         assert_debug_snapshot!(root_decls);
 

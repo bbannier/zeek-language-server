@@ -24,6 +24,7 @@ eyre = { default-features = false, version = "0.6.12", features = ["auto-install
 futures = { default-features = false, version = "0.3.31" }
 itertools = "0.13.0"
 line-index = { version = "0.1.2", default-features = false }
+notify = { version = "7.0.0" }
 opentelemetry = { version = "0.26.0", features = ["trace"], optional = true }
 opentelemetry-otlp = { version = "0.26.0", features = ["grpc-tonic", "trace"], default-features = false, optional = true }
 opentelemetry-semantic-conventions = { version = "0.27.0", default-features = false }

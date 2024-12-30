@@ -6,6 +6,7 @@ pub(crate) use crate::{
     zeek, Client, Files, Str,
 };
 use itertools::Itertools;
+use notify::Watcher;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use salsa::ParallelDatabase;
@@ -139,6 +140,7 @@ impl Debug for Database {
 pub struct Backend {
     pub client: Option<tower_lsp::Client>,
     state: tokio::sync::RwLock<Database>,
+    file_watcher: Option<tokio::sync::Mutex<notify::RecommendedWatcher>>,
 }
 
 enum ParseResult {
@@ -512,11 +514,23 @@ impl LanguageServer for Backend {
         if let Ok(files) = self.visible_files().await {
             let update = self.did_change_watched_files(DidChangeWatchedFilesParams {
                 changes: files
-                    .into_iter()
-                    .map(|f| FileEvent::new(f, FileChangeType::CREATED))
+                    .iter()
+                    .map(|f| FileEvent::new(f.clone(), FileChangeType::CREATED))
                     .collect(),
             });
             update.await;
+
+            if let Some(watcher) = &self.file_watcher {
+                let mut watcher = watcher.lock().await;
+                for f in files {
+                    if let Err(e) = watcher.watch(
+                        &PathBuf::from(f.path()),
+                        notify::RecursiveMode::NonRecursive,
+                    ) {
+                        error!("could not watch file {}: {e}", f.path());
+                    }
+                }
+            }
         }
     }
 
@@ -1640,23 +1654,54 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
 }
 
 pub async fn run() {
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
+    let (tx, rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
+    let file_watcher = match notify::recommended_watcher(tx) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            warn!("could not watch for filesystem changes: {e:?}");
+            None
+        }
+    };
 
-    let (service, socket) = LspService::new(|client| Backend {
-        client: Some(client),
-        ..Backend::default()
+    let (service, socket) = LspService::new(|client| {
+        Arc::new(Backend {
+            client: Some(client),
+            file_watcher: file_watcher.map(|w| tokio::sync::Mutex::new(w)),
+            ..Backend::default()
+        })
     });
 
-    // Run a sequential server.
-    //
-    // Even though `Backend` protects its state with a mutex mutating uses of `Database` could
-    // still deadlock if a `Snapshot<Database>` is held on the same thread. Make that impossible by
-    // only handling exactly one request at a time.
-    Server::new(stdin, stdout, socket)
-        // .concurrency_level(1)
-        .serve(service)
-        .await;
+    let service_weak = Arc::downgrade(service.inner());
+    tokio::spawn(async move {
+        for r in rx {
+            if let Some(service) = service_weak.upgrade() {
+                if let Ok(r) = r {
+                    let typ = match r.kind {
+                        notify::EventKind::Create(_) => FileChangeType::CREATED,
+                        notify::EventKind::Modify(_) => FileChangeType::CHANGED,
+                        notify::EventKind::Remove(_) => FileChangeType::DELETED,
+                        _ => continue,
+                    };
+
+                    let changes = r
+                        .paths
+                        .into_iter()
+                        .filter_map(|p| {
+                            Some(FileEvent::new(Url::from_file_path(p.as_path()).ok()?, typ))
+                        })
+                        .collect();
+
+                    service
+                        .did_change_watched_files(DidChangeWatchedFilesParams { changes })
+                        .await;
+                }
+            }
+        }
+    });
+
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    Server::new(stdin, stdout, socket).serve(service).await;
 }
 
 #[allow(clippy::struct_excessive_bools)]

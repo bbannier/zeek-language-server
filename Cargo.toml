@@ -22,7 +22,7 @@ clap = { version = "4.5.23", features = ["std", "derive", "help"], default-featu
 conv = { version = "0.3.3", default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.31" }
-itertools = "0.13.0"
+itertools = "0.14.0"
 line-index = { version = "0.1.2", default-features = false }
 notify = { version = "7.0.0" }
 opentelemetry = { version = "0.26.0", features = ["trace"], optional = true }

@@ -9,7 +9,7 @@ repository = "https://github.com/bbannier/zeek-language-server"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
-insta = "1.41.1"
+insta = "1.42.0"
 tempfile = "3.15.0"
 wiremock = "0.6.2"
 

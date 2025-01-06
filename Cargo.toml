@@ -37,7 +37,7 @@ rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.1.0"
 salsa = "0.16.1"
 semver = { version = "1.0.24", default-features = false }
-serde = { version = "1.0.216", default-features = false }
+serde = { version = "1.0.217", default-features = false }
 serde_json = { default-features = false, version = "1.0.134" }
 smol_str = { version = "0.3.2", default-features = false, features = ["std"] }
 streaming-iterator = { version = "0.1.9", default-features = false }

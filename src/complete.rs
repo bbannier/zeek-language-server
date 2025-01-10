@@ -66,18 +66,18 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         let dd_triggered = params
             .context
             .and_then(|ctx| ctx.trigger_character)
-            .map_or(false, |c| c == "$");
+            .is_some_and(|c| c == "$");
 
         let ends_in_dd = root
             .descendant_for_position(node.range().end)
             .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
-            .map_or(false, |text| text.ends_with('$'));
+            .is_some_and(|text| text.ends_with('$'));
 
         let is_partial = !dd_triggered && !ends_in_dd;
 
         if dd_triggered
             || ends_in_dd
-            || node.parent().map_or(false, |p| {
+            || node.parent().is_some_and(|p| {
                 p.kind() == "field_access" || p.kind() == "field_check"
             }) {
             complete_field(state, node, Arc::clone(&uri), is_partial)

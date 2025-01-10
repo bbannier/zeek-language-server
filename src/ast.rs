@@ -39,7 +39,7 @@ pub trait Ast: Parse + Query {
     fn implicit_decls(&self) -> Arc<Vec<Decl>>;
 
     #[must_use]
-    fn possible_loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
+    fn possible_loads(&self, uri: Arc<Url>) -> Arc<Vec<Str>>;
 
     /// Find decl with ID from the node up the tree and in all other loaded files.
     #[must_use]
@@ -565,7 +565,7 @@ fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
     let loads: Vec<_> = db
         .loads(Arc::clone(&uri))
         .iter()
-        .map(PathBuf::from)
+        .map(|load| PathBuf::from(load.as_str()))
         .collect();
 
     let mut loaded_files = Vec::new();
@@ -670,7 +670,7 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
 }
 
 #[instrument(skip(db))]
-fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
+fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Str>> {
     let Ok(path) = uri.to_file_path() else {
         return Arc::new(Vec::new());
     };
@@ -697,11 +697,11 @@ fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<String>> {
             };
 
             if let Ok(f) = f.strip_prefix(path) {
-                Some(String::from(Path::new(".").join(f).to_str()?))
+                Some(Str::from(Path::new(".").join(f).to_str()?))
             } else {
                 prefixes.iter().find_map(|p| {
                     let l = f.strip_prefix(p).ok()?.to_str()?;
-                    Some(String::from(l))
+                    Some(Str::from(l))
                 })
             }
         })

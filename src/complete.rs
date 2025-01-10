@@ -6,7 +6,7 @@ use crate::{
     lsp::Database,
     parse::Parse,
     query::{self, Decl, DeclKind, Node, NodeLocation, Query},
-    Files,
+    Files, Str,
 };
 
 use itertools::Itertools;
@@ -100,7 +100,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 .possible_loads(Arc::clone(&uri))
                 .iter()
                 .map(|load| CompletionItem {
-                    label: load.clone(),
+                    label: load.to_string(),
                     kind: Some(CompletionItemKind::FILE),
                     ..CompletionItem::default()
                 })
@@ -272,7 +272,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
-                                .map(String::from)
+                                .map(Str::from)
                                 .ok()
                         })
                         .join(", "),

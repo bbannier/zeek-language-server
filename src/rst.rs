@@ -3,8 +3,10 @@ use std::{borrow::Cow, sync::LazyLock};
 use itertools::Itertools;
 use regex::Captures;
 
+use crate::Str;
+
 #[must_use]
-pub fn markdownify(rst: &str) -> String {
+pub fn markdownify(rst: &str) -> Str {
     let rst = external_link(rst);
     let rst = inline_code(&rst);
     let rst = zeek_id(&rst);
@@ -15,7 +17,7 @@ pub fn markdownify(rst: &str) -> String {
     let rst = note(&rst);
     let rst = todo(&rst);
 
-    rst.into_owned()
+    rst.into()
 }
 
 fn external_link(rst: &str) -> Cow<str> {

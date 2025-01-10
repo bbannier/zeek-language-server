@@ -813,7 +813,7 @@ impl LanguageServer for Backend {
         if debug_ast_nodes {
             contents.push(MarkedString::LanguageString(
                 tower_lsp::lsp_types::LanguageString {
-                    value: node.to_sexp(),
+                    value: node.to_sexp().to_string(),
                     language: "lisp".into(),
                 },
             ));
@@ -1605,13 +1605,13 @@ impl LanguageServer for Backend {
     }
 }
 
-fn word_at_position(source: &str, position: Position) -> Option<String> {
+fn word_at_position(source: &str, position: Position) -> Option<Str> {
     let line = source.lines().nth(usize::try_from(position.line).ok()?)?;
     let (a, b) = line.split_at(usize::try_from(position.character + 1).ok()?);
     let a = a.split_whitespace().last().unwrap_or_default();
     let b = b.split_whitespace().next().unwrap_or_default();
 
-    Some(format!("{a}{b}"))
+    Some(format!("{a}{b}").into())
 }
 
 fn fuzzy_search_symbol(db: &Database, symbol: &str) -> Vec<(f32, Decl)> {
@@ -1791,7 +1791,7 @@ fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
                 Some(DiagnosticSeverity::WARNING),
                 code,
                 None,
-                err.error(),
+                err.error().to_string(),
                 None,
                 None,
             )

@@ -34,7 +34,7 @@ pub enum DeclKind {
     Variable,
     Field,
     EnumMember,
-    Index(Index, String), // Result of an indexing operation for a given init expression.
+    Index(Index, Str), // Result of an indexing operation for a given init expression.
     Builtin(Type),
 }
 
@@ -283,8 +283,8 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    pub fn to_sexp(&self) -> String {
-        self.0.to_sexp()
+    pub fn to_sexp(&self) -> Str {
+        self.0.to_sexp().into()
     }
 
     pub fn utf8_text<'b>(&self, source: &'b [u8]) -> Result<&'b str, Utf8Error> {
@@ -292,18 +292,19 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    pub fn error(&self) -> String {
+    pub fn error(&self) -> Str {
         if self.0.is_error() {
-            self.0
-                .child(0)
-                .map_or_else(|| self.to_sexp(), |c| format!("unexpected {}", c.kind()))
+            self.0.child(0).map_or_else(
+                || self.to_sexp(),
+                |c| format!("unexpected {}", c.kind()).into(),
+            )
         } else if self.0.is_missing() {
-            let msg = self.to_sexp().replacen("MISSING", "missing", 1);
+            let msg = Str::from(self.to_sexp().replacen("MISSING", "missing", 1));
 
             #[allow(clippy::map_unwrap_or)]
             msg.strip_prefix('(')
                 .and_then(|m| m.strip_suffix(')'))
-                .map(String::from)
+                .map(Str::from)
                 .unwrap_or_else(|| msg)
         } else {
             self.to_sexp()
@@ -1165,7 +1166,7 @@ pub trait Query: Parse {
     fn decls(&self, uri: Arc<Url>) -> Arc<FxHashSet<Decl>>;
 
     #[must_use]
-    fn loads(&self, uri: Arc<Url>) -> Arc<Vec<String>>;
+    fn loads(&self, uri: Arc<Url>) -> Arc<Vec<Str>>;
 
     #[must_use]
     fn function_calls(&self, uri: Arc<Url>) -> Arc<Vec<FunctionCall>>;
@@ -1194,7 +1195,7 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
 }
 
 #[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
+fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Str>> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1207,6 +1208,7 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<String>> {
         loads_raw(tree.root_node(), &source)
             .iter()
             .map(ToString::to_string)
+            .map(Str::from)
             .collect(),
     )
 }
@@ -1354,7 +1356,7 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
 }
 
 /// Extracts pre and post zeekygen comments for the given node.
-fn zeekygen_comments(x: Node, source: &[u8]) -> Option<String> {
+fn zeekygen_comments(x: Node, source: &[u8]) -> Option<Str> {
     // Extracting the zeekygen comments with the query seems to hit some polynomial
     // edge case in tree-sitter. Extract them by hand for the time being.
     let mut docs = VecDeque::new();

@@ -1163,23 +1163,23 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[salsa::query_group(QueryStorage)]
 pub trait Query: Parse {
     #[must_use]
-    fn decls(&self, uri: Arc<Url>) -> Arc<FxHashSet<Decl>>;
+    fn decls(&self, uri: Arc<Url>) -> Arc<[Decl]>;
 
     #[must_use]
-    fn loads(&self, uri: Arc<Url>) -> Arc<Vec<Str>>;
+    fn loads(&self, uri: Arc<Url>) -> Arc<[Str]>;
 
     #[must_use]
-    fn function_calls(&self, uri: Arc<Url>) -> Arc<Vec<FunctionCall>>;
+    fn function_calls(&self, uri: Arc<Url>) -> Arc<[FunctionCall]>;
 
     #[must_use]
-    fn untyped_var_decls(&self, uri: Arc<Url>) -> Arc<Vec<Decl>>;
+    fn untyped_var_decls(&self, uri: Arc<Url>) -> Arc<[Decl]>;
 
     #[must_use]
-    fn ids(&self, uri: Arc<Url>) -> Arc<Vec<NodeLocation>>;
+    fn ids(&self, uri: Arc<Url>) -> Arc<[NodeLocation]>;
 }
 
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
+fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<[Decl]> {
     let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1191,11 +1191,17 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
     let decls = decls_(tree.root_node(), Arc::clone(&uri), source.as_bytes());
     let modules = modules(tree.root_node(), uri, source.as_bytes());
 
-    Arc::new(decls.into_iter().chain(modules.into_iter()).collect())
+    Arc::from(
+        decls
+            .into_iter()
+            .chain(modules.into_iter())
+            .unique()
+            .collect::<Vec<_>>(),
+    )
 }
 
 #[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Str>> {
+fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<[Str]> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1204,17 +1210,17 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Str>> {
         return Arc::default();
     };
 
-    Arc::new(
+    Arc::from(
         loads_raw(tree.root_node(), &source)
             .iter()
             .map(ToString::to_string)
             .map(Str::from)
-            .collect(),
+            .collect::<Vec<_>>(),
     )
 }
 
 #[instrument(skip(db))]
-fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
+fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
@@ -1233,7 +1239,7 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
         .capture_index_for_name("fn")
         .expect("call should be captured");
 
-    Arc::new(
+    Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source.as_bytes())
             .filter_map(|c| {
@@ -1251,12 +1257,12 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<FunctionCall>> {
                 Some(FunctionCall { f, args })
             })
             .cloned()
-            .collect(),
+            .collect::<Vec<_>>(),
     )
 }
 
 #[instrument(skip(db))]
-fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
+fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<[Decl]> {
     // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
@@ -1280,7 +1286,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
         .capture_index_for_name("var")
         .expect("call should be captured");
 
-    Arc::new(
+    Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
@@ -1318,12 +1324,12 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<Decl>> {
                 })
             })
             .cloned()
-            .collect(),
+            .collect::<Vec<_>>(),
     )
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
+fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<[NodeLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
@@ -1343,7 +1349,7 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
         .capture_index_for_name("id")
         .expect("id should be captured");
 
-    Arc::new(
+    Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
@@ -1351,7 +1357,7 @@ fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<Vec<NodeLocation>> {
                 Some(NodeLocation::from_node(Arc::clone(&uri), m.into()))
             })
             .cloned()
-            .collect(),
+            .collect::<Vec<_>>(),
     )
 }
 

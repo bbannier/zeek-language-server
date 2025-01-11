@@ -69,8 +69,7 @@ pub enum SourceUpdate {
 
 impl Database {
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
-        let mut files = self.files();
-        let files = Arc::make_mut(&mut files);
+        let mut files: FxHashSet<_> = self.files().iter().cloned().collect();
 
         let mut needs_files_update = false;
 
@@ -94,7 +93,7 @@ impl Database {
         }
 
         if needs_files_update {
-            self.set_files(Arc::new(files.clone()));
+            self.set_files(Arc::from(files.into_iter().collect::<Vec<_>>()));
         }
     }
 
@@ -417,7 +416,7 @@ impl LanguageServer for Backend {
 
         {
             let mut state = self.state.write().await;
-            state.set_workspace_folders(Arc::new(workspace_folders));
+            state.set_workspace_folders(Arc::from(workspace_folders));
             state.set_capabilities(Arc::new(params.capabilities));
             state.set_initialization_options(Arc::new(
                 params
@@ -429,7 +428,7 @@ impl LanguageServer for Backend {
 
         // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
-            Ok(prefixes) => self.state.write().await.set_prefixes(Arc::new(prefixes)),
+            Ok(prefixes) => self.state.write().await.set_prefixes(Arc::from(prefixes)),
             Err(e) => {
                 self.warn_message(format!(
                     "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
@@ -1321,9 +1320,8 @@ impl LanguageServer for Backend {
             .flat_map(|f| {
                 state
                     .decls(Arc::clone(f))
-                    .as_ref()
-                    .clone()
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .collect::<Vec<_>>()
             })
             .filter(|d| {
@@ -2063,10 +2061,9 @@ pub(crate) mod test {
         where
             P: Into<PathBuf>,
         {
-            let mut prefixes = self.0.prefixes();
-            let prefixes = Arc::make_mut(&mut prefixes);
+            let mut prefixes: Vec<_> = self.0.prefixes().into_iter().cloned().collect();
             prefixes.push(prefix.into());
-            self.0.set_prefixes(Arc::new(prefixes.clone()));
+            self.0.set_prefixes(Arc::from(prefixes.clone()));
         }
 
         pub(crate) fn snapshot(self) -> lsp::Database {

@@ -17,29 +17,29 @@ use crate::{
 #[salsa::query_group(AstStorage)]
 pub trait Ast: Parse + Query {
     #[salsa::input]
-    fn workspace_folders(&self) -> Arc<Vec<Url>>;
+    fn workspace_folders(&self) -> Arc<[Url]>;
 
     #[salsa::input]
-    fn prefixes(&self) -> Arc<Vec<PathBuf>>;
+    fn prefixes(&self) -> Arc<[PathBuf]>;
 
     #[must_use]
-    fn loaded_files(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
+    fn loaded_files(&self, url: Arc<Url>) -> Arc<[Arc<Url>]>;
 
     #[must_use]
-    fn loaded_files_recursive(&self, url: Arc<Url>) -> Arc<Vec<Arc<Url>>>;
+    fn loaded_files_recursive(&self, url: Arc<Url>) -> Arc<[Arc<Url>]>;
 
     /// Get the decls in uri and all files explicitly loaded by it.
     #[must_use]
-    fn explicit_decls_recursive(&self, url: Arc<Url>) -> Arc<FxHashSet<Decl>>;
+    fn explicit_decls_recursive(&self, url: Arc<Url>) -> Arc<[Decl]>;
 
     #[must_use]
-    fn implicit_loads(&self) -> Arc<Vec<Arc<Url>>>;
+    fn implicit_loads(&self) -> Arc<[Arc<Url>]>;
 
     #[must_use]
-    fn implicit_decls(&self) -> Arc<Vec<Decl>>;
+    fn implicit_decls(&self) -> Arc<[Decl]>;
 
     #[must_use]
-    fn possible_loads(&self, uri: Arc<Url>) -> Arc<Vec<Str>>;
+    fn possible_loads(&self, uri: Arc<Url>) -> Arc<[Str]>;
 
     /// Find decl with ID from the node up the tree and in all other loaded files.
     #[must_use]
@@ -557,7 +557,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
+fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<[Arc<Url>]> {
     let files = db.files();
 
     let prefixes = db.prefixes();
@@ -576,12 +576,12 @@ fn loaded_files(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
         }
     }
 
-    Arc::new(loaded_files)
+    Arc::from(loaded_files)
 }
 
 #[instrument(skip(db))]
-fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
-    let mut files = (*db.loaded_files(url)).clone();
+fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<[Arc<Url>]> {
+    let mut files: Vec<_> = db.loaded_files(url).iter().cloned().collect();
 
     loop {
         let mut new_files = Vec::new();
@@ -603,12 +603,12 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Url>) -> Arc<Vec<Arc<Url>>> {
         }
     }
 
-    Arc::new(files)
+    Arc::from(files)
 }
 
 #[instrument(skip(db))]
-fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<FxHashSet<Decl>> {
-    let mut decls = (*db.decls(Arc::clone(&uri))).clone();
+fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<[Decl]> {
+    let mut decls: FxHashSet<_> = db.decls(Arc::clone(&uri)).iter().cloned().collect();
 
     for load in db.loaded_files_recursive(uri).as_ref() {
         for decl in &*db.decls(Arc::clone(load)) {
@@ -616,11 +616,11 @@ fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Url>) -> Arc<FxHashSet<Decl>>
         }
     }
 
-    Arc::new(decls)
+    Arc::from(decls.into_iter().collect::<Vec<_>>())
 }
 
 #[instrument(skip(db))]
-fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
+fn implicit_loads(db: &dyn Ast) -> Arc<[Arc<Url>]> {
     let mut loads = Vec::new();
 
     // These loops looks horrible, but is okay since this function will be cached most of the time
@@ -649,11 +649,11 @@ fn implicit_loads(db: &dyn Ast) -> Arc<Vec<Arc<Url>>> {
         }
     }
 
-    Arc::new(loads)
+    Arc::from(loads)
 }
 
 #[instrument(skip(db))]
-fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
+fn implicit_decls(db: &dyn Ast) -> Arc<[Decl]> {
     let mut decls = FxHashSet::default();
 
     for implicit_load in db.implicit_loads().as_ref() {
@@ -666,23 +666,23 @@ fn implicit_decls(db: &dyn Ast) -> Arc<Vec<Decl>> {
     }
 
     let decls = decls.into_iter().collect::<Vec<_>>();
-    Arc::new(decls)
+    Arc::from(decls)
 }
 
 #[instrument(skip(db))]
-fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Str>> {
+fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<[Str]> {
     let Ok(path) = uri.to_file_path() else {
-        return Arc::new(Vec::new());
+        return Arc::default();
     };
 
     let Some(path) = path.parent() else {
-        return Arc::new(Vec::new());
+        return Arc::default();
     };
 
     let prefixes = db.prefixes();
     let files = db.files();
 
-    let loads = files
+    let loads: Vec<_> = files
         .iter()
         .filter(|f| f.path() != uri.path())
         .filter_map(|f| {
@@ -707,7 +707,7 @@ fn possible_loads(db: &dyn Ast, uri: Arc<Url>) -> Arc<Vec<Str>> {
         })
         .collect();
 
-    Arc::new(loads)
+    Arc::from(loads)
 }
 
 #[must_use]
@@ -719,9 +719,9 @@ pub fn is_redef(d: &Decl) -> bool {
 }
 
 #[instrument(skip(db))]
-fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> {
+fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<[Decl]> {
     if !is_redef(redef) {
-        return Arc::new(Vec::new());
+        return Arc::default();
     }
 
     let implicit_decls = db.implicit_decls();
@@ -734,18 +734,18 @@ fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Url>) -> Arc<Vec<Decl>> 
         .chain(decls.iter())
         .collect();
 
-    let xs = all_decls
+    let xs: Vec<_> = all_decls
         .into_iter()
         .filter(|x| x.fqid == redef.fqid)
         .cloned()
-        .collect::<Vec<_>>();
-    Arc::new(xs)
+        .collect();
+    Arc::from(xs)
 }
 
 pub(crate) fn load_to_file(
     load: &Path,
     base: &Url,
-    files: &FxHashSet<Arc<Url>>,
+    files: &[Arc<Url>],
     prefixes: &[PathBuf],
 ) -> Option<Arc<Url>> {
     let file_dir = base

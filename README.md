@@ -23,7 +23,7 @@ The server interprets the following `initializationOptions`:
 
 - `check_for_updates` (default: `true`):
   Whether to check for newer releases during startup
-- `enable_filewatcher` (default: `true`):
+- `enable_filewatcher` (default: `false`):
   Whether to watch the filesystem for out-of-band changes to known files
 - `inlay_hints_parameters` (default: `true`):
   Whether to show inlay hints for function call parameters

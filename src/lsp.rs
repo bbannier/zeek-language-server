@@ -1739,7 +1739,7 @@ impl InitializationOptions {
             rename: false,
             semantic_highlighting: true,
             debug_ast_nodes: false,
-            enable_filewatcher: true,
+            enable_filewatcher: false,
         }
     }
 
@@ -2929,7 +2929,7 @@ const x = 1;
                 rename: false,
                 semantic_highlighting: true,
                 debug_ast_nodes: false,
-                enable_filewatcher: true,
+                enable_filewatcher: false,
             }
         );
 

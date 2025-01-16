@@ -488,14 +488,10 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
+        let initialization_options = self.state.read().await.initialization_options();
+
         // Check whether a newer release is available.
-        if self
-            .state
-            .read()
-            .await
-            .initialization_options()
-            .check_for_updates
-        {
+        if initialization_options.check_for_updates {
             if let Some(latest) = self.get_latest_release(None).await {
                 let current =
                     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| latest.clone());
@@ -519,14 +515,16 @@ impl LanguageServer for Backend {
             });
             update.await;
 
-            if let Some(watcher) = &self.file_watcher {
-                let mut watcher = watcher.lock().await;
-                for f in files {
-                    if let Err(e) = watcher.watch(
-                        &PathBuf::from(f.path()),
-                        notify::RecursiveMode::NonRecursive,
-                    ) {
-                        error!("could not watch file {}: {e}", f.path());
+            if initialization_options.enable_filewatcher {
+                if let Some(watcher) = &self.file_watcher {
+                    let mut watcher = watcher.lock().await;
+                    for f in files {
+                        if let Err(e) = watcher.watch(
+                            &PathBuf::from(f.path()),
+                            notify::RecursiveMode::NonRecursive,
+                        ) {
+                            error!("could not watch file {}: {e}", f.path());
+                        }
                     }
                 }
             }
@@ -1709,6 +1707,9 @@ pub struct InitializationOptions {
     #[serde(default = "InitializationOptions::_default_check_for_updates")]
     check_for_updates: bool,
 
+    #[serde(default = "InitializationOptions::_default_enable_file_watcher")]
+    enable_filewatcher: bool,
+
     #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
     inlay_hints_parameters: bool,
 
@@ -1738,11 +1739,16 @@ impl InitializationOptions {
             rename: false,
             semantic_highlighting: true,
             debug_ast_nodes: false,
+            enable_filewatcher: true,
         }
     }
 
     const fn _default_check_for_updates() -> bool {
         Self::new().check_for_updates
+    }
+
+    const fn _default_enable_file_watcher() -> bool {
+        Self::new().enable_filewatcher
     }
 
     const fn _default_inlay_hints_parameters() -> bool {
@@ -2923,6 +2929,7 @@ const x = 1;
                 rename: false,
                 semantic_highlighting: true,
                 debug_ast_nodes: false,
+                enable_filewatcher: true,
             }
         );
 

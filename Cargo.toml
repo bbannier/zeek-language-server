@@ -38,7 +38,7 @@ rustc-hash = "2.1.0"
 salsa = "0.16.1"
 semver = { version = "1.0.24", default-features = false }
 serde = { version = "1.0.217", default-features = false }
-serde_json = { default-features = false, version = "1.0.135" }
+serde_json = { default-features = false, version = "1.0.137" }
 smol_str = { version = "0.3.2", default-features = false, features = ["std"] }
 streaming-iterator = { version = "0.1.9", default-features = false }
 tokio = { version = "1.43.0", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }

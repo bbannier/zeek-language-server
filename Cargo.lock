@@ -2823,7 +2823,7 @@ dependencies = [
 
 [[package]]
 name = "zeek-language-server"
-version = "0.64.5"
+version = "0.65.0"
 dependencies = [
  "clap",
  "conv",

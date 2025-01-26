@@ -76,7 +76,7 @@
       }
     },
     {
-      "match": "(@(DEBUG|DIR|FILENAME|deprecated|ifdef|ifndef|if|else|endif))",
+      "match": "(@(DEBUG|DIR|FILENAME|deprecated|ifdef|ifndef|if|else|endif|pragma))",
       "name": "meta.preprocessor.zeek",
       "captures": {
         "1": {

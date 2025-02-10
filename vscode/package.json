@@ -193,7 +193,7 @@
     "@typescript-eslint/eslint-plugin": "^8.23.0",
     "@typescript-eslint/parser": "^8.22.0",
     "@vscode/vsce": "^3.2.2",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.25.0",
     "eslint": "^8.57.0",
     "mocha": "^11.0.1",
     "prettier": "^3.5.0",

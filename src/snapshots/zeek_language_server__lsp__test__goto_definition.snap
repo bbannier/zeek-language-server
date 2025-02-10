@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.goto_definition(super::GotoDefinitionParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n                Position::new(3, 8)),\n            partial_result_params: PartialResultParams::default(),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.goto_definition(super::GotoDefinitionParams\n{\n    text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(3, 8),), partial_result_params:\n    PartialResultParams::default(), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
 ---
 Ok(
     Some(
@@ -19,12 +19,12 @@ Ok(
                 },
                 range: Range {
                     start: Position {
-                        line: 3,
+                        line: 2,
                         character: 0,
                     },
                     end: Position {
-                        line: 3,
-                        character: 22,
+                        line: 2,
+                        character: 29,
                     },
                 },
             },

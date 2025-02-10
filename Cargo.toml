@@ -35,7 +35,7 @@ rayon = "1.10.0"
 regex = { default-features = false, version = "1.11.1" }
 reqwest = { version = "0.12.12", default-features = false }
 rust-fuzzy-search = "0.1.1"
-rustc-hash = "2.1.0"
+rustc-hash = "2.1.1"
 salsa = "0.16.1"
 semver = { version = "1.0.25", default-features = false }
 serde = { version = "1.0.217", default-features = false }

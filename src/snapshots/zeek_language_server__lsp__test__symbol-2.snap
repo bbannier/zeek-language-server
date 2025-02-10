@@ -6,38 +6,6 @@ Ok(
     Some(
         [
             SymbolInformation {
-                name: "mod_a::A",
-                kind: Variable,
-                tags: None,
-                deprecated: None,
-                location: Location {
-                    uri: Url {
-                        scheme: "file",
-                        cannot_be_a_base: false,
-                        username: "",
-                        password: None,
-                        host: None,
-                        port: None,
-                        path: "/p1/a.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                    range: Range {
-                        start: Position {
-                            line: 0,
-                            character: 14,
-                        },
-                        end: Position {
-                            line: 0,
-                            character: 27,
-                        },
-                    },
-                },
-                container_name: Some(
-                    "mod_a",
-                ),
-            },
-            SymbolInformation {
                 name: "mod_b::B",
                 kind: Variable,
                 tags: None,
@@ -99,6 +67,38 @@ Ok(
                 },
                 container_name: Some(
                     "mod_x",
+                ),
+            },
+            SymbolInformation {
+                name: "mod_a::A",
+                kind: Variable,
+                tags: None,
+                deprecated: None,
+                location: Location {
+                    uri: Url {
+                        scheme: "file",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: None,
+                        port: None,
+                        path: "/p1/a.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 0,
+                            character: 14,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 27,
+                        },
+                    },
+                },
+                container_name: Some(
+                    "mod_a",
                 ),
             },
         ],

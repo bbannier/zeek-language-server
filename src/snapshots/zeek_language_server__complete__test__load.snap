@@ -1,7 +1,6 @@
 ---
 source: src/complete.rs
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n    Position::new(0, 6),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n})"
-snapshot_kind: text
 ---
 Some(
     Array(
@@ -33,7 +32,7 @@ Some(
                 tags: None,
             },
             CompletionItem {
-                label: "foo/b1",
+                label: "foo/a1",
                 label_details: None,
                 kind: Some(
                     File,
@@ -55,7 +54,7 @@ Some(
                 tags: None,
             },
             CompletionItem {
-                label: "foo/a1",
+                label: "foo/b1",
                 label_details: None,
                 kind: Some(
                     File,

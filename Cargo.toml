@@ -36,7 +36,7 @@ regex = { default-features = false, version = "1.11.1" }
 reqwest = { version = "0.12.12", default-features = false }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.1.1"
-salsa = "0.16.1"
+salsa = "0.18.0"
 semver = { version = "1.0.25", default-features = false }
 serde = { version = "1.0.218", default-features = false }
 serde_json = { default-features = false, version = "1.0.138" }

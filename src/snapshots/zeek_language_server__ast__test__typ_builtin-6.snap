@@ -1,17 +1,20 @@
 ---
 source: src/ast.rs
-expression: "db.resolve(NodeLocation::from_range(uri.clone(),\n            Range::new(pos, pos))).and_then(|d| db.typ(d))"
+expression: "(line,\ndb.resolve(NodeLocation::from_range(uri.clone(),\nRange::new(pos, pos))).and_then(|d| db.typ(d)))"
 ---
-Some(
-    Decl {
-        module: Global,
-        id: "count",
-        fqid: "count",
-        kind: Builtin(
-            Count,
-        ),
-        is_export: None,
-        loc: None,
-        documentation: "Builtin type 'count'",
-    },
+(
+    "            global he = 0x1234;",
+    Some(
+        Decl {
+            module: Global,
+            id: "count",
+            fqid: "count",
+            kind: Builtin(
+                Count,
+            ),
+            is_export: None,
+            loc: None,
+            documentation: "Builtin type 'count'",
+        },
+    ),
 )

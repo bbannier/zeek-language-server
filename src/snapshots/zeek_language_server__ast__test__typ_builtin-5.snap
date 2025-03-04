@@ -1,21 +1,24 @@
 ---
 source: src/ast.rs
-expression: "db.resolve(NodeLocation::from_range(uri.clone(),\n            Range::new(pos, pos))).and_then(|d| db.typ(d))"
+expression: "(line,\ndb.resolve(NodeLocation::from_range(uri.clone(),\nRange::new(pos, pos))).and_then(|d| db.typ(d)))"
 ---
-Some(
-    Decl {
-        module: Global,
-        id: "set[addr]",
-        fqid: "set[addr]",
-        kind: Builtin(
-            Set(
-                [
-                    Addr,
-                ],
+(
+    "            global h = example.org;",
+    Some(
+        Decl {
+            module: Global,
+            id: "set[addr]",
+            fqid: "set[addr]",
+            kind: Builtin(
+                Set(
+                    [
+                        Addr,
+                    ],
+                ),
             ),
-        ),
-        is_export: None,
-        loc: None,
-        documentation: "Builtin type 'set[addr]'",
-    },
+            is_export: None,
+            loc: None,
+            documentation: "Builtin type 'set[addr]'",
+        },
+    ),
 )

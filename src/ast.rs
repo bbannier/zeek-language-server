@@ -1402,15 +1402,17 @@ global x2 = f2();
         let tree = db.parse(uri.clone()).unwrap();
         let root = tree.root_node();
 
-        for (i, _) in source
+        for (i, line) in source
             .lines()
             .enumerate()
             .filter(|(_, l)| !l.trim().is_empty())
         {
             let pos = Position::new(i.try_into().unwrap(), 19);
-            assert_debug_snapshot!(db
-                .resolve(NodeLocation::from_range(uri.clone(), Range::new(pos, pos)))
-                .and_then(|d| db.typ(d)));
+            assert_debug_snapshot!((
+                line,
+                db.resolve(NodeLocation::from_range(uri.clone(), Range::new(pos, pos)))
+                    .and_then(|d| db.typ(d))
+            ));
         }
 
         // Validate that type is inferred for derived values.

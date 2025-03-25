@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const ABI_VERSION: usize = 15;
+
 fn generate_keywords(parser_c: &Path) {
     let file = File::open(parser_c).unwrap();
     let mut buf_reader = BufReader::new(file);
@@ -50,21 +52,20 @@ fn main() {
 
     tree_sitter_generate::generate_parser_in_directory(
         &out_dir,
+        Some(out_dir.to_str().unwrap()),
         Some(grammar.to_str().unwrap()),
-        tree_sitter::LANGUAGE_VERSION,
+        ABI_VERSION,
         None,
         None,
     )
     .expect("could not generate parser");
 
     // Compile tree-sitter C output.
-    let src_dir = out_dir.join("src");
-
-    let parser_c = src_dir.join("parser.c");
+    let parser_c = out_dir.join("parser.c");
 
     Build::new()
         .file(&parser_c)
-        .include(out_dir.join("src"))
+        .include(out_dir)
         .warnings(false)
         .compile("tree-sitter-zeek");
 

@@ -7,10 +7,10 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tree-sitter = "0.24.7"
+tree-sitter = "0.25.3"
 
 [build-dependencies]
 cc = "1.2.17"
 regex = { version = "1.11.1", default-features = false }
-tree-sitter = "0.24.7"
-tree-sitter-generate = "0.24.7"
+tree-sitter = "0.25.3"
+tree-sitter-generate = "0.25.3"

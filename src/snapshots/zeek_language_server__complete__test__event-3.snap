@@ -1,14 +1,20 @@
 ---
 source: src/complete.rs
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(9, 6),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n})"
-snapshot_kind: text
 ---
 Some(
     Array(
         [
             CompletionItem {
                 label: "hok",
-                label_details: None,
+                label_details: Some(
+                    CompletionItemLabelDetails {
+                        detail: Some(
+                            "(c: count, s: string)",
+                        ),
+                        description: None,
+                    },
+                ),
                 kind: Some(
                     Operator,
                 ),
@@ -25,29 +31,9 @@ Some(
                 preselect: None,
                 sort_text: None,
                 filter_text: None,
-                insert_text: None,
-                insert_text_format: None,
-                insert_text_mode: None,
-                text_edit: None,
-                additional_text_edits: None,
-                command: None,
-                commit_characters: None,
-                data: None,
-                tags: None,
-            },
-            CompletionItem {
-                label: "hook",
-                label_details: None,
-                kind: Some(
-                    Keyword,
+                insert_text: Some(
+                    "hok(c: count, s: string) {}",
                 ),
-                detail: None,
-                documentation: None,
-                deprecated: None,
-                preselect: None,
-                sort_text: None,
-                filter_text: None,
-                insert_text: None,
                 insert_text_format: None,
                 insert_text_mode: None,
                 text_edit: None,

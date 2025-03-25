@@ -55,4 +55,4 @@ pub const HIGHLIGHT_QUERY: &str = include_str!("../vendor/tree-sitter-zeek/queri
 /// The content of the [`node-types.json`][] file for this grammar.
 ///
 /// [`node-types.json`]: https://tree-sitter.github.io/tree-sitter/using-parsers#static-node-types
-pub const ZEEK_NODE_TYPES: &str = include_str!(concat!(env!("OUT_DIR"), "/src/node-types.json"));
+pub const ZEEK_NODE_TYPES: &str = include_str!(concat!(env!("OUT_DIR"), "/node-types.json"));

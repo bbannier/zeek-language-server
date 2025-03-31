@@ -188,7 +188,7 @@
     "onLanguage:sig"
   ],
   "devDependencies": {
-    "@types/node": "^22.13.11",
+    "@types/node": "^22.13.14",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^8.27.0",
     "@typescript-eslint/parser": "^8.28.0",

@@ -183,10 +183,6 @@
     "lint": "prettier --check . && eslint --ext=ts .",
     "fix": "prettier --write . && eslint --ext=ts . --fix"
   },
-  "activationEvents": [
-    "onLanguage:zeek",
-    "onLanguage:sig"
-  ],
   "devDependencies": {
     "@types/node": "^22.13.14",
     "@types/vscode": "^1.82.0",

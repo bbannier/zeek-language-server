@@ -653,7 +653,7 @@ impl LanguageServer for Backend {
             Ok(ParseResult::HasDiagnostics) => {
                 // Do not bother checking the file with zeek if it has parse errors.
             }
-        };
+        }
     }
 
     #[instrument]
@@ -784,7 +784,7 @@ impl LanguageServer for Backend {
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
-                        .last()
+                        .next_back()
                         .map(|(_, d)| d.documentation.to_string())
                     {
                         contents.push(MarkedString::String(docs));
@@ -1011,7 +1011,7 @@ impl LanguageServer for Backend {
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
-                        .last()
+                        .next_back()
                         .and_then(|(_, d)| d.loc.as_ref())
                         .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
                 }

@@ -150,14 +150,14 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
 
         // Prefer to return the decl instead of the definition for constructs which support both.
         // In either case, the last instance still wins.
-        let only_decls = all.iter().filter(|d| {
+        let mut only_decls = all.iter().filter(|d| {
             matches!(
                 d.kind,
                 DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
             )
         });
 
-        if let Some(decl) = only_decls.last() {
+        if let Some(decl) = only_decls.next_back() {
             decl
         } else {
             *all.last()?
@@ -532,7 +532,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 }
             }
             _ => {}
-        };
+        }
 
         // We seem to only know the definition.
         return Some(r);

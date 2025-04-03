@@ -293,6 +293,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<Compl
         .collect::<Vec<_>>()
 }
 
+#[allow(clippy::too_many_lines)]
 fn complete_snippet(text: &str) -> Vec<CompletionItem> {
     let snippets = vec![
         (
@@ -323,6 +324,10 @@ fn complete_snippet(text: &str) -> Vec<CompletionItem> {
         (
             "for",
             vec!["for ( ${1:x} in ${2:xs} )", "\t{", "\t${3:#code}", "\t}"],
+        ),
+        (
+            "while",
+            vec!["while ( ${1:cond} )", "\t{", "\t${0:#code}", "\t}"],
         ),
         (
             "when",
@@ -1041,7 +1046,7 @@ f",
     fn snippet() {
         for input in [
             "rec", "swit", "for", "when", "notice", "function", "event", "if", "@if", "@ifdef",
-            "@ifndef", "enum",
+            "@ifndef", "enum", "while",
         ] {
             fn only_snippets(xs: CompletionResponse) -> Vec<CompletionItem> {
                 match xs {

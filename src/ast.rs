@@ -460,6 +460,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         }
         "floatp" => return db.resolve_type(Type::Double, Some(location)),
         "ipv4" | "ipv6" => return db.resolve_type(Type::Addr, Some(location)),
+        "subnet" => return db.resolve_type(Type::Subnet, Some(location)),
         "interval" => return db.resolve_type(Type::Interval, Some(location)),
         "port" => return db.resolve_type(Type::Port, Some(location)),
         "string" => return db.resolve_type(Type::String, Some(location)),

@@ -121,6 +121,32 @@ Some(
                 data: None,
                 tags: None,
             },
+            CompletionItem {
+                label: "schedule",
+                label_details: None,
+                kind: Some(
+                    Snippet,
+                ),
+                detail: None,
+                documentation: None,
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: Some(
+                    "schedule ${1:10secs} { ${2:my_event}(${3:}) };",
+                ),
+                insert_text_format: Some(
+                    Snippet,
+                ),
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
         ],
     ),
 )

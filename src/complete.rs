@@ -379,6 +379,10 @@ fn complete_snippet(text: &str) -> Vec<CompletionItem> {
             "@ifndef",
             vec!["@ifndef ( ${1:cond} )", "\t${0:#code}", "@endif"],
         ),
+        (
+            "schedule",
+            vec!["schedule ${1:10secs} { ${2:my_event}(${3:}) };"],
+        ),
     ];
 
     snippets
@@ -1046,7 +1050,7 @@ f",
     fn snippet() {
         for input in [
             "rec", "swit", "for", "when", "notice", "function", "event", "if", "@if", "@ifdef",
-            "@ifndef", "enum", "while",
+            "@ifndef", "enum", "while", "schedule",
         ] {
             fn only_snippets(xs: CompletionResponse) -> Vec<CompletionItem> {
                 match xs {

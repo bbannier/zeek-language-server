@@ -742,7 +742,6 @@ pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
                 }
                 "redef_enum_decl" => {
                     let fields = decl
-                        .named_child("enum_body")?
                         .named_children("enum_body_elem")
                         .into_iter()
                         .filter_map(|c| {

@@ -1103,6 +1103,56 @@ x$x2;",
     }
 
     #[test]
+    fn redef_enum() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+
+        db.add_file(
+            Url::from_file_path("/base.zeek").unwrap(),
+            "type E: enum { eA, };",
+        );
+        db.add_file(
+            (*uri).clone(),
+            "
+@load /base
+
+redef enum E += {
+    eB,
+};
+
+global e: E = eB;
+
+module foo;
+redef enum E += {
+    eC,
+};
+
+global e_foo: E = eC;
+",
+        );
+
+        let db = db.snapshot();
+        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(uri.clone()).unwrap();
+
+        let type_ = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(7, 14))
+            .unwrap();
+        assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eB"));
+        assert_debug_snapshot!(db
+            .resolve(NodeLocation::from_node(uri.clone(), type_))
+            .unwrap());
+
+        let type_ = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(14, 18))
+            .unwrap();
+        assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eC"));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, type_)).unwrap());
+    }
+
+    #[test]
     fn redef_global_record() {
         let mut db = TestDatabase::default();
         let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());

@@ -1,0 +1,51 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_node(uri, type_)).unwrap()"
+---
+Decl {
+    module: String(
+        "foo",
+    ),
+    id: "eC",
+    fqid: "foo::eC",
+    kind: EnumMember,
+    is_export: Some(
+        false,
+    ),
+    loc: Some(
+        Location {
+            range: Range {
+                start: Position {
+                    line: 11,
+                    character: 4,
+                },
+                end: Position {
+                    line: 11,
+                    character: 6,
+                },
+            },
+            selection_range: Range {
+                start: Position {
+                    line: 11,
+                    character: 4,
+                },
+                end: Position {
+                    line: 11,
+                    character: 6,
+                },
+            },
+            uri: Url {
+                scheme: "file",
+                cannot_be_a_base: false,
+                username: "",
+                password: None,
+                host: None,
+                port: None,
+                path: "/x.zeek",
+                query: None,
+                fragment: None,
+            },
+        },
+    ),
+    documentation: "```zeek\n# In foo::E\neC\n```",
+}

@@ -1,0 +1,1 @@
+ignore-interior-mutability = ["tower_lsp_server::lsp_types::Uri"]

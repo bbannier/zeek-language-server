@@ -20,10 +20,10 @@ mod server {
         },
         LanguageServer, UriExt,
     };
-    use zeek_language_server::lsp::SharedBackend;
+    use zeek_language_server::lsp::Backend;
 
     pub async fn initial_index() {
-        let db = SharedBackend::default();
+        let db = Backend::default();
         let _ = db.initialize(InitializeParams::default()).await;
         // NOTE: Do not call `initialized` as that triggers preloading.
         // db.initialized(InitializedParams {}).await;
@@ -41,14 +41,14 @@ mod server {
     }
 
     pub async fn visible_files() {
-        let db = SharedBackend::default();
+        let db = Backend::default();
         let _ = db.initialize(InitializeParams::default()).await;
 
         db.visible_files().await.unwrap();
     }
 
     fn bench_completion(c: &mut Criterion) {
-        pub async fn completion(db: &SharedBackend, uri: Uri) {
+        pub async fn completion(db: &Backend, uri: Uri) {
             let _ = db
                 .completion(CompletionParams {
                     text_document_position: TextDocumentPositionParams::new(
@@ -68,7 +68,7 @@ mod server {
         let runtime = super::runtime();
 
         let (db, uri) = runtime.block_on(async {
-            let db = SharedBackend::default();
+            let db = Backend::default();
             let _ = db
                 .initialize(InitializeParams {
                     initialization_options: Some(json!({"check_for_updates": false})),
@@ -103,7 +103,7 @@ mod server {
         let runtime = super::runtime();
 
         let (db, uri) = runtime.block_on(async {
-            let db = SharedBackend::default();
+            let db = Backend::default();
             let _ = db
                 .initialize(InitializeParams {
                     initialization_options: Some(json!({"check_for_updates": false})),

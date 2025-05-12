@@ -6,18 +6,12 @@ pub(crate) use crate::{
     zeek, Client, Files, Str,
 };
 use itertools::Itertools;
-use notify::Watcher;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use salsa::ParallelDatabase;
 use semver::Version;
 use serde::Deserialize;
-use std::{
-    fmt::Debug,
-    ops::Deref,
-    path::PathBuf,
-    sync::{Arc, Weak},
-};
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp_server::{
     jsonrpc::{Error, Result},
     lsp_types::{
@@ -144,7 +138,6 @@ impl Debug for Database {
 pub struct Backend {
     pub client: Option<tower_lsp_server::Client>,
     state: tokio::sync::RwLock<Database>,
-    file_watcher: Option<tokio::sync::Mutex<notify::RecommendedWatcher>>,
 }
 
 enum ParseResult {
@@ -406,18 +399,7 @@ impl Backend {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct SharedBackend(Arc<Backend>);
-
-impl Deref for SharedBackend {
-    type Target = Backend;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl LanguageServer for SharedBackend {
+impl LanguageServer for Backend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let workspace_folders = params
@@ -524,20 +506,6 @@ impl LanguageServer for SharedBackend {
                     .collect(),
             });
             update.await;
-
-            if initialization_options.enable_filewatcher {
-                if let Some(watcher) = &self.file_watcher {
-                    let mut watcher = watcher.lock().await;
-                    for f in files {
-                        if let Err(e) = watcher.watch(
-                            &PathBuf::from(f.path().as_str()),
-                            notify::RecursiveMode::NonRecursive,
-                        ) {
-                            error!("could not watch file {}: {e}", f.path());
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -1658,50 +1626,9 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
 }
 
 pub async fn run() {
-    let (tx, rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
-    let file_watcher = match notify::recommended_watcher(tx) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            warn!("could not watch for filesystem changes: {e:?}");
-            None
-        }
-    };
-
-    let (service, socket) = LspService::new(|client| {
-        SharedBackend(Arc::new(Backend {
-            client: Some(client),
-            file_watcher: file_watcher.map(|w| tokio::sync::Mutex::new(w)),
-            ..Backend::default()
-        }))
-    });
-
-    let service_weak: Weak<Backend> = Arc::downgrade(&service.inner().0);
-    tokio::spawn(async move {
-        for r in rx {
-            if let Some(service) = service_weak.upgrade() {
-                let service = SharedBackend(service);
-                if let Ok(r) = r {
-                    let typ = match r.kind {
-                        notify::EventKind::Create(_) => FileChangeType::CREATED,
-                        notify::EventKind::Modify(_) => FileChangeType::CHANGED,
-                        notify::EventKind::Remove(_) => FileChangeType::DELETED,
-                        _ => continue,
-                    };
-
-                    let changes = r
-                        .paths
-                        .into_iter()
-                        .filter_map(|p| {
-                            Some(FileEvent::new(Uri::from_file_path(p.as_path())?, typ))
-                        })
-                        .collect();
-
-                    service
-                        .did_change_watched_files(DidChangeWatchedFilesParams { changes })
-                        .await;
-                }
-            }
-        }
+    let (service, socket) = LspService::new(|client| Backend {
+        client: Some(client),
+        ..Backend::default()
     });
 
     let stdin = tokio::io::stdin();
@@ -1715,9 +1642,6 @@ pub async fn run() {
 pub struct InitializationOptions {
     #[serde(default = "InitializationOptions::_default_check_for_updates")]
     check_for_updates: bool,
-
-    #[serde(default = "InitializationOptions::_default_enable_file_watcher")]
-    enable_filewatcher: bool,
 
     #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
     inlay_hints_parameters: bool,
@@ -1748,16 +1672,11 @@ impl InitializationOptions {
             rename: false,
             semantic_highlighting: true,
             debug_ast_nodes: false,
-            enable_filewatcher: false,
         }
     }
 
     const fn _default_check_for_updates() -> bool {
         Self::new().check_for_updates
-    }
-
-    const fn _default_enable_file_watcher() -> bool {
-        Self::new().enable_filewatcher
     }
 
     const fn _default_inlay_hints_parameters() -> bool {
@@ -2066,7 +1985,7 @@ pub(crate) mod test {
         zeek, Client,
     };
 
-    use super::{Backend, SharedBackend, SourceUpdate};
+    use super::{Backend, SourceUpdate};
 
     #[derive(Default)]
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
@@ -2091,11 +2010,11 @@ pub(crate) mod test {
         }
     }
 
-    pub(crate) fn serve(database: TestDatabase) -> SharedBackend {
-        SharedBackend(Arc::new(Backend {
+    pub(crate) fn serve(database: TestDatabase) -> Backend {
+        Backend {
             state: tokio::sync::RwLock::new(database.0),
             ..Backend::default()
-        }))
+        }
     }
 
     #[test]
@@ -2940,7 +2859,6 @@ const x = 1;
                 rename: false,
                 semantic_highlighting: true,
                 debug_ast_nodes: false,
-                enable_filewatcher: false,
             }
         );
 

@@ -13,4 +13,4 @@ tree-sitter = "0.25.3"
 cc = "1.2.21"
 regex = { version = "1.11.1", default-features = false }
 tree-sitter = "0.25.3"
-tree-sitter-generate = "0.25.3"
+tree-sitter-generate = "0.25.4"

@@ -36,17 +36,28 @@ Some(
                         character: 7,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/x.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/x.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "Index 0 of `table([1]=\"a\", [2]=\"b\")`",

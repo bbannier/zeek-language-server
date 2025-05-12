@@ -1,6 +1,6 @@
 use crate::{query::Node, Files};
 use std::sync::Arc;
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::lsp_types::Uri;
 use tracing::instrument;
 use tree_sitter::Parser;
 use tree_sitter_zeek::language_zeek;
@@ -32,11 +32,11 @@ impl Eq for Tree {}
 #[salsa::query_group(ParseStorage)]
 pub trait Parse: Files {
     #[must_use]
-    fn parse(&self, file: Arc<Url>) -> Option<Arc<Tree>>;
+    fn parse(&self, file: Arc<Uri>) -> Option<Arc<Tree>>;
 }
 
 #[instrument(skip(db))]
-fn parse(db: &dyn Parse, file: Arc<Url>) -> Option<Arc<Tree>> {
+fn parse(db: &dyn Parse, file: Arc<Uri>) -> Option<Arc<Tree>> {
     let mut parser = Parser::new();
     parser
         .set_language(&language_zeek())
@@ -57,7 +57,7 @@ mod test {
         crate::{lsp::TestDatabase, parse::Parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
-        tower_lsp::lsp_types::Url,
+        tower_lsp_server::{lsp_types::Uri, UriExt},
     };
 
     const SOURCE: &str = "event zeek_init() {}";
@@ -65,7 +65,7 @@ mod test {
     #[test]
     fn can_parse() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
 
         db.add_file((*uri).clone(), SOURCE);
 

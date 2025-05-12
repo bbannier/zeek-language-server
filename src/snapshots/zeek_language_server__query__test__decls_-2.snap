@@ -33,17 +33,28 @@ expression: func_decls
                         character: 41,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nlocal x=1;\n```",

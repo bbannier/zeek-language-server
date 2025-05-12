@@ -9,22 +9,21 @@ fn runtime() -> tokio::runtime::Runtime {
 
 mod server {
     use criterion::{criterion_group, Criterion};
-    use reqwest::Url;
     use serde_json::json;
-    use tower_lsp::{
+    use tower_lsp_server::{
         lsp_types::{
             CompletionContext, CompletionParams, CompletionTriggerKind,
             DidChangeWatchedFilesParams, DidOpenTextDocumentParams, FileChangeType, FileEvent,
             InitializeParams, InitializedParams, PartialResultParams, Position, ReferenceContext,
             ReferenceParams, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-            WorkDoneProgressParams,
+            Uri, WorkDoneProgressParams,
         },
-        LanguageServer,
+        LanguageServer, UriExt,
     };
-    use zeek_language_server::lsp::Backend;
+    use zeek_language_server::lsp::SharedBackend;
 
     pub async fn initial_index() {
-        let db = Backend::default();
+        let db = SharedBackend::default();
         let _ = db.initialize(InitializeParams::default()).await;
         // NOTE: Do not call `initialized` as that triggers preloading.
         // db.initialized(InitializedParams {}).await;
@@ -42,14 +41,14 @@ mod server {
     }
 
     pub async fn visible_files() {
-        let db = Backend::default();
+        let db = SharedBackend::default();
         let _ = db.initialize(InitializeParams::default()).await;
 
         db.visible_files().await.unwrap();
     }
 
     fn bench_completion(c: &mut Criterion) {
-        pub async fn completion(db: &Backend, uri: Url) {
+        pub async fn completion(db: &SharedBackend, uri: Uri) {
             let _ = db
                 .completion(CompletionParams {
                     text_document_position: TextDocumentPositionParams::new(
@@ -69,7 +68,7 @@ mod server {
         let runtime = super::runtime();
 
         let (db, uri) = runtime.block_on(async {
-            let db = Backend::default();
+            let db = SharedBackend::default();
             let _ = db
                 .initialize(InitializeParams {
                     initialization_options: Some(json!({"check_for_updates": false})),
@@ -80,7 +79,7 @@ mod server {
             // This triggers indexing.
             db.initialized(InitializedParams {}).await;
 
-            let uri = Url::from_file_path("/x.zeek").unwrap();
+            let uri = Uri::from_file_path("/x.zeek").unwrap();
 
             db.did_open(DidOpenTextDocumentParams {
                 text_document: TextDocumentItem::new(
@@ -104,7 +103,7 @@ mod server {
         let runtime = super::runtime();
 
         let (db, uri) = runtime.block_on(async {
-            let db = Backend::default();
+            let db = SharedBackend::default();
             let _ = db
                 .initialize(InitializeParams {
                     initialization_options: Some(json!({"check_for_updates": false})),
@@ -115,7 +114,7 @@ mod server {
             // This triggers indexing.
             db.initialized(InitializedParams {}).await;
 
-            let uri = Url::from_file_path("/x.zeek").unwrap();
+            let uri = Uri::from_file_path("/x.zeek").unwrap();
 
             db.did_open(DidOpenTextDocumentParams {
                 text_document: TextDocumentItem::new(

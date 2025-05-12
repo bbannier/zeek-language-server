@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.code_action(CodeActionParams {\n            text_document: TextDocumentIdentifier::new((*uri).clone()),\n            range: Range::new(Position::new(0, 1), Position::new(0, 2)),\n            context,\n            work_done_progress_params: WorkDoneProgressParams::default(),\n            partial_result_params: PartialResultParams::default(),\n        }).await"
+expression: "server.code_action(CodeActionParams\n{\n    text_document: TextDocumentIdentifier::new((*uri).clone()), range:\n    Range::new(Position::new(0, 1), Position::new(0, 2)), context,\n    work_done_progress_params: WorkDoneProgressParams::default(),\n    partial_result_params: PartialResultParams::default(),\n}).await"
 ---
 Ok(
     Some(
@@ -18,17 +18,28 @@ Ok(
                         WorkspaceEdit {
                             changes: Some(
                                 {
-                                    Url {
-                                        scheme: "file",
-                                        cannot_be_a_base: false,
-                                        username: "",
-                                        password: None,
-                                        host: None,
-                                        port: None,
-                                        path: "/x.zeek",
-                                        query: None,
-                                        fragment: None,
-                                    }: [
+                                    Uri(
+                                        Uri {
+                                            scheme: Some(
+                                                "file",
+                                            ),
+                                            authority: Some(
+                                                Authority {
+                                                    userinfo: None,
+                                                    host: Host {
+                                                        text: "",
+                                                        data: RegName(
+                                                            "",
+                                                        ),
+                                                    },
+                                                    port: None,
+                                                },
+                                            ),
+                                            path: "/x.zeek",
+                                            query: None,
+                                            fragment: None,
+                                        },
+                                    ): [
                                         TextEdit {
                                             range: Range {
                                                 start: Position {

@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "db.resolve(NodeLocation::from_node(uri, type_)).unwrap()"
+expression: "db.resolve(NodeLocation::from_node(uri.clone(), type_)).unwrap()"
 ---
 Decl {
     module: None,
@@ -32,17 +32,28 @@ Decl {
                     character: 6,
                 },
             },
-            uri: Url {
-                scheme: "file",
-                cannot_be_a_base: false,
-                username: "",
-                password: None,
-                host: None,
-                port: None,
-                path: "/x.zeek",
-                query: None,
-                fragment: None,
-            },
+            uri: Uri(
+                Uri {
+                    scheme: Some(
+                        "file",
+                    ),
+                    authority: Some(
+                        Authority {
+                            userinfo: None,
+                            host: Host {
+                                text: "",
+                                data: RegName(
+                                    "",
+                                ),
+                            },
+                            port: None,
+                        },
+                    ),
+                    path: "/x.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            ),
         },
     ),
     documentation: "```zeek\n# In E\neB\n```",

@@ -31,17 +31,28 @@ expression: decls
                         character: 20,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/tmp/x.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/tmp/x.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nx: count\n```",
@@ -74,17 +85,28 @@ expression: decls
                         character: 31,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/tmp/x.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/tmp/x.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\ny: string\n```",

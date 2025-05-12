@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use streaming_iterator::{convert, StreamingIterator, StreamingIteratorMut};
-use tower_lsp::lsp_types::{Position, Range, Url};
+use tower_lsp_server::lsp_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
@@ -79,7 +79,7 @@ pub struct Signature {
 pub struct Location {
     pub range: Range,
     pub selection_range: Range,
-    pub uri: Arc<Url>,
+    pub uri: Arc<Uri>,
 }
 
 impl PartialOrd for Location {
@@ -193,12 +193,12 @@ impl Ord for OrderedRange {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeLocation {
     pub range: Range,
-    pub uri: Arc<Url>,
+    pub uri: Arc<Uri>,
 }
 
 impl NodeLocation {
     #[must_use]
-    pub fn from_node(uri: Arc<Url>, node: Node) -> Self {
+    pub fn from_node(uri: Arc<Uri>, node: Node) -> Self {
         Self {
             range: node.range(),
             uri,
@@ -206,7 +206,7 @@ impl NodeLocation {
     }
 
     #[must_use]
-    pub fn from_range(uri: Arc<Url>, range: Range) -> Self {
+    pub fn from_range(uri: Arc<Uri>, range: Range) -> Self {
         Self { range, uri }
     }
 }
@@ -445,7 +445,7 @@ fn in_export(mut node: Node) -> bool {
 
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         let signature = "((formal_args)? (type)?@fn_result)@signature";
         let signature = format!("[{signature} (func_params ({signature}))]");
@@ -926,7 +926,7 @@ fn typ_from_text(text: &str) -> Option<Type> {
 
 #[instrument]
 #[must_use]
-fn modules(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
+fn modules(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)").expect("invalid query")
     });
@@ -1000,7 +1000,7 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
 
 /// Extract declarations for function parameters on the given node.
 #[instrument]
-pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn fn_param_decls(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     match node.kind() {
         "func_decl" | "hook_decl" | "event_decl" => {}
         _ => return FxHashSet::default(),
@@ -1044,7 +1044,7 @@ pub fn fn_param_decls(node: Node, uri: Arc<Url>, source: &[u8]) -> FxHashSet<Dec
 
 /// Extract for loop parameters on the given node.
 #[instrument]
-fn loop_param_decls(node: Node, uri: &Arc<Url>, source: &[u8]) -> FxHashSet<Decl> {
+fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
             &language_zeek(),
@@ -1162,23 +1162,23 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[salsa::query_group(QueryStorage)]
 pub trait Query: Parse {
     #[must_use]
-    fn decls(&self, uri: Arc<Url>) -> Arc<[Decl]>;
+    fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
 
     #[must_use]
-    fn loads(&self, uri: Arc<Url>) -> Arc<[Str]>;
+    fn loads(&self, uri: Arc<Uri>) -> Arc<[Str]>;
 
     #[must_use]
-    fn function_calls(&self, uri: Arc<Url>) -> Arc<[FunctionCall]>;
+    fn function_calls(&self, uri: Arc<Uri>) -> Arc<[FunctionCall]>;
 
     #[must_use]
-    fn untyped_var_decls(&self, uri: Arc<Url>) -> Arc<[Decl]>;
+    fn untyped_var_decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
 
     #[must_use]
-    fn ids(&self, uri: Arc<Url>) -> Arc<[NodeLocation]>;
+    fn ids(&self, uri: Arc<Uri>) -> Arc<[NodeLocation]>;
 }
 
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<[Decl]> {
+fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1200,7 +1200,7 @@ fn decls(db: &dyn Query, uri: Arc<Url>) -> Arc<[Decl]> {
 }
 
 #[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<[Str]> {
+fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Str]> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1219,7 +1219,7 @@ fn loads(db: &dyn Query, uri: Arc<Url>) -> Arc<[Str]> {
 }
 
 #[instrument(skip(db))]
-fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<[FunctionCall]> {
+fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
@@ -1261,7 +1261,7 @@ fn function_calls(db: &dyn Query, uri: Arc<Url>) -> Arc<[FunctionCall]> {
 }
 
 #[instrument(skip(db))]
-fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<[Decl]> {
+fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
@@ -1328,7 +1328,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Url>) -> Arc<[Decl]> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn ids(db: &dyn Query, uri: Arc<Url>) -> Arc<[NodeLocation]> {
+fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
@@ -1414,7 +1414,10 @@ mod test {
     use crate::{lsp::TestDatabase, parse::Parse, query::Node, Files};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
-    use tower_lsp::lsp_types::{Position, Url};
+    use tower_lsp_server::{
+        lsp_types::{Position, Uri},
+        UriExt,
+    };
 
     use super::Query;
 
@@ -1450,7 +1453,7 @@ mod test {
     fn loads_raw() {
         let parse = |source: &str| {
             let mut db = TestDatabase::default();
-            let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+            let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
 
             db.add_file((*uri).clone(), source);
             db.0.parse(uri)
@@ -1471,7 +1474,7 @@ mod test {
     #[test]
     fn decls_() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
 
         let tree = db.0.parse(uri.clone()).expect("cannot parse");
@@ -1501,7 +1504,7 @@ mod test {
     #[test]
     fn decls_weird_modules() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
         db.add_file(
             (*uri).clone(),
             "module x;
@@ -1522,7 +1525,7 @@ global GLOBAL::f3: function();
     #[test]
     fn in_export() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/foo/bar.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
         let tree = db.0.parse(uri).unwrap();
 
@@ -1543,7 +1546,7 @@ global GLOBAL::f3: function();
     #[test]
     fn fn_param_decls() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/tmp/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/tmp/x.zeek").unwrap());
         db.add_file(
             (*uri).clone(),
             "module x;
@@ -1577,7 +1580,7 @@ function f1(x: count, y: string) {
     #[test]
     fn fn_like_decls() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
         db.add_file(
             (*uri).clone(),
             "
@@ -1597,7 +1600,7 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
     #[test]
     fn markdown_docs() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
         db.add_file(
             (*uri).clone(),
             "## With `link <http://example.com>`__

@@ -31,17 +31,28 @@ Some(
                         character: 18,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/x.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/x.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\n# In x::X\nf: count &optional;\n```",

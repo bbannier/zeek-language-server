@@ -1,7 +1,6 @@
 ---
 source: src/query.rs
 expression: root_decls
-snapshot_kind: text
 ---
 [
     Decl {
@@ -40,17 +39,28 @@ snapshot_kind: text
                                     character: 20,
                                 },
                             },
-                            uri: Url {
-                                scheme: "file",
-                                cannot_be_a_base: false,
-                                username: "",
-                                password: None,
-                                host: None,
-                                port: None,
-                                path: "/foo/bar.zeek",
-                                query: None,
-                                fragment: None,
-                            },
+                            uri: Uri(
+                                Uri {
+                                    scheme: Some(
+                                        "file",
+                                    ),
+                                    authority: Some(
+                                        Authority {
+                                            userinfo: None,
+                                            host: Host {
+                                                text: "",
+                                                data: RegName(
+                                                    "",
+                                                ),
+                                            },
+                                            port: None,
+                                        },
+                                    ),
+                                    path: "/foo/bar.zeek",
+                                    query: None,
+                                    fragment: None,
+                                },
+                            ),
                         },
                     ),
                     documentation: "A new field.\n* * *\n```zeek\n# In bar::Y\ny2: count &optional;\n```",
@@ -82,17 +92,28 @@ snapshot_kind: text
                         character: 28,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nredef record Y += {\n                  ## A new field.\n                  y2: count &optional;\n              };\n```",
@@ -137,17 +158,28 @@ snapshot_kind: text
                                         character: 43,
                                     },
                                 },
-                                uri: Url {
-                                    scheme: "file",
-                                    cannot_be_a_base: false,
-                                    username: "",
-                                    password: None,
-                                    host: None,
-                                    port: None,
-                                    path: "/foo/bar.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
+                                uri: Uri(
+                                    Uri {
+                                        scheme: Some(
+                                            "file",
+                                        ),
+                                        authority: Some(
+                                            Authority {
+                                                userinfo: None,
+                                                host: Host {
+                                                    text: "",
+                                                    data: RegName(
+                                                        "",
+                                                    ),
+                                                },
+                                                port: None,
+                                            },
+                                        ),
+                                        path: "/foo/bar.zeek",
+                                        query: None,
+                                        fragment: None,
+                                    },
+                                ),
                             },
                         ),
                         documentation: "```zeek\nx: count\n```",
@@ -180,17 +212,28 @@ snapshot_kind: text
                         character: 24,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nglobal fun: function(x: count): string;\n```",
@@ -235,17 +278,28 @@ snapshot_kind: text
                                         character: 35,
                                     },
                                 },
-                                uri: Url {
-                                    scheme: "file",
-                                    cannot_be_a_base: false,
-                                    username: "",
-                                    password: None,
-                                    host: None,
-                                    port: None,
-                                    path: "/foo/bar.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
+                                uri: Uri(
+                                    Uri {
+                                        scheme: Some(
+                                            "file",
+                                        ),
+                                        authority: Some(
+                                            Authority {
+                                                userinfo: None,
+                                                host: Host {
+                                                    text: "",
+                                                    data: RegName(
+                                                        "",
+                                                    ),
+                                                },
+                                                port: None,
+                                            },
+                                        ),
+                                        path: "/foo/bar.zeek",
+                                        query: None,
+                                        fragment: None,
+                                    },
+                                ),
                             },
                         ),
                         documentation: "```zeek\nx: count\n```",
@@ -278,17 +332,28 @@ snapshot_kind: text
                         character: 26,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
@@ -330,17 +395,28 @@ snapshot_kind: text
                         character: 29,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nevent zeek_init() { local x=1;\n                  # Comment.\n              }\n```",
@@ -381,17 +457,28 @@ snapshot_kind: text
                                     character: 19,
                                 },
                             },
-                            uri: Url {
-                                scheme: "file",
-                                cannot_be_a_base: false,
-                                username: "",
-                                password: None,
-                                host: None,
-                                port: None,
-                                path: "/foo/bar.zeek",
-                                query: None,
-                                fragment: None,
-                            },
+                            uri: Uri(
+                                Uri {
+                                    scheme: Some(
+                                        "file",
+                                    ),
+                                    authority: Some(
+                                        Authority {
+                                            userinfo: None,
+                                            host: Host {
+                                                text: "",
+                                                data: RegName(
+                                                    "",
+                                                ),
+                                            },
+                                            port: None,
+                                        },
+                                    ),
+                                    path: "/foo/bar.zeek",
+                                    query: None,
+                                    fragment: None,
+                                },
+                            ),
                         },
                     ),
                     documentation: "A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
@@ -423,17 +510,28 @@ snapshot_kind: text
                         character: 20,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "Y does the y.\nIt takes no arguments.\nBut it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
@@ -470,17 +568,28 @@ snapshot_kind: text
                         character: 25,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nconst x = 1 &redef;\n```",
@@ -517,17 +626,28 @@ snapshot_kind: text
                         character: 26,
                     },
                 },
-                uri: Url {
-                    scheme: "file",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: None,
-                    port: None,
-                    path: "/foo/bar.zeek",
-                    query: None,
-                    fragment: None,
-                },
+                uri: Uri(
+                    Uri {
+                        scheme: Some(
+                            "file",
+                        ),
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: Host {
+                                    text: "",
+                                    data: RegName(
+                                        "",
+                                    ),
+                                },
+                                port: None,
+                            },
+                        ),
+                        path: "/foo/bar.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
             },
         ),
         documentation: "```zeek\nglobal y = 1;\n```",

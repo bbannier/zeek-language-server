@@ -1,41 +1,72 @@
 ---
 source: src/ast.rs
-assertion_line: 399
 expression: db.0.loaded_files_recursive(a)
-
 ---
 [
-    Url {
-        scheme: "file",
-        cannot_be_a_base: false,
-        username: "",
-        password: None,
-        host: None,
-        port: None,
-        path: "/tmp/b.zeek",
-        query: None,
-        fragment: None,
-    },
-    Url {
-        scheme: "file",
-        cannot_be_a_base: false,
-        username: "",
-        password: None,
-        host: None,
-        port: None,
-        path: "/tmp/c.zeek",
-        query: None,
-        fragment: None,
-    },
-    Url {
-        scheme: "file",
-        cannot_be_a_base: false,
-        username: "",
-        password: None,
-        host: None,
-        port: None,
-        path: "/tmp/d.zeek",
-        query: None,
-        fragment: None,
-    },
+    Uri(
+        Uri {
+            scheme: Some(
+                "file",
+            ),
+            authority: Some(
+                Authority {
+                    userinfo: None,
+                    host: Host {
+                        text: "",
+                        data: RegName(
+                            "",
+                        ),
+                    },
+                    port: None,
+                },
+            ),
+            path: "/tmp/b.zeek",
+            query: None,
+            fragment: None,
+        },
+    ),
+    Uri(
+        Uri {
+            scheme: Some(
+                "file",
+            ),
+            authority: Some(
+                Authority {
+                    userinfo: None,
+                    host: Host {
+                        text: "",
+                        data: RegName(
+                            "",
+                        ),
+                    },
+                    port: None,
+                },
+            ),
+            path: "/tmp/c.zeek",
+            query: None,
+            fragment: None,
+        },
+    ),
+    Uri(
+        Uri {
+            scheme: Some(
+                "file",
+            ),
+            authority: Some(
+                Authority {
+                    userinfo: None,
+                    host: Host {
+                        text: "",
+                        data: RegName(
+                            "",
+                        ),
+                    },
+                    port: None,
+                },
+            ),
+            path: "/tmp/d.zeek",
+            query: None,
+            fragment: None,
+        },
+    ),
 ]

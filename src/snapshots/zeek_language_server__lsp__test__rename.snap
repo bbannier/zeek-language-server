@@ -1,23 +1,34 @@
 ---
 source: src/lsp.rs
-expression: "server.rename(RenameParams {\n            text_document_position: TextDocumentPositionParams::new(TextDocumentIdentifier::new((*uri).clone()),\n                Position::new(7, 10)),\n            new_name: \"ABC\".into(),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.rename(RenameParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new((*uri).clone()),\n    Position::new(7, 10),), new_name: \"ABC\".into(), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
 ---
 Ok(
     Some(
         WorkspaceEdit {
             changes: Some(
                 {
-                    Url {
-                        scheme: "file",
-                        cannot_be_a_base: false,
-                        username: "",
-                        password: None,
-                        host: None,
-                        port: None,
-                        path: "/x.zeek",
-                        query: None,
-                        fragment: None,
-                    }: [
+                    Uri(
+                        Uri {
+                            scheme: Some(
+                                "file",
+                            ),
+                            authority: Some(
+                                Authority {
+                                    userinfo: None,
+                                    host: Host {
+                                        text: "",
+                                        data: RegName(
+                                            "",
+                                        ),
+                                    },
+                                    port: None,
+                                },
+                            ),
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    ): [
                         TextEdit {
                             range: Range {
                                 start: Position {

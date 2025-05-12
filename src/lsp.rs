@@ -12,8 +12,13 @@ use rustc_hash::FxHashSet;
 use salsa::ParallelDatabase;
 use semver::Version;
 use serde::Deserialize;
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
-use tower_lsp::{
+use std::{
+    fmt::Debug,
+    ops::Deref,
+    path::PathBuf,
+    sync::{Arc, Weak},
+};
+use tower_lsp_server::{
     jsonrpc::{Error, Result},
     lsp_types::{
         notification::Progress,
@@ -30,18 +35,18 @@ use tower_lsp::{
         FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
         GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
         ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip, Location,
-        MarkedString, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf,
-        ParameterInformation, ParameterLabel, Position, ProgressParams, ProgressParamsValue,
-        ProgressToken, Range, ReferenceParams, RenameParams, SemanticTokensFullOptions,
-        SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-        SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, SignatureHelp,
-        SignatureHelpOptions, SignatureHelpParams, SignatureInformation, SymbolInformation,
-        SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
-        WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams, WorkDoneProgressEnd,
-        WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
+        InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip,
+        LanguageString, Location, MarkedString, MarkupContent, MarkupKind, MessageType,
+        NumberOrString, OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams,
+        ProgressParamsValue, ProgressToken, Range, ReferenceParams, RenameParams,
+        SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
+        SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
+        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
+        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+        Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
     },
-    LanguageServer, LspService, Server,
+    LanguageServer, LspService, Server, UriExt,
 };
 use tracing::{error, instrument, trace_span, warn};
 use walkdir::WalkDir;
@@ -63,8 +68,8 @@ pub struct Database {
 unsafe impl Sync for Database {}
 
 pub enum SourceUpdate {
-    Remove(Arc<Url>),
-    Update(Arc<Url>, Str),
+    Remove(Arc<Uri>),
+    Update(Arc<Uri>, Str),
 }
 
 impl Database {
@@ -97,7 +102,7 @@ impl Database {
         }
     }
 
-    fn file_changed(&self, uri: Arc<Url>) {
+    fn file_changed(&self, uri: Arc<Uri>) {
         // Precompute decls in this file.
         let _d = self.decls(uri);
     }
@@ -137,7 +142,7 @@ impl Debug for Database {
 
 #[derive(Debug, Default)]
 pub struct Backend {
-    pub client: Option<tower_lsp::Client>,
+    pub client: Option<tower_lsp_server::Client>,
     state: tokio::sync::RwLock<Database>,
     file_watcher: Option<tokio::sync::Mutex<notify::RecommendedWatcher>>,
 }
@@ -251,7 +256,7 @@ impl Backend {
         }
     }
 
-    async fn file_changed(&self, uri: Arc<Url>) -> Result<ParseResult> {
+    async fn file_changed(&self, uri: Arc<Uri>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
             let state = self.state.read().await;
             let diags = {
@@ -280,7 +285,7 @@ impl Backend {
         Ok(ParseResult::Ok)
     }
 
-    pub async fn visible_files(&self) -> Result<Vec<Url>> {
+    pub async fn visible_files(&self) -> Result<Vec<Uri>> {
         let system_files = zeek::system_files()
             .await
             .map_err(|e| {
@@ -288,13 +293,13 @@ impl Backend {
                 Error::internal_error()
             })?
             .into_par_iter()
-            .filter_map(|f| Url::from_file_path(f.path).ok());
+            .filter_map(|f| Uri::from_file_path(f.path));
 
         let workspace_folders = self.state.read().await.workspace_folders();
 
         let workspace_files = workspace_folders
             .par_iter()
-            .filter_map(|f| f.to_file_path().ok())
+            .filter_map(UriExt::to_file_path)
             .flat_map(|dir| {
                 WalkDir::new(dir)
                     .into_iter()
@@ -302,7 +307,7 @@ impl Backend {
                     .filter(|e| !e.file_type().is_dir())
                     .filter_map(|f| {
                         if f.path().extension()? == "zeek" {
-                            Url::from_file_path(f.path()).ok()
+                            Uri::from_file_path(f.path())
                         } else {
                             None
                         }
@@ -337,26 +342,21 @@ impl Backend {
     }
 
     /// This is wrapper around `zeek::check` directly publishing diagnostics.
-    async fn check(&self, uri: Url, version: Option<i32>) {
+    async fn check(&self, uri: Uri, version: Option<i32>) {
         // If we have not client to publish to there is no need to run checks.
         let Some(client) = &self.client else {
             return;
         };
 
-        let Ok(file) = uri.to_file_path() else {
+        let Some(file) = uri.to_file_path() else {
             return;
         };
 
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
-        let workspace_folder = self
-            .state
-            .read()
-            .await
-            .workspace_folders()
-            .first()
-            .and_then(|f| f.to_file_path().ok());
+        let workspace_folders = self.state.read().await.workspace_folders();
+        let workspace_folder = workspace_folders.first().and_then(UriExt::to_file_path);
 
         let checks = if let Some(folder) = workspace_folder {
             zeek::check(&file, folder).await
@@ -406,8 +406,18 @@ impl Backend {
     }
 }
 
-#[tower_lsp::async_trait]
-impl LanguageServer for Backend {
+#[derive(Debug, Default)]
+pub struct SharedBackend(Arc<Backend>);
+
+impl Deref for SharedBackend {
+    type Target = Backend;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl LanguageServer for SharedBackend {
     #[instrument]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let workspace_folders = params
@@ -520,7 +530,7 @@ impl LanguageServer for Backend {
                     let mut watcher = watcher.lock().await;
                     for f in files {
                         if let Err(e) = watcher.watch(
-                            &PathBuf::from(f.path()),
+                            &PathBuf::from(f.path().as_str()),
                             notify::RecursiveMode::NonRecursive,
                         ) {
                             error!("could not watch file {}: {e}", f.path());
@@ -561,10 +571,10 @@ impl LanguageServer for Backend {
 
             let updates = updates.into_iter().map(|c| {
                 tokio::spawn(async move {
-                    let source = match tokio::fs::read_to_string(c.uri.path()).await {
+                    let source = match tokio::fs::read_to_string(c.uri.path().as_str()).await {
                         Ok(s) => s,
                         Err(e) => {
-                            warn!("failed to read '{}': {}", &c.uri, e);
+                            warn!("failed to read '{}': {}", &c.uri.path(), e);
                             return None;
                         }
                     };
@@ -808,12 +818,10 @@ impl LanguageServer for Backend {
             .debug_ast_nodes;
 
         if debug_ast_nodes {
-            contents.push(MarkedString::LanguageString(
-                tower_lsp::lsp_types::LanguageString {
-                    value: node.to_sexp().to_string(),
-                    language: "lisp".into(),
-                },
-            ));
+            contents.push(MarkedString::LanguageString(LanguageString {
+                value: node.to_sexp().to_string(),
+                language: "lisp".into(),
+            }));
         }
 
         let hover = Hover {
@@ -1660,17 +1668,18 @@ pub async fn run() {
     };
 
     let (service, socket) = LspService::new(|client| {
-        Arc::new(Backend {
+        SharedBackend(Arc::new(Backend {
             client: Some(client),
             file_watcher: file_watcher.map(|w| tokio::sync::Mutex::new(w)),
             ..Backend::default()
-        })
+        }))
     });
 
-    let service_weak = Arc::downgrade(service.inner());
+    let service_weak: Weak<Backend> = Arc::downgrade(&service.inner().0);
     tokio::spawn(async move {
         for r in rx {
             if let Some(service) = service_weak.upgrade() {
+                let service = SharedBackend(service);
                 if let Ok(r) = r {
                     let typ = match r.kind {
                         notify::EventKind::Create(_) => FileChangeType::CREATED,
@@ -1683,7 +1692,7 @@ pub async fn run() {
                         .paths
                         .into_iter()
                         .filter_map(|p| {
-                            Some(FileEvent::new(Url::from_file_path(p.as_path()).ok()?, typ))
+                            Some(FileEvent::new(Uri::from_file_path(p.as_path())?, typ))
                         })
                         .collect();
 
@@ -1805,7 +1814,7 @@ fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
 
 async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
-    fn all_sources(f: Arc<Url>, db: &Database) -> FxHashSet<Arc<Url>> {
+    fn all_sources(f: Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
         let mut loads = FxHashSet::default();
         loads.extend(db.implicit_loads().iter().cloned());
         loads.extend(db.loaded_files(f).iter().cloned());
@@ -1880,7 +1889,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
 
 mod semantic_tokens {
     use itertools::Itertools;
-    use tower_lsp::{
+    use tower_lsp_server::{
         jsonrpc::Error,
         lsp_types::{
             Position, Range, SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend,
@@ -2038,27 +2047,32 @@ pub(crate) mod test {
     use insta::assert_debug_snapshot;
     use semver::Version;
     use serde_json::json;
-    use tower_lsp::{
+    use tower_lsp_server::{
         lsp_types::{
-            ClientCapabilities, CompletionParams, CompletionResponse, DocumentSymbolParams,
-            DocumentSymbolResponse, FormattingOptions, HoverParams, InlayHintParams,
-            PartialResultParams, Position, Range, ReferenceContext, ReferenceParams, RenameParams,
-            SemanticTokensParams, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-            WorkDoneProgressParams, WorkspaceSymbolParams,
+            ClientCapabilities, CodeActionContext, CodeActionParams, CompletionParams,
+            CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions,
+            HoverParams, InlayHintParams, PartialResultParams, Position, Range, ReferenceContext,
+            ReferenceParams, RenameParams, SemanticTokensParams, TextDocumentIdentifier,
+            TextDocumentPositionParams, Uri, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
-        LanguageServer,
+        LanguageServer, UriExt,
     };
     use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
 
-    use crate::{ast::Ast, lsp, parse::Parse, zeek, Client};
+    use crate::{
+        ast::Ast,
+        lsp::{self, tree_diagnostics},
+        parse::Parse,
+        zeek, Client,
+    };
 
-    use super::{Backend, SourceUpdate};
+    use super::{Backend, SharedBackend, SourceUpdate};
 
     #[derive(Default)]
     pub(crate) struct TestDatabase(pub(crate) lsp::Database);
 
     impl TestDatabase {
-        pub(crate) fn add_file(&mut self, uri: Url, source: impl AsRef<str>) {
+        pub(crate) fn add_file(&mut self, uri: Uri, source: impl AsRef<str>) {
             self.0
                 .update_sources(&[SourceUpdate::Update(Arc::new(uri), source.as_ref().into())]);
         }
@@ -2077,11 +2091,11 @@ pub(crate) mod test {
         }
     }
 
-    pub(crate) fn serve(database: TestDatabase) -> Backend {
-        Backend {
+    pub(crate) fn serve(database: TestDatabase) -> SharedBackend {
+        SharedBackend(Arc::new(Backend {
             state: tokio::sync::RwLock::new(database.0),
             ..Backend::default()
-        }
+        }))
     }
 
     #[test]
@@ -2097,15 +2111,15 @@ pub(crate) mod test {
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
-            Url::from_file_path("/p1/a.zeek").unwrap(),
+            Uri::from_file_path("/p1/a.zeek").unwrap(),
             "module mod_a; global A = 1;",
         );
         db.add_file(
-            Url::from_file_path("/p2/b.zeek").unwrap(),
+            Uri::from_file_path("/p2/b.zeek").unwrap(),
             "module mod_b; global B = 2;",
         );
         db.add_file(
-            Url::from_file_path("/x/x.zeek").unwrap(),
+            Uri::from_file_path("/x/x.zeek").unwrap(),
             "module mod_x; global X = 3;",
         );
 
@@ -2131,15 +2145,15 @@ pub(crate) mod test {
         db.add_prefix("/p1");
         db.add_prefix("/p2");
         db.add_file(
-            Url::from_file_path("/p1/a.zeek").unwrap(),
+            Uri::from_file_path("/p1/a.zeek").unwrap(),
             "module mod_a; global A = 1;",
         );
         db.add_file(
-            Url::from_file_path("/p2/b.zeek").unwrap(),
+            Uri::from_file_path("/p2/b.zeek").unwrap(),
             "module mod_b; global B = 2;",
         );
 
-        let uri = Arc::new(Url::from_file_path("/x/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x/x.zeek").unwrap());
         db.add_file(
             (*uri).clone(),
             "module mod_x;
@@ -2179,7 +2193,7 @@ global GLOBAL::Y = 3;
     #[tokio::test]
     async fn hover_variable() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -2204,7 +2218,7 @@ local x = f();
     #[tokio::test]
     async fn hover_definition() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -2226,7 +2240,7 @@ local x = f();
         let prefix = Path::new("/prefix");
         db.add_prefix(prefix.to_str().unwrap());
         db.add_file(
-            Url::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
+            Uri::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
                 .unwrap(),
             "
             ##Declaration.
@@ -2275,7 +2289,7 @@ local x = f();
     #[tokio::test]
     async fn hover_decl_in_func_parameters() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -2301,7 +2315,7 @@ function f(x: X, y: Y) {
     #[tokio::test]
     async fn hover_in_decl_fqid() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -2368,7 +2382,7 @@ global r: R;
     #[tokio::test]
     async fn hover_zeekygen() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -2395,21 +2409,21 @@ global r: R;
     #[tokio::test]
     async fn signature_help() {
         let mut db = TestDatabase::default();
-        let uri_x = Url::from_file_path("/x.zeek").unwrap();
+        let uri_x = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri_x.clone(),
             "module x;
 global f: function(x: count, y: string): string;
 local x = f(",
         );
-        let uri_y = Url::from_file_path("/y.zeek").unwrap();
+        let uri_y = Uri::from_file_path("/y.zeek").unwrap();
         db.add_file(
             uri_y.clone(),
             "module y;
 global f: function(x: count, y: string): string;
 local x = f(1,2,3",
         );
-        let uri_z = Url::from_file_path("/z.zeek").unwrap();
+        let uri_z = Uri::from_file_path("/z.zeek").unwrap();
         db.add_file(
             uri_z.clone(),
             "module z;
@@ -2417,7 +2431,7 @@ local x = f(1,2,3",
 local x = ext::f(",
         );
         db.add_file(
-            Url::from_file_path("/ext.zeek").unwrap(),
+            Uri::from_file_path("/ext.zeek").unwrap(),
             "module ext;
 export {
 global f: function(x: count, y: string): string;
@@ -2460,7 +2474,7 @@ global f: function(x: count, y: string): string;
     #[tokio::test]
     async fn goto_declaration() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "module x;
@@ -2470,7 +2484,7 @@ event yeah(c:count) {}
 event zeek_init() {}",
         );
 
-        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        let uri_evts = Uri::from_file_path("/events.bif.zeek").unwrap();
         db.add_file(uri_evts, "global zeek_init: event();");
 
         let server = serve(db);
@@ -2505,7 +2519,7 @@ event zeek_init() {}",
     #[tokio::test]
     async fn goto_definition() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "module x;
@@ -2515,7 +2529,7 @@ event yeah(c:count) {}
 event zeek_init() {}",
         );
 
-        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        let uri_evts = Uri::from_file_path("/events.bif.zeek").unwrap();
         db.add_file(uri_evts, "global zeek_init: event();");
 
         let server = serve(db);
@@ -2550,7 +2564,7 @@ event zeek_init() {}",
     #[tokio::test]
     async fn goto_definition_zeekygen() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -2578,14 +2592,14 @@ event zeek_init() {}",
     #[tokio::test]
     async fn goto_implementation() {
         let mut db = TestDatabase::default();
-        let uri_evts = Url::from_file_path("/events.bif.zeek").unwrap();
+        let uri_evts = Uri::from_file_path("/events.bif.zeek").unwrap();
         db.add_file(
             uri_evts.clone(),
             "export {
 global zeek_init: event();",
         );
 
-        let uri_x = Url::from_file_path("/x.zeek").unwrap();
+        let uri_x = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri_x.clone(),
             "module x;
@@ -2632,10 +2646,10 @@ event x::foo() {}",
         use super::DocumentFormattingParams;
 
         let mut db = TestDatabase::default();
-        let uri_ok = Url::from_file_path("/ok.zeek").unwrap();
+        let uri_ok = Uri::from_file_path("/ok.zeek").unwrap();
         db.add_file(uri_ok.clone(), "event zeek_init(){}");
 
-        let uri_invalid = Url::from_file_path("/invalid.zeek").unwrap();
+        let uri_invalid = Uri::from_file_path("/invalid.zeek").unwrap();
         db.add_file(uri_invalid.clone(), "event ssl");
 
         let server = serve(db);
@@ -2667,10 +2681,10 @@ event x::foo() {}",
         use super::DocumentRangeFormattingParams;
 
         let mut db = TestDatabase::default();
-        let uri_ok = Url::from_file_path("/ok.zeek").unwrap();
+        let uri_ok = Uri::from_file_path("/ok.zeek").unwrap();
         db.add_file(uri_ok.clone(), "module foo ;\n\nevent zeek_init(){}");
 
-        let uri_invalid = Url::from_file_path("/invalid.zeek").unwrap();
+        let uri_invalid = Uri::from_file_path("/invalid.zeek").unwrap();
         db.add_file(uri_invalid.clone(), "event ssl");
 
         let server = serve(db);
@@ -2728,8 +2742,8 @@ event x::foo() {}",
     async fn document_symbol() {
         let mut db = TestDatabase::default();
 
-        let uri_unknown = Url::from_file_path("/unknown.zeek").unwrap();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri_unknown = Uri::from_file_path("/unknown.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         db.add_file(
             uri.clone(),
@@ -2768,11 +2782,8 @@ event x::foo() {}",
 
     #[tokio::test]
     async fn code_action() {
-        use super::{tree_diagnostics, CodeActionParams};
-        use tower_lsp::lsp_types::CodeActionContext;
-
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
 
         let source = "global x = 42";
         db.add_file((*uri).clone(), source);
@@ -2803,7 +2814,7 @@ event x::foo() {}",
     #[tokio::test]
     async fn inlay_hint_function_params() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
 
         let source = r#"
         function f(x: count, y: string) {}
@@ -2834,7 +2845,7 @@ event x::foo() {}",
     #[tokio::test]
     async fn inlay_hint_decls() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
 
         let source = r"
 const x: count = 0;
@@ -2889,7 +2900,7 @@ option x = T;
 
         for options in opts {
             let mut db = TestDatabase::default();
-            let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+            let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
             db.0.set_initialization_options(Arc::new(options));
 
             let source = "
@@ -3007,7 +3018,7 @@ const x = 1;
     #[tokio::test]
     async fn references() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
 
         let source = r#"
 @load ./strings
@@ -3022,7 +3033,7 @@ levenshtein_distance("", "");
 
         db.add_file((*uri).clone(), source);
         db.add_file(
-            Url::from_file_path("/strings.zeek").unwrap(),
+            Uri::from_file_path("/strings.zeek").unwrap(),
             "function levenshtein_distance(a: string, b: string): count { return 0; }",
         );
 
@@ -3080,7 +3091,7 @@ levenshtein_distance("", "");
     #[tokio::test]
     async fn rename() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Url::from_file_path("/x.zeek").unwrap());
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
 
         let source = r"
 @load ./strings
@@ -3094,7 +3105,7 @@ const z = x;
 
         db.add_file((*uri).clone(), source);
         db.add_file(
-            Url::from_file_path("/strings.zeek").unwrap(),
+            Uri::from_file_path("/strings.zeek").unwrap(),
             "function levenshtein_distance(a: string, b: string): count { return 0; }",
         );
 
@@ -3117,7 +3128,7 @@ const z = x;
     #[tokio::test]
     async fn semantic_tokens_full() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         let source = r"
         # foo

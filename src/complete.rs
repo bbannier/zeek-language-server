@@ -10,9 +10,9 @@ use crate::{
 };
 
 use itertools::Itertools;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
-    CompletionResponse, Documentation, InsertTextFormat, MarkupContent, Position, Url,
+    CompletionResponse, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position, Uri,
 };
 use tree_sitter_zeek::KEYWORDS;
 
@@ -201,7 +201,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 fn complete_field(
     state: &Database,
     mut node: Node,
-    uri: Arc<Url>,
+    uri: Arc<Uri>,
     is_partial: bool,
 ) -> Option<Vec<CompletionItem>> {
     // If we are completing with something after the `$` (e.g., `foo$a`), instead
@@ -246,7 +246,7 @@ fn complete_field(
     None
 }
 
-fn complete_from_decls(state: &Database, uri: Arc<Url>, kind: &str) -> Vec<CompletionItem> {
+fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
     state
         .decls(Arc::clone(&uri))
         .iter()
@@ -410,7 +410,7 @@ fn complete_any(
     state: &Database,
     root: Node,
     mut node: Node,
-    uri: Arc<Url>,
+    uri: Arc<Uri>,
 ) -> Vec<CompletionItem> {
     let Some(source) = state.source(Arc::clone(&uri)) else {
         return Vec::new();
@@ -532,7 +532,7 @@ fn to_completion_item(d: &Decl) -> CompletionItem {
         label: d.fqid.to_string(),
         kind: Some(to_completion_item_kind(&d.kind)),
         documentation: Some(Documentation::MarkupContent(MarkupContent {
-            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+            kind: MarkupKind::Markdown,
             value: d.documentation.to_string(),
         })),
         ..CompletionItem::default()
@@ -577,10 +577,14 @@ mod test {
     #![allow(clippy::unwrap_used)]
 
     use insta::assert_debug_snapshot;
-    use tower_lsp::lsp_types::{
-        CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
-        CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams, Position,
-        TextDocumentIdentifier, TextDocumentPositionParams, Url, WorkDoneProgressParams,
+    use tower_lsp_server::{
+        lsp_types::{
+            CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
+            CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams,
+            Position, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
+            WorkDoneProgressParams,
+        },
+        UriExt,
     };
 
     use crate::{complete::complete, lsp::test::TestDatabase};
@@ -589,7 +593,7 @@ mod test {
     fn field_access() {
         let mut db = TestDatabase::default();
 
-        let uri1 = Url::from_file_path("/x.zeek").unwrap();
+        let uri1 = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri1.clone(),
             "type X: record { abc: count; };
@@ -598,7 +602,7 @@ mod test {
             ",
         );
 
-        let uri2 = Url::from_file_path("/y.zeek").unwrap();
+        let uri2 = Uri::from_file_path("/y.zeek").unwrap();
         db.add_file(
             uri2.clone(),
             "type X: record { abc: count; };
@@ -675,7 +679,7 @@ mod test {
     #[test]
     fn field_access_chained() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -705,7 +709,7 @@ mod test {
     fn field_access_partial() {
         let mut db = TestDatabase::default();
 
-        let uri1 = Url::from_file_path("/x.zeek").unwrap();
+        let uri1 = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri1.clone(),
             "type X: record { abc: count; };
@@ -714,7 +718,7 @@ mod test {
             ",
         );
 
-        let uri2 = Url::from_file_path("/x.zeek").unwrap();
+        let uri2 = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri2.clone(),
             "type X: record { abc: count; };
@@ -769,7 +773,7 @@ mod test {
     #[test]
     fn field_access_chained_partial() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -798,7 +802,7 @@ mod test {
     #[test]
     fn modules() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -838,7 +842,7 @@ mod test {
     #[test]
     fn module_entry() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -866,7 +870,7 @@ mod test {
     #[test]
     fn referenced_field_access() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -917,10 +921,10 @@ mod test {
         let mut db = TestDatabase::default();
         db.add_prefix("/p1");
         db.add_prefix("/p2");
-        db.add_file(Url::from_file_path("/p1/foo/a1.zeek").unwrap(), "");
-        db.add_file(Url::from_file_path("/p2/foo/b1.zeek").unwrap(), "");
+        db.add_file(Uri::from_file_path("/p1/foo/a1.zeek").unwrap(), "");
+        db.add_file(Uri::from_file_path("/p2/foo/b1.zeek").unwrap(), "");
 
-        let uri = Url::from_file_path("/x/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x/x.zeek").unwrap();
         db.add_file(uri.clone(), "@load f");
 
         assert_debug_snapshot!(complete(
@@ -940,7 +944,7 @@ mod test {
     #[test]
     fn event() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1014,7 +1018,7 @@ hook h
     #[test]
     fn keyword() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "
@@ -1067,7 +1071,7 @@ f",
             }
 
             let mut db = TestDatabase::default();
-            let uri = Url::from_file_path("/x.zeek").unwrap();
+            let uri = Uri::from_file_path("/x.zeek").unwrap();
             db.add_file(uri.clone(), input);
 
             let result = complete(
@@ -1091,7 +1095,7 @@ f",
     #[test]
     fn declaration_and_definition() {
         let mut db = TestDatabase::default();
-        let uri = Url::from_file_path("/x.zeek").unwrap();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
         db.add_file(
             uri.clone(),
             "

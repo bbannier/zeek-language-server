@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tower_lsp::lsp_types::{ClientCapabilities, Url};
+use tower_lsp_server::lsp_types::{ClientCapabilities, Uri};
 use tracing::instrument;
 
 pub mod ast;
@@ -14,17 +14,17 @@ pub mod zeek;
 #[salsa::query_group(FilesStorage)]
 pub trait Files: salsa::Database {
     #[salsa::input]
-    fn unsafe_source(&self, uri: Arc<Url>) -> Str;
+    fn unsafe_source(&self, uri: Arc<Uri>) -> Str;
 
     #[salsa::input]
-    fn files(&self) -> Arc<[Arc<Url>]>;
+    fn files(&self) -> Arc<[Arc<Uri>]>;
 
     /// Gets the source code for a file if it is known.
-    fn source(&self, uri: Arc<Url>) -> Option<Str>;
+    fn source(&self, uri: Arc<Uri>) -> Option<Str>;
 }
 
 #[instrument(skip(db))]
-pub fn source(db: &dyn Files, uri: Arc<Url>) -> Option<Str> {
+pub fn source(db: &dyn Files, uri: Arc<Uri>) -> Option<Str> {
     // Check if we know the file. This reduces chances of us trying to get sources for a not
     // yet added uri.
     //

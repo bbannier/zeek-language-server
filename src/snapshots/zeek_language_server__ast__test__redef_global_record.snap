@@ -36,17 +36,28 @@ Decl {
                                 character: 28,
                             },
                         },
-                        uri: Url {
-                            scheme: "file",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: None,
-                            port: None,
-                            path: "/init-bare.zeek",
-                            query: None,
-                            fragment: None,
-                        },
+                        uri: Uri(
+                            Uri {
+                                scheme: Some(
+                                    "file",
+                                ),
+                                authority: Some(
+                                    Authority {
+                                        userinfo: None,
+                                        host: Host {
+                                            text: "",
+                                            data: RegName(
+                                                "",
+                                            ),
+                                        },
+                                        port: None,
+                                    },
+                                ),
+                                path: "/init-bare.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
                     },
                 ),
                 documentation: "```zeek\n# In connection\nid: string;\n```",
@@ -79,17 +90,28 @@ Decl {
                                 character: 33,
                             },
                         },
-                        uri: Url {
-                            scheme: "file",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: None,
-                            port: None,
-                            path: "/x.zeek",
-                            query: None,
-                            fragment: None,
-                        },
+                        uri: Uri(
+                            Uri {
+                                scheme: Some(
+                                    "file",
+                                ),
+                                authority: Some(
+                                    Authority {
+                                        userinfo: None,
+                                        host: Host {
+                                            text: "",
+                                            data: RegName(
+                                                "",
+                                            ),
+                                        },
+                                        port: None,
+                                    },
+                                ),
+                                path: "/x.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
                     },
                 ),
                 documentation: "```zeek\n# In x::connection\nname: string;\n```",
@@ -121,17 +143,28 @@ Decl {
                     character: 15,
                 },
             },
-            uri: Url {
-                scheme: "file",
-                cannot_be_a_base: false,
-                username: "",
-                password: None,
-                host: None,
-                port: None,
-                path: "/init-bare.zeek",
-                query: None,
-                fragment: None,
-            },
+            uri: Uri(
+                Uri {
+                    scheme: Some(
+                        "file",
+                    ),
+                    authority: Some(
+                        Authority {
+                            userinfo: None,
+                            host: Host {
+                                text: "",
+                                data: RegName(
+                                    "",
+                                ),
+                            },
+                            port: None,
+                        },
+                    ),
+                    path: "/init-bare.zeek",
+                    query: None,
+                    fragment: None,
+                },
+            ),
         },
     ),
     documentation: "```zeek\ntype connection: record { id: string; };\n```",

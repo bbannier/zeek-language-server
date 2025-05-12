@@ -1,23 +1,34 @@
 ---
 source: src/lsp.rs
-expression: "server.goto_implementation(super::GotoImplementationParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri_x),\n                Position::new(2, 17)),\n            partial_result_params: PartialResultParams::default(),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.goto_implementation(super::GotoImplementationParams\n{\n    text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri_x),\n    Position::new(2, 17)), partial_result_params:\n    PartialResultParams::default(), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
 ---
 Ok(
     Some(
         Array(
             [
                 Location {
-                    uri: Url {
-                        scheme: "file",
-                        cannot_be_a_base: false,
-                        username: "",
-                        password: None,
-                        host: None,
-                        port: None,
-                        path: "/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
+                    uri: Uri(
+                        Uri {
+                            scheme: Some(
+                                "file",
+                            ),
+                            authority: Some(
+                                Authority {
+                                    userinfo: None,
+                                    host: Host {
+                                        text: "",
+                                        data: RegName(
+                                            "",
+                                        ),
+                                    },
+                                    port: None,
+                                },
+                            ),
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    ),
                     range: Range {
                         start: Position {
                             line: 6,
@@ -30,17 +41,28 @@ Ok(
                     },
                 },
                 Location {
-                    uri: Url {
-                        scheme: "file",
-                        cannot_be_a_base: false,
-                        username: "",
-                        password: None,
-                        host: None,
-                        port: None,
-                        path: "/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
+                    uri: Uri(
+                        Uri {
+                            scheme: Some(
+                                "file",
+                            ),
+                            authority: Some(
+                                Authority {
+                                    userinfo: None,
+                                    host: Host {
+                                        text: "",
+                                        data: RegName(
+                                            "",
+                                        ),
+                                    },
+                                    port: None,
+                                },
+                            ),
+                            path: "/x.zeek",
+                            query: None,
+                            fragment: None,
+                        },
+                    ),
                     range: Range {
                         start: Position {
                             line: 5,

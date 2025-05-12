@@ -83,3 +83,4 @@ missing_errors_doc = "allow"
 ignored_unit_patterns = "deny"
 clone_on_ref_ptr = "deny"
 redundant_clone = "deny"
+mutable_key_type = "allow" # TODO(bbannier): We should probably enable this.

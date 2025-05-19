@@ -48,7 +48,7 @@ tracing-appender = { version = "0.2.3", default-features = false }
 tracing-opentelemetry = { version = "0.27.0", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["tracing-log", "registry", "std"], default-features = false }
 tree-sitter = "0.25.4"
-tree-sitter-highlight = { version = "0.25.3", default-features = false }
+tree-sitter-highlight = { version = "0.25.4", default-features = false }
 tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }
 walkdir = "2.5.0"
 

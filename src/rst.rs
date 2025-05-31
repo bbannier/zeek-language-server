@@ -9,6 +9,7 @@ use crate::Str;
 pub fn markdownify(rst: &str) -> Str {
     let rst = external_link(rst);
     let rst = inline_code(&rst);
+    let rst = zeek_field(&rst);
     let rst = zeek_id(&rst);
     let rst = zeek_keyword(&rst);
     let rst = zeek_see_inline(&rst);
@@ -33,6 +34,15 @@ fn inline_code(rst: &str) -> Cow<str> {
         LazyLock::new(|| regex::Regex::new(r"``([^`]+)``").expect("invalid regexp"));
 
     RE.replace_all(rst, "`$1`")
+}
+
+fn zeek_field(rst: &str) -> Cow<str> {
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r":zeek:field:`([^`]+)`").expect("invalid regexp"));
+
+    RE.replace_all(rst, |cap: &Captures| {
+        docs_search(cap.get(1).expect("field should be captured").as_str())
+    })
 }
 
 fn zeek_id(rst: &str) -> Cow<str> {
@@ -174,6 +184,17 @@ mod test {
                 "A {foo} next to a {bar}",
                 foo = docs_search("foo"),
                 bar = docs_search("bar")
+            )
+        );
+    }
+
+    #[test]
+    fn zeek_field() {
+        assert_eq!(
+            markdownify(":zeek:field:`Notice::Info$email_dest` field of that notice"),
+            format!(
+                "{email_dest} field of that notice",
+                email_dest = docs_search("Notice::Info$email_dest")
             )
         );
     }

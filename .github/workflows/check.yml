@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_INCREMENTAL: 0
@@ -108,24 +109,34 @@ jobs:
           path: vscode/*.vsix
           name: vscode_extension.zip
 
-  bench:
-    runs-on: ubuntu-22.04
-    if: ${{ github.base_ref }}
+  benchmarks:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - name: Install Zeek
         run: |
-          echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_22.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list; \
-          curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null; \
-          sudo apt-get update; \
-          sudo apt-get install -y zeek; \
-          echo /opt/zeek/bin >> "${GITHUB_PATH}"; \
-      - uses: Swatinem/rust-cache@v2
+          echo 'deb http://download.opensuse.org/repositories/security:/zeek/xUbuntu_22.04/ /' | sudo tee /etc/apt/sources.list.d/security:zeek.list
+          curl -fsSL https://download.opensuse.org/repositories/security:zeek/xUbuntu_22.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/security_zeek.gpg > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y zeek
+          echo /opt/zeek/bin >> "${GITHUB_PATH}"
+
+      - name: Setup rust toolchain, cache and cargo-codspeed binary
+        uses: moonrepo/setup-rust@v1
         with:
-          key: cargo-${{ hashFiles('Cargo.lock') }}
-      - uses: boa-dev/criterion-compare-action@v3
+          channel: stable
+          cache-target: release
+          bins: cargo-codspeed
+
+      - name: Build the benchmark target(s)
+        run: cargo codspeed build
+
+      - name: Run the benchmarks
+        uses: CodSpeedHQ/action@v3
         with:
-          branchName: ${{ github.base_ref }}
-          benchName: "criterion"
+          run: cargo codspeed run
+          token: ${{ secrets.CODSPEED_TOKEN }}

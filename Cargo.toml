@@ -8,7 +8,7 @@ repository = "https://github.com/bbannier/zeek-language-server"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dev-dependencies]
-criterion = { version = "0.6.0", default-features = false, features = ["async_tokio", "html_reports", "plotters"] }
+criterion = { version = "2.10.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
 insta = "1.43.1"
 tempfile = "3.20.0"
 version-sync = "0.9.5"

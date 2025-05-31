@@ -2,6 +2,9 @@ use criterion::criterion_main;
 
 fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_multi_thread()
+        // By default tokio creates too many worker threads for
+        // running under valgrind in Codspeed, limit them.
+        .max_blocking_threads(64)
         .enable_io()
         .build()
         .expect("could not build runtime")

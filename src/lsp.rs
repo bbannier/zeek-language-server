@@ -585,7 +585,6 @@ impl LanguageServer for Backend {
                     let db = state.snapshot();
                     tokio::spawn(async move {
                         let _x = db.decls(Arc::clone(&f));
-                        let _x = db.loads(Arc::clone(&f));
                         let _x = db.loaded_files(f);
                     })
                 })

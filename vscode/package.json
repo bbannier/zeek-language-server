@@ -184,7 +184,7 @@
     "fix": "prettier --write . && eslint --ext=ts . --fix"
   },
   "devDependencies": {
-    "@types/node": "^22.15.21",
+    "@types/node": "^22.15.29",
     "@types/vscode": "^1.82.0",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",

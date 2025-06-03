@@ -530,11 +530,11 @@ impl LanguageServer for Backend {
 
             let (updates, removals): (Vec<_>, Vec<_>) = params
                 .changes
-                .into_iter()
+                .into_par_iter()
                 .partition(|c| matches!(c.typ, FileChangeType::CREATED | FileChangeType::CHANGED));
 
             let removals = removals
-                .into_iter()
+                .into_par_iter()
                 .map(|c| SourceUpdate::Remove(Arc::new(c.uri)));
 
             let updates = updates.into_iter().map(|c| {
@@ -552,8 +552,8 @@ impl LanguageServer for Backend {
             });
             let updates = futures::future::join_all(updates).await;
             let updates = updates
-                .into_iter()
-                .filter_map(std::result::Result::ok)
+                .into_par_iter()
+                .flat_map(std::result::Result::ok)
                 .flatten();
 
             let changes = removals.chain(updates).collect::<Vec<_>>();

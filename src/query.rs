@@ -457,44 +457,58 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
         .expect("invalid query")
     });
 
-    let c_scope = QUERY
-        .capture_index_for_name("scope")
-        .expect("scope should be captured");
+    static C_SCOPE: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("scope")
+            .expect("scope should be captured")
+    });
 
-    let c_id = QUERY
-        .capture_index_for_name("id")
-        .expect("id should be captured");
+    static C_ID: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("id")
+            .expect("id should be captured")
+    });
 
-    let c_typ = QUERY
-        .capture_index_for_name("typ")
-        .expect("typ should be captured");
+    static C_TYP: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("typ")
+            .expect("typ should be captured")
+    });
 
-    let c_signature = QUERY
-        .capture_index_for_name("signature")
-        .expect("signature should be captured");
+    static C_SIGNATURE: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("signature")
+            .expect("signature should be captured")
+    });
 
-    let c_fn_result = QUERY
-        .capture_index_for_name("fn_result")
-        .expect("fn_result should be captured");
+    static C_FN_RESULT: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("fn_result")
+            .expect("fn_result should be captured")
+    });
 
-    let c_decl = QUERY
-        .capture_index_for_name("decl")
-        .expect("decl should be captured");
+    static C_DECL: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("decl")
+            .expect("decl should be captured")
+    });
 
-    let c_outer_node = QUERY
-        .capture_index_for_name("outer_node")
-        .expect("outer node should be captured");
+    static C_OUTER_NODE: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("outer_node")
+            .expect("outer node should be captured")
+    });
 
     tree_sitter::QueryCursor::new()
         .matches(&QUERY, node.0, source)
         .filter_map(|c| {
-            let decl = c.nodes_for_capture_index(c_decl).next()?;
+            let decl = c.nodes_for_capture_index(*C_DECL).next()?;
             let decl: Node = decl.into();
 
             // Skip children not directly below the node or in an `export` below the node.
             // TODO(bbannier): this would probably be better handled directly in the query.
             let outer_node = c
-                .nodes_for_capture_index(c_outer_node)
+                .nodes_for_capture_index(*C_OUTER_NODE)
                 .next()
                 .expect("outer node should be present");
             if outer_node != node.0
@@ -507,20 +521,20 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             let mut module = parent_module(decl, source)?;
             let module_name = module.clone();
 
-            let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
+            let id: Node = c.nodes_for_capture_index(*C_ID).next()?.into();
             let id_written = id.utf8_text(source).ok()?;
 
-            let typ = c.nodes_for_capture_index(c_typ).next().map(Node::from);
+            let typ = c.nodes_for_capture_index(*C_TYP).next().map(Node::from);
 
             let signature = c
-                .nodes_for_capture_index(c_signature)
+                .nodes_for_capture_index(*C_SIGNATURE)
                 .next()
                 .map(Node::from);
 
             let fn_args = signature.map_or_else(Vec::new, |xs| xs.named_children("formal_arg"));
 
             let fn_result = c
-                .nodes_for_capture_index(c_fn_result)
+                .nodes_for_capture_index(*C_FN_RESULT)
                 .next()
                 .and_then(|n| self::typ(n.into(), source));
 
@@ -702,7 +716,7 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 "const_decl" => DeclKind::Const,
                 "var_decl" => {
                     let scope = c
-                        .nodes_for_capture_index(c_scope)
+                        .nodes_for_capture_index(*C_SCOPE)
                         .next()
                         .expect("scope should be present");
 

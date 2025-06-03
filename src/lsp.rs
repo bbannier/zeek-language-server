@@ -570,28 +570,25 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files = self.state.read().await.files();
 
-        let preloaded_decls = {
+        {
             let span = trace_span!("preloading");
             let _enter = span.enter();
+            let files = self.state.read().await.files();
 
             let state = self.state.read().await;
 
             files
-                .iter()
+                .par_iter()
                 .map(|f| {
                     let f = Arc::clone(f);
                     let db = state.snapshot();
-                    tokio::spawn(async move {
-                        let _x = db.decls(Arc::clone(&f));
-                        let _x = db.loaded_files(f);
-                    })
-                })
-                .collect::<Vec<_>>()
-        };
-        futures::future::join_all(preloaded_decls).await;
 
+                    let _x = db.decls(Arc::clone(&f));
+                    let _x = db.loaded_files(f);
+                })
+                .collect::<Vec<_>>();
+        }
         // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;

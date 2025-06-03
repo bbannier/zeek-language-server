@@ -1156,7 +1156,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl
 }
 
 #[instrument]
-fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
+fn loads_raw<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(\"@load\") (file)@file").expect("invalid query")
     });
@@ -1168,9 +1168,9 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
     });
 
     tree_sitter::QueryCursor::new()
-        .matches(&QUERY, node.0, source.as_bytes())
+        .matches(&QUERY, node.0, source)
         .filter_map(|c| c.nodes_for_capture_index(*C_FILE).next())
-        .filter_map(|f| f.utf8_text(source.as_bytes()).ok())
+        .filter_map(|f| f.utf8_text(source).ok())
         .cloned()
         .collect()
 }
@@ -1226,7 +1226,7 @@ fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Str]> {
     };
 
     Arc::from(
-        loads_raw(tree.root_node(), &source)
+        loads_raw(tree.root_node(), source.as_bytes())
             .iter()
             .map(ToString::to_string)
             .map(Str::from)
@@ -1476,7 +1476,10 @@ mod test {
         };
 
         let loads = |source: &'static str| {
-            super::loads_raw(parse(source).expect("cannot parse").root_node(), source)
+            super::loads_raw(
+                parse(source).expect("cannot parse").root_node(),
+                source.as_bytes(),
+            )
         };
 
         assert_eq!(loads(""), Vec::<&str>::new());

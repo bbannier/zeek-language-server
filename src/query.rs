@@ -1161,13 +1161,15 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         tree_sitter::Query::new(&language_zeek(), "(\"@load\") (file)@file").expect("invalid query")
     });
 
-    let c_file = QUERY
-        .capture_index_for_name("file")
-        .expect("file should be captured");
+    static C_FILE: LazyLock<u32> = LazyLock::new(|| {
+        QUERY
+            .capture_index_for_name("file")
+            .expect("file should be captured")
+    });
 
     tree_sitter::QueryCursor::new()
         .matches(&QUERY, node.0, source.as_bytes())
-        .filter_map(|c| c.nodes_for_capture_index(c_file).next())
+        .filter_map(|c| c.nodes_for_capture_index(*C_FILE).next())
         .filter_map(|f| f.utf8_text(source.as_bytes()).ok())
         .cloned()
         .collect()

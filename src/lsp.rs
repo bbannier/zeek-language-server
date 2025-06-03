@@ -1373,58 +1373,59 @@ impl LanguageServer for Backend {
             #[allow(clippy::redundant_clone)] // Used cloned iter for ownership with `tokio::spawn`
             state
                 .function_calls(Arc::clone(&uri))
-                .iter()
+                .par_iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
                 .cloned()
                 .map(|c| {
                     let state = state.snapshot();
-                    tokio::spawn(async move {
-                        match &state.resolve(c.f.clone())?.kind {
-                            DeclKind::FuncDef(s)
-                            | DeclKind::FuncDecl(s)
-                            | DeclKind::HookDef(s)
-                            | DeclKind::HookDecl(s)
-                            | DeclKind::EventDef(s)
-                            | DeclKind::EventDecl(s) => Some(
-                                c.args
-                                    .into_iter()
-                                    .zip(s.args.iter())
-                                    .filter_map(|(p, a)| {
-                                        // If the argument has the same name as the parameter do
-                                        // not set an inlay hint.
-                                        let uri = p.uri;
-                                        let tree = state.parse(Arc::clone(&uri))?;
-                                        let node = tree
-                                            .root_node()
-                                            .named_descendant_for_point_range(p.range)?;
-                                        let source = state.source(uri)?;
-                                        let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
-                                        if maybe_id == a.id {
-                                            return None;
-                                        }
 
-                                        Some(InlayHint {
-                                            position: p.range.start,
-                                            label: InlayHintLabel::String(format!("{}:", a.id)),
-                                            kind: Some(InlayHintKind::PARAMETER),
-                                            text_edits: None,
-                                            tooltip: Some(InlayHintTooltip::MarkupContent(
-                                                MarkupContent {
-                                                    kind: MarkupKind::Markdown,
-                                                    value: a.documentation.to_string(),
-                                                },
-                                            )),
-                                            padding_left: None,
-                                            padding_right: Some(true),
-                                            data: None,
-                                        })
+                    match &state.resolve(c.f.clone())?.kind {
+                        DeclKind::FuncDef(s)
+                        | DeclKind::FuncDecl(s)
+                        | DeclKind::HookDef(s)
+                        | DeclKind::HookDecl(s)
+                        | DeclKind::EventDef(s)
+                        | DeclKind::EventDecl(s) => Some(
+                            c.args
+                                .into_iter()
+                                .zip(s.args.iter())
+                                .filter_map(|(p, a)| {
+                                    // If the argument has the same name as the parameter do
+                                    // not set an inlay hint.
+                                    let uri = p.uri;
+                                    let tree = state.parse(Arc::clone(&uri))?;
+                                    let node = tree
+                                        .root_node()
+                                        .named_descendant_for_point_range(p.range)?;
+                                    let source = state.source(uri)?;
+                                    let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
+                                    if maybe_id == a.id {
+                                        return None;
+                                    }
+
+                                    Some(InlayHint {
+                                        position: p.range.start,
+                                        label: InlayHintLabel::String(format!("{}:", a.id)),
+                                        kind: Some(InlayHintKind::PARAMETER),
+                                        text_edits: None,
+                                        tooltip: Some(InlayHintTooltip::MarkupContent(
+                                            MarkupContent {
+                                                kind: MarkupKind::Markdown,
+                                                value: a.documentation.to_string(),
+                                            },
+                                        )),
+                                        padding_left: None,
+                                        padding_right: Some(true),
+                                        data: None,
                                     })
-                                    .collect::<Vec<_>>(),
-                            ),
-                            _ => None,
-                        }
-                    })
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                        _ => None,
+                    }
                 })
+                .flatten()
+                .flatten()
                 .collect::<Vec<_>>()
         } else {
             Vec::default()
@@ -1434,7 +1435,7 @@ impl LanguageServer for Backend {
             #[allow(clippy::redundant_clone)] // Used cloned iter for ownership with `tokio::spawn`
             state
                 .untyped_var_decls(Arc::clone(&uri))
-                .iter()
+                .par_iter()
                 .filter(|d| {
                     d.loc
                         .as_ref()
@@ -1443,43 +1444,24 @@ impl LanguageServer for Backend {
                 .cloned()
                 .map(|d| {
                     let state = state.snapshot();
-                    tokio::spawn(async move {
-                        let t = state.typ(Arc::new(d.clone()))?;
-                        Some(InlayHint {
-                            position: d.loc.as_ref().map(|l| l.selection_range.end)?,
-                            label: InlayHintLabel::String(format!(": {}", t.id)),
-                            kind: Some(InlayHintKind::TYPE),
-                            text_edits: None,
-                            tooltip: None,
-                            padding_left: None,
-                            padding_right: None,
-                            data: None,
-                        })
+
+                    let t = state.typ(Arc::new(d.clone()))?;
+                    Some(InlayHint {
+                        position: d.loc.as_ref().map(|l| l.selection_range.end)?,
+                        label: InlayHintLabel::String(format!(": {}", t.id)),
+                        kind: Some(InlayHintKind::TYPE),
+                        text_edits: None,
+                        tooltip: None,
+                        padding_left: None,
+                        padding_right: None,
+                        data: None,
                     })
                 })
+                .flatten()
                 .collect::<Vec<_>>()
         } else {
             Vec::default()
         };
-
-        let (params, vars) = futures::future::join(
-            async {
-                futures::future::join_all(params)
-                    .await
-                    .into_iter()
-                    .filter_map(std::result::Result::ok)
-                    .flatten()
-                    .flatten()
-            },
-            async {
-                futures::future::join_all(vars)
-                    .await
-                    .into_iter()
-                    .filter_map(std::result::Result::ok)
-                    .flatten()
-            },
-        )
-        .await;
 
         hints.extend(params);
         hints.extend(vars);

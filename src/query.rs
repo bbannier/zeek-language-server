@@ -245,7 +245,7 @@ impl fmt::Display for ModuleId {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Node<'a>(tree_sitter::Node<'a>);
+pub struct Node<'a>(pub(crate) tree_sitter::Node<'a>);
 
 impl<'a> Node<'a> {
     #[must_use]
@@ -351,7 +351,7 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    fn next_sibling(&self) -> Option<Self> {
+    pub fn next_sibling(&self) -> Option<Self> {
         let mut n = self.0;
         while let Some(p) = n.next_named_sibling() {
             if p.kind() != "nl" {
@@ -364,7 +364,7 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    fn prev_sibling(&self) -> Option<Self> {
+    pub fn prev_sibling(&self) -> Option<Self> {
         let mut n = self.0;
         while let Some(p) = n.prev_named_sibling() {
             if p.kind() != "nl" {

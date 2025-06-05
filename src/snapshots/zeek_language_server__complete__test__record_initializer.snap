@@ -1,0 +1,103 @@
+---
+source: src/complete.rs
+expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(1, 16),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n},)"
+---
+Some(
+    Array(
+        [
+            CompletionItem {
+                label: "xa",
+                label_details: None,
+                kind: Some(
+                    Field,
+                ),
+                detail: None,
+                documentation: Some(
+                    MarkupContent(
+                        MarkupContent {
+                            kind: Markdown,
+                            value: "```zeek\n# In X\nxa: count;\n```",
+                        },
+                    ),
+                ),
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: Some(
+                    "xa",
+                ),
+                insert_text_format: None,
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
+            CompletionItem {
+                label: "xb",
+                label_details: None,
+                kind: Some(
+                    Field,
+                ),
+                detail: None,
+                documentation: Some(
+                    MarkupContent(
+                        MarkupContent {
+                            kind: Markdown,
+                            value: "```zeek\n# In X\nxb: count &optional;\n```",
+                        },
+                    ),
+                ),
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: Some(
+                    "xb",
+                ),
+                insert_text_format: None,
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
+            CompletionItem {
+                label: "y",
+                label_details: None,
+                kind: Some(
+                    Field,
+                ),
+                detail: None,
+                documentation: Some(
+                    MarkupContent(
+                        MarkupContent {
+                            kind: Markdown,
+                            value: "```zeek\n# In X\ny: count &optional;\n```",
+                        },
+                    ),
+                ),
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: Some(
+                    "y",
+                ),
+                insert_text_format: None,
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
+        ],
+    ),
+)

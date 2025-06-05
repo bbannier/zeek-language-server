@@ -108,6 +108,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         } else {
             None
         }
+    ).or_else(|| complete_record_initializer(state, node, Arc::clone(&uri))
     ).or_else(||
         // If we are completing a function/event/hook definition complete from declarations.
         if node.kind() == "id" {
@@ -404,6 +405,115 @@ fn complete_snippet(text: &str) -> Vec<CompletionItem> {
             }
         })
         .collect()
+}
+
+fn complete_record_initializer(
+    state: &Database,
+    node: Node,
+    uri: Arc<Uri>,
+) -> Option<Vec<CompletionItem>> {
+    let source = state.source(Arc::clone(&uri))?;
+
+    // The member always needs to be an id.
+    let id = match node.kind() {
+        "id" => node.utf8_text(source.as_bytes()).ok()?,
+        "[" | "(" => "",
+        _ => return None,
+    };
+
+    // 1. For expressions like `local x: X = [$foo` a full, valid CST for completing at `foo` would
+    //    look like this:
+    //
+    //    (type)
+    //    (init_class)
+    //    (init
+    //      (expr
+    //        (expr_list
+    //          (expr
+    //            (id)        <<<< foo
+    //            (expr
+    //              (constant
+    //                (integer)))))))))))
+    //
+    // 2. For `local x = X($`  on the other hand this could look like this:
+    //
+    //    (ERROR [7, 0] - [7, 14]
+    //      (id [7, 7] - [7, 8])
+    //      (init_class [7, 9] - [7, 10])
+    //      (expr [7, 11] - [7, 12]
+    //        (id [7, 11] - [7, 12]))))    <<<< $
+    //
+    // 3. For `local x = X($foo` we'd see this instead:
+    //
+    //    (ERROR [7, 0] - [7, 17]
+    //      (id [7, 7] - [7, 8])
+    //      (init_class [7, 9] - [7, 10])
+    //      (expr [7, 11] - [7, 12]
+    //        (id [7, 11] - [7, 12]))
+    //      (id [7, 14] - [7, 17])))       <<<< foo
+
+    // Climb up the node next to `init_class`.
+    let init_class: Node;
+    let mut n = node;
+    loop {
+        let init_class_ = {
+            let mut init_expr = None;
+            let mut s = n.prev_sibling();
+            while let Some(x) = s {
+                if x.kind() == "init_class" {
+                    init_expr = Some(x);
+                    break;
+                }
+
+                s = x.prev_sibling();
+            }
+            init_expr
+        };
+
+        if let Some(init_class_) = init_class_ {
+            init_class = init_class_;
+            break;
+        }
+
+        n = n.parent()?;
+    }
+
+    // Type we are initializing.
+    let type_ = init_class
+        .prev_sibling()
+        .filter(|n| n.kind() == "type")
+        .or_else(|| init_class.next_sibling())?;
+
+    let DeclKind::Type(fields) = &state
+        .resolve_id(
+            type_.utf8_text(source.as_bytes()).ok()?.into(),
+            NodeLocation::from_node(uri, type_),
+        )?
+        .kind
+    else {
+        return None;
+    };
+
+    let completion: Vec<_> = fields
+        .iter()
+        .filter(|x| matches!(x.kind, DeclKind::Field))
+        .filter(|d| id.is_empty() || rust_fuzzy_search::fuzzy_compare(id, &d.id) > 0.0)
+        .map(|d| {
+            let id = d.id.to_string();
+
+            CompletionItem {
+                label: id.clone(),
+                insert_text: Some(id),
+                ..to_completion_item(d)
+            }
+        })
+        .collect();
+
+    if completion.is_empty() {
+        None
+    } else {
+        Some(completion)
+    }
 }
 
 fn complete_any(
@@ -1135,5 +1245,171 @@ event zeek_init() {
         assert!(docs.value.contains("DOCSTRING"));
 
         // assert_debug_snapshot!(foo);
+    }
+
+    #[test]
+    fn record_initializer() {
+        let mut db = TestDatabase::default();
+        db.add_file(
+            Uri::from_file_path("/decls.zeek").unwrap(),
+            "
+type X: record {
+    xa: count;
+    xb: count &optional;
+    y: count &optional;
+};
+            ",
+        );
+
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x: X = [$
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 16),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x: X = [$x
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 17),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x: X = [$y
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 17),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x: X = record($y
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 23),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn record_initializer2() {
+        let mut db = TestDatabase::default();
+        db.add_file(
+            Uri::from_file_path("/decls.zeek").unwrap(),
+            "
+type X: record {
+    xa: count;
+    xb: count &optional;
+    y: count &optional;
+};
+            ",
+        );
+
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x = X($x
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 14),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x = X($
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 14),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
     }
 }

@@ -434,6 +434,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     let uri = Arc::clone(&location.uri);
     let tree = db.parse(Arc::clone(&uri))?;
@@ -441,6 +442,8 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         .root_node()
         .named_descendant_for_point_range(location.range)?;
     let source = db.source(Arc::clone(&uri))?;
+
+    let id: Str = node.utf8_text(source.as_bytes()).ok()?.into();
 
     match node.kind() {
         // Builtin types.
@@ -508,6 +511,52 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 _ => return None,
             }
         }
+        "id" => {
+            // If the node is part of a record initializer resolve the field.
+
+            // The expr holding the record initializer.
+            if let Some(expr) = node
+                .parent()
+                .and_then(|p| if p.kind() == "expr" { p.parent() } else { None })
+                .and_then(|p| {
+                    if p.kind() == "expr_list" {
+                        p.parent()
+                    } else {
+                        None
+                    }
+                })
+                .filter(|p| p.kind() == "expr")
+            {
+                // If the expr has an ID we are in code like `X($abc=123)`.
+                let type_ = expr
+                    .named_child("id")
+                    // Otherwise check the RHS for expressions like `local a: A = [$abc=123]`.
+                    .or_else(|| {
+                        expr.parent()
+                            .and_then(|p| {
+                                if p.kind() == "initializer" {
+                                    p.prev_sibling()
+                                } else {
+                                    None
+                                }
+                            })
+                            .and_then(|t| if t.kind() == "type" { Some(t) } else { None })
+                    })
+                    .and_then(|t| db.resolve(NodeLocation::from_node(Arc::clone(&uri), t)));
+
+                if let Some(type_) = type_ {
+                    let Decl {
+                        kind: DeclKind::Type(fields),
+                        ..
+                    } = type_.as_ref()
+                    else {
+                        return None;
+                    };
+
+                    return fields.iter().find(|f| f.id == id).cloned().map(Arc::new);
+                }
+            }
+        }
         _ => {}
     }
 
@@ -519,7 +568,6 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     }
 
     // Try to find a decl with name of the given node up the tree.
-    let id: Str = node.utf8_text(source.as_bytes()).ok()?.into();
 
     if let Some(r) = db.resolve_id(id.clone(), location.clone()) {
         // If we have found something which can have separate declaration and definition

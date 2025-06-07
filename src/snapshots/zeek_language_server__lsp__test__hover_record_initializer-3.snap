@@ -1,0 +1,35 @@
+---
+source: src/lsp.rs
+expression: "server.hover(HoverParams\n{\n    text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(9, 35),), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
+---
+Ok(
+    Some(
+        Hover {
+            contents: Array(
+                [
+                    String(
+                        "### field `X::xa`",
+                    ),
+                    String(
+                        "Type: `count`",
+                    ),
+                    String(
+                        "```zeek\n# In X\nxa: count;\n```",
+                    ),
+                ],
+            ),
+            range: Some(
+                Range {
+                    start: Position {
+                        line: 9,
+                        character: 35,
+                    },
+                    end: Position {
+                        line: 9,
+                        character: 37,
+                    },
+                },
+            ),
+        },
+    ),
+)

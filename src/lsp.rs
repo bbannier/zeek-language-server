@@ -2315,8 +2315,66 @@ global r: R;
             server
                 .hover(HoverParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(3, 18),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn hover_record_initializer() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+            type X: record {
+                xa: count;
+                xb: count &optional;
+                y: count &optional;
+            };
+
+            global x1: X = [$xa=123, $xb=456]; # Line 7.
+            global x2 = X($xa=123, $xb=456);
+            global x3: X = record($xa=123, $xb=456);
+            ",
+        );
+
+        let server = serve(db);
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(7, 30),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(8, 27),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(9, 35),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })

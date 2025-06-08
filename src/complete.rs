@@ -421,73 +421,28 @@ fn complete_record_initializer(
         _ => return None,
     };
 
-    // 1. For expressions like `local x: X = [$foo` a full, valid CST for completing at `foo` would
-    //    look like this:
-    //
-    //    (type)
-    //    (init_class)
-    //    (init
-    //      (expr
-    //        (expr_list
-    //          (expr
-    //            (id)        <<<< foo
-    //            (expr
-    //              (constant
-    //                (integer)))))))))))
-    //
-    // 2. For `local x = X($`  on the other hand this could look like this:
-    //
-    //    (ERROR [7, 0] - [7, 14]
-    //      (id [7, 7] - [7, 8])
-    //      (init_class [7, 9] - [7, 10])
-    //      (expr [7, 11] - [7, 12]
-    //        (id [7, 11] - [7, 12]))))    <<<< $
-    //
-    // 3. For `local x = X($foo` we'd see this instead:
-    //
-    //    (ERROR [7, 0] - [7, 17]
-    //      (id [7, 7] - [7, 8])
-    //      (init_class [7, 9] - [7, 10])
-    //      (expr [7, 11] - [7, 12]
-    //        (id [7, 11] - [7, 12]))
-    //      (id [7, 14] - [7, 17])))       <<<< foo
+    let line = source
+        .lines()
+        .nth(usize::try_from(node.range().start.line).ok()?)
+        .map(|line| line.trim_end_matches(id).trim_end_matches('$').trim())?;
 
-    // Climb up the node next to `init_class`.
-    let init_class: Node;
-    let mut n = node;
-    loop {
-        let init_class_ = {
-            let mut init_expr = None;
-            let mut s = n.prev_sibling();
-            while let Some(x) = s {
-                if x.kind() == "init_class" {
-                    init_expr = Some(x);
-                    break;
-                }
-
-                s = x.prev_sibling();
-            }
-            init_expr
-        };
-
-        if let Some(init_class_) = init_class_ {
-            init_class = init_class_;
-            break;
+    let type_ = if line.ends_with('(') {
+        line.trim_end_matches('(').split_whitespace().last()
+    } else if line.ends_with('[') {
+        let line = line.trim_end_matches('[').trim();
+        if line.ends_with('=') {
+            line.trim_end_matches('=')
+                .split_whitespace()
+                .next_back()
+                .and_then(|id| id.split(':').next_back())
+        } else {
+            None
         }
+    } else {
+        None
+    };
 
-        n = n.parent()?;
-    }
-
-    // Type we are initializing.
-    let type_ = init_class
-        .prev_sibling()
-        .filter(|n| n.kind() == "type")
-        .or_else(|| init_class.next_sibling())?;
-
-    let type_ = state.resolve_id(
-        type_.utf8_text(source.as_bytes()).ok()?.into(),
-        NodeLocation::from_node(uri, type_),
-    )?;
+    let type_ = state.resolve_id(type_?.into(), NodeLocation::from_node(uri, node))?;
 
     let DeclKind::Type(fields) = &type_.kind else {
         return None;
@@ -1368,7 +1323,7 @@ global x: X = [$y
             uri.clone(),
             &format!(
                 "@load ./decls
-global x: X = record($y
+global x:X = [$y
         "
             ),
         );
@@ -1378,7 +1333,7 @@ global x: X = record($y
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri.clone()),
-                    Position::new(1, 23),
+                    Position::new(1, 17),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),

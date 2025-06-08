@@ -98,6 +98,32 @@ Some(
                 data: None,
                 tags: None,
             },
+            CompletionItem {
+                label: "X",
+                label_details: None,
+                kind: Some(
+                    Snippet,
+                ),
+                detail: None,
+                documentation: None,
+                deprecated: None,
+                preselect: None,
+                sort_text: None,
+                filter_text: None,
+                insert_text: Some(
+                    "xa=${1:[]}, $$xb=${2:[]}, $$y=${3:[]})",
+                ),
+                insert_text_format: Some(
+                    Snippet,
+                ),
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+            },
         ],
     ),
 )

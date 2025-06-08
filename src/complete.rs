@@ -484,21 +484,21 @@ fn complete_record_initializer(
         .filter(|n| n.kind() == "type")
         .or_else(|| init_class.next_sibling())?;
 
-    let DeclKind::Type(fields) = &state
-        .resolve_id(
-            type_.utf8_text(source.as_bytes()).ok()?.into(),
-            NodeLocation::from_node(uri, type_),
-        )?
-        .kind
-    else {
+    let type_ = state.resolve_id(
+        type_.utf8_text(source.as_bytes()).ok()?.into(),
+        NodeLocation::from_node(uri, type_),
+    )?;
+
+    let DeclKind::Type(fields) = &type_.kind else {
         return None;
     };
 
-    let completion: Vec<_> = fields
+    let mut completion: Vec<_> = fields
         .iter()
         .filter(|x| matches!(x.kind, DeclKind::Field))
         .filter(|d| id.is_empty() || rust_fuzzy_search::fuzzy_compare(id, &d.id) > 0.0)
         .map(|d| {
+            // Complete record fields.
             let id = d.id.to_string();
 
             CompletionItem {
@@ -508,6 +508,41 @@ fn complete_record_initializer(
             }
         })
         .collect();
+
+    // If no field ID was provided also complete a record constructor snippet.
+    if id.is_empty() {
+        completion.extend({
+            let field_inits = fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let id = &f.id;
+                    let idx = i + 1;
+                    format!("$${id}=${{{idx}:[]}}")
+                })
+                .join(", ");
+
+            // We already have `T($` or `[$` in the input, do not emit them again.
+            let terminator = match line.chars().last() {
+                Some('[') => ']',
+                Some('(') => ')',
+                // Probably impossible since we already restrict this whole
+                // function to trigger only on proper record initializations.
+                _ => return None,
+            };
+            let code = format!("{field_inits}{terminator}")
+                .trim_start_matches('$')
+                .into();
+
+            std::iter::once(CompletionItem {
+                label: type_.id.to_string(),
+                insert_text: Some(code),
+                kind: Some(CompletionItemKind::SNIPPET),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                ..CompletionItem::default()
+            })
+        });
+    }
 
     if completion.is_empty() {
         None
@@ -1350,6 +1385,40 @@ global x: X = record($y
                 context: None,
             },
         ));
+
+        db.add_file(
+            uri.clone(),
+            &format!(
+                "@load ./decls
+global x:X = [$
+        "
+            ),
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 16),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        )
+        .and_then(|completion| {
+            if let CompletionResponse::Array(items) = completion {
+                Some(
+                    items
+                        .into_iter()
+                        .filter(|item| matches!(item.kind, Some(CompletionItemKind::SNIPPET)))
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                None
+            }
+        }));
     }
 
     #[test]

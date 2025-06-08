@@ -530,19 +530,24 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 // If the expr has an ID we are in code like `X($abc=123)`.
                 let type_ = expr
                     .named_child("id")
+                    .and_then(|id| db.resolve(NodeLocation::from_node(Arc::clone(&uri), id)))
                     // Otherwise check the RHS for expressions like `local a: A = [$abc=123]`.
                     .or_else(|| {
-                        expr.parent()
-                            .and_then(|p| {
-                                if p.kind() == "initializer" {
-                                    p.prev_sibling()
-                                } else {
-                                    None
-                                }
+                        let parent = expr.parent()?;
+
+                        let type_id = parent.named_child("expr").and_then(|c| c.named_child("id"));
+
+                        if let Some(id) = type_id {
+                            db.resolve(NodeLocation::from_node(Arc::clone(&uri), id))
+                                .and_then(|decl| db.typ(decl))
+                        } else if parent.kind() == "initializer" {
+                            parent.prev_sibling().and_then(|t| {
+                                db.resolve(NodeLocation::from_node(Arc::clone(&uri), t))
                             })
-                            .and_then(|t| if t.kind() == "type" { Some(t) } else { None })
-                    })
-                    .and_then(|t| db.resolve(NodeLocation::from_node(Arc::clone(&uri), t)));
+                        } else {
+                            None
+                        }
+                    });
 
                 if let Some(type_) = type_ {
                     let Decl {

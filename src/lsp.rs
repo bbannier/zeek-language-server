@@ -2337,9 +2337,10 @@ global r: R;
                 y: count &optional;
             };
 
-            global x1: X = [$xa=123, $xb=456]; # Line 7.
+            global x1: X = [$xa=123, $xb=456];
             global x2 = X($xa=123, $xb=456);
             global x3: X = record($xa=123, $xb=456);
+            x3 = [$xa=123];
             ",
         );
 
@@ -2375,6 +2376,18 @@ global r: R;
                     text_document_position_params: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new(uri.clone()),
                         Position::new(9, 35),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+
+        assert_debug_snapshot!(
+            server
+                .hover(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(10, 19),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })

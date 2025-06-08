@@ -13,7 +13,9 @@ Some(
                     module: None,
                     id: "i",
                     fqid: "B::i",
-                    kind: Field,
+                    kind: Field(
+                        [],
+                    ),
                     is_export: None,
                     loc: Some(
                         Location {

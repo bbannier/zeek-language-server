@@ -32,7 +32,7 @@ pub enum DeclKind {
     EventDecl(Signature),
     EventDef(Signature),
     Variable,
-    Field,
+    Field(Vec<Str> /*attributes*/),
     EnumMember,
     Index(Index, Str), // Result of an indexing operation for a given init expression.
     Builtin(Type),
@@ -630,10 +630,21 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
 
                         let documentation = extract_documentation(c)?;
 
+                        let attrs = c
+                            .named_child("attr_list")
+                            .map(|xs| {
+                                xs.named_children("attr")
+                                    .into_iter()
+                                    .filter_map(|attr| attr.utf8_text(source).ok())
+                                    .map(Str::new)
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
                         Some(Decl {
                             id: id.into(),
                             fqid: format!("{fqid}::{id}").into(),
-                            kind: DeclKind::Field,
+                            kind: DeclKind::Field(attrs),
                             loc: Some(Location {
                                 range: id_.range(),
                                 selection_range: id_.range(),

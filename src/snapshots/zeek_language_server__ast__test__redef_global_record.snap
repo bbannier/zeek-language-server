@@ -12,7 +12,9 @@ Decl {
                 module: None,
                 id: "id",
                 fqid: "connection::id",
-                kind: Field,
+                kind: Field(
+                    [],
+                ),
                 is_export: None,
                 loc: Some(
                     Location {
@@ -66,7 +68,9 @@ Decl {
                 module: None,
                 id: "name",
                 fqid: "x::connection::name",
-                kind: Field,
+                kind: Field(
+                    [],
+                ),
                 is_export: None,
                 loc: Some(
                     Location {

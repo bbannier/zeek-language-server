@@ -15,7 +15,11 @@ expression: root_decls
                     module: None,
                     id: "y2",
                     fqid: "bar::Y::y2",
-                    kind: Field,
+                    kind: Field(
+                        [
+                            "&optional",
+                        ],
+                    ),
                     is_export: None,
                     loc: Some(
                         Location {
@@ -433,7 +437,11 @@ expression: root_decls
                     module: None,
                     id: "y",
                     fqid: "test::Y::y",
-                    kind: Field,
+                    kind: Field(
+                        [
+                            "&optional",
+                        ],
+                    ),
                     is_export: None,
                     loc: Some(
                         Location {

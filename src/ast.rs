@@ -423,7 +423,7 @@ fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
             // Return the actual type for variable declarations.
             DeclKind::Const
-            | DeclKind::Field
+            | DeclKind::Field(_)
             | DeclKind::Global
             | DeclKind::Index(_, _)
             | DeclKind::Variable => db.typ(d),
@@ -507,7 +507,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                     // Find the given id in the fields.
                     return fields.iter().find(|f| &*f.id == id).cloned().map(Arc::new);
                 }
-                DeclKind::Field => return db.typ(type_decl),
+                DeclKind::Field(_) => return db.typ(type_decl),
                 _ => return None,
             }
         }
@@ -1145,12 +1145,12 @@ x$x2;",
             .named_descendant_for_position(Position::new(5, 3))
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
-        assert_eq!(
+        assert!(matches!(
             db.resolve(NodeLocation::from_node(uri.clone(), x1))
                 .unwrap()
                 .kind,
-            super::DeclKind::Field
-        );
+            super::DeclKind::Field(_)
+        ));
 
         let x2 = root
             .named_descendant_for_position(Position::new(6, 3))

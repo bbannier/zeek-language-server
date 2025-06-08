@@ -220,7 +220,7 @@ fn complete_field(
     if let Some(r) = state.resolve(NodeLocation::from_node(uri, node)) {
         let decl = state.typ(r).and_then(|d| match &d.kind {
             // If the decl refers to a field get the decl for underlying its type instead.
-            DeclKind::Field => state.typ(d),
+            DeclKind::Field(_) => state.typ(d),
             _ => Some(d),
         });
 
@@ -450,7 +450,7 @@ fn complete_record_initializer(
 
     let mut completion: Vec<_> = fields
         .iter()
-        .filter(|x| matches!(x.kind, DeclKind::Field))
+        .filter(|x| matches!(x.kind, DeclKind::Field(_)))
         .filter(|d| id.is_empty() || rust_fuzzy_search::fuzzy_compare(id, &d.id) > 0.0)
         .map(|d| {
             // Complete record fields.
@@ -651,7 +651,7 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::FuncDecl(_) | DeclKind::FuncDef(_) => CompletionItemKind::FUNCTION,
         DeclKind::HookDecl(_) | DeclKind::HookDef(_) => CompletionItemKind::OPERATOR,
         DeclKind::EventDecl(_) | DeclKind::EventDef(_) => CompletionItemKind::EVENT,
-        DeclKind::Field => CompletionItemKind::FIELD,
+        DeclKind::Field(_) => CompletionItemKind::FIELD,
         DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
         DeclKind::Module => CompletionItemKind::MODULE,
         DeclKind::Builtin(_) => CompletionItemKind::KEYWORD,

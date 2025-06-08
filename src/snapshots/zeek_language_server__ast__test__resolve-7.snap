@@ -7,7 +7,11 @@ Some(
         module: None,
         id: "f1",
         fqid: "x::X::f1",
-        kind: Field,
+        kind: Field(
+            [
+                "&optional",
+            ],
+        ),
         is_export: None,
         loc: Some(
             Location {

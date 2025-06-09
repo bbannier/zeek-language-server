@@ -2374,9 +2374,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-generate"
-version = "0.25.4"
+version = "0.25.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4f0082585021cca4dd8b52d0c2ed560897520b1c9c597f2a886d8f3b7b9376b"
+checksum = "0cfeccc88911ee8c46d9d4bcd70c02fd7c1e0a57302ba66e7110708bc0a1f034"
 dependencies = [
  "anyhow",
  "heck 0.5.0",
@@ -2456,6 +2456,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

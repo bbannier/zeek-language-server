@@ -10,6 +10,6 @@ license = "MIT"
 tree-sitter = "0.25.5"
 
 [build-dependencies]
-cc = "1.2.25"
+cc = "1.2.26"
 regex = { version = "1.11.1", default-features = false }
 tree-sitter-generate = "0.25.4"

@@ -472,10 +472,19 @@ fn complete_record_initializer(
             let field_inits = fields
                 .iter()
                 .enumerate()
-                .map(|(i, f)| {
-                    let id = &f.id;
-                    let idx = i + 1;
-                    format!("\\${id}=${{{idx}:[]}}")
+                .filter_map(|(i, f)| {
+                    // Only complete required fields.
+                    let DeclKind::Field(attrs) = &f.kind else {
+                        return None;
+                    };
+
+                    if attrs.contains(&"&optional".into()) {
+                        None
+                    } else {
+                        let id = &f.id;
+                        let idx = i + 1;
+                        Some(format!("{dd}{id}=${{{idx}:[]}}"))
+                    }
                 })
                 .join(", ");
 

@@ -466,6 +466,8 @@ fn complete_record_initializer(
 
     // If no field ID was provided also complete a record constructor snippet.
     if id.is_empty() {
+        let dd = "\\$";
+
         completion.extend({
             let field_inits = fields
                 .iter()
@@ -473,7 +475,7 @@ fn complete_record_initializer(
                 .map(|(i, f)| {
                     let id = &f.id;
                     let idx = i + 1;
-                    format!("$${id}=${{{idx}:[]}}")
+                    format!("\\${id}=${{{idx}:[]}}")
                 })
                 .join(", ");
 
@@ -486,7 +488,7 @@ fn complete_record_initializer(
                 _ => return None,
             };
             let code = format!("{field_inits}{terminator}")
-                .trim_start_matches('$')
+                .trim_start_matches(dd)
                 .into();
 
             std::iter::once(CompletionItem {

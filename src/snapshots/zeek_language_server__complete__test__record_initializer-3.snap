@@ -25,7 +25,7 @@ Some(
                 sort_text: None,
                 filter_text: None,
                 insert_text: Some(
-                    "y",
+                    "y=",
                 ),
                 insert_text_format: None,
                 insert_text_mode: None,

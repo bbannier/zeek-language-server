@@ -25,7 +25,7 @@ Some(
                 sort_text: None,
                 filter_text: None,
                 insert_text: Some(
-                    "xa",
+                    "xa=",
                 ),
                 insert_text_format: None,
                 insert_text_mode: None,
@@ -56,7 +56,7 @@ Some(
                 sort_text: None,
                 filter_text: None,
                 insert_text: Some(
-                    "xb",
+                    "xb=",
                 ),
                 insert_text_format: None,
                 insert_text_mode: None,
@@ -87,7 +87,7 @@ Some(
                 sort_text: None,
                 filter_text: None,
                 insert_text: Some(
-                    "y",
+                    "y=",
                 ),
                 insert_text_format: None,
                 insert_text_mode: None,

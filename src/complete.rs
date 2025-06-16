@@ -458,7 +458,7 @@ fn complete_record_initializer(
 
             CompletionItem {
                 label: id.clone(),
-                insert_text: Some(id),
+                insert_text: Some(format!("{id}=")),
                 ..to_completion_item(d)
             }
         })

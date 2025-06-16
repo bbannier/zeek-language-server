@@ -11,12 +11,12 @@ repos:
     hooks:
       - id: gitlint
   - repo: https://github.com/crate-ci/typos
-    rev: v1.31.1
+    rev: v1.33.1
     hooks:
       - id: typos
         exclude: "vscode/package-lock.json"
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.44.0
+    rev: v0.45.0
     hooks:
       - id: markdownlint-fix
   - repo: https://github.com/pre-commit/pre-commit-hooks

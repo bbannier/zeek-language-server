@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "zeek-language-server"
-version = "0.71.1"
+version = "0.72.0"
 dependencies = [
  "clap",
  "codspeed-criterion-compat",

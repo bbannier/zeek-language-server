@@ -1,7 +1,6 @@
 ---
 source: src/complete.rs
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(7, 6),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n})"
-snapshot_kind: text
 ---
 Some(
     Array(
@@ -33,9 +32,11 @@ Some(
                 sort_text: None,
                 filter_text: None,
                 insert_text: Some(
-                    "evt(c: count, s: string) {}",
+                    "evt(c: count, s: string)\n\t{\n\t${0}\n\t}",
                 ),
-                insert_text_format: None,
+                insert_text_format: Some(
+                    Snippet,
+                ),
                 insert_text_mode: None,
                 text_edit: None,
                 additional_text_edits: None,

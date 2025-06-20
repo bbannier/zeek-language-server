@@ -281,9 +281,12 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
                 _ => None,
             }?;
 
+            let label = item.label;
+
             Some(CompletionItem {
-                insert_text: Some(format!("{id}({signature}) {{}}", id = item.label)),
-                label: item.label,
+                insert_text: Some(format!("{label}({signature})\n\t{{\n\t${{0}}\n\t}}",)),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                label,
                 label_details: Some(CompletionItemLabelDetails {
                     detail: Some(format!("({signature})")),
                     ..CompletionItemLabelDetails::default()

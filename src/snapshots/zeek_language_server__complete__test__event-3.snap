@@ -32,9 +32,11 @@ Some(
                 sort_text: None,
                 filter_text: None,
                 insert_text: Some(
-                    "hok(c: count, s: string) {}",
+                    "hok(c: count, s: string)\n\t{\n\t${0}\n\t}",
                 ),
-                insert_text_format: None,
+                insert_text_format: Some(
+                    Snippet,
+                ),
                 insert_text_mode: None,
                 text_edit: None,
                 additional_text_edits: None,

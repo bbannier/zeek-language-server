@@ -38,7 +38,8 @@ use tower_lsp_server::{
         SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
         SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
         Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbol,
+        WorkspaceSymbolParams,
     },
     LanguageServer, LspService, Server, UriExt,
 };
@@ -894,7 +895,7 @@ impl LanguageServer for Backend {
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
-    ) -> Result<Option<Vec<SymbolInformation>>> {
+    ) -> Result<Option<OneOf<Vec<SymbolInformation>, Vec<WorkspaceSymbol>>>> {
         let query = params.query.to_lowercase();
 
         let symbols = {
@@ -919,7 +920,7 @@ impl LanguageServer for Backend {
                 .collect()
         };
 
-        Ok(Some(symbols))
+        Ok(Some(OneOf::Left(symbols)))
     }
 
     #[instrument]

@@ -4,136 +4,138 @@ expression: "query(\"mod\").await"
 ---
 Ok(
     Some(
-        [
-            SymbolInformation {
-                name: "mod_b::B",
-                kind: Variable,
-                tags: None,
-                deprecated: None,
-                location: Location {
-                    uri: Uri(
-                        Uri {
-                            scheme: Some(
-                                "file",
-                            ),
-                            authority: Some(
-                                Authority {
-                                    userinfo: None,
-                                    host: Host {
-                                        text: "",
-                                        data: RegName(
-                                            "",
-                                        ),
+        Left(
+            [
+                SymbolInformation {
+                    name: "mod_b::B",
+                    kind: Variable,
+                    tags: None,
+                    deprecated: None,
+                    location: Location {
+                        uri: Uri(
+                            Uri {
+                                scheme: Some(
+                                    "file",
+                                ),
+                                authority: Some(
+                                    Authority {
+                                        userinfo: None,
+                                        host: Host {
+                                            text: "",
+                                            data: RegName(
+                                                "",
+                                            ),
+                                        },
+                                        port: None,
                                     },
-                                    port: None,
-                                },
-                            ),
-                            path: "/p2/b.zeek",
-                            query: None,
-                            fragment: None,
-                        },
-                    ),
-                    range: Range {
-                        start: Position {
-                            line: 0,
-                            character: 14,
-                        },
-                        end: Position {
-                            line: 0,
-                            character: 27,
+                                ),
+                                path: "/p2/b.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 14,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 27,
+                            },
                         },
                     },
-                },
-                container_name: Some(
-                    "mod_b",
-                ),
-            },
-            SymbolInformation {
-                name: "mod_x::X",
-                kind: Variable,
-                tags: None,
-                deprecated: None,
-                location: Location {
-                    uri: Uri(
-                        Uri {
-                            scheme: Some(
-                                "file",
-                            ),
-                            authority: Some(
-                                Authority {
-                                    userinfo: None,
-                                    host: Host {
-                                        text: "",
-                                        data: RegName(
-                                            "",
-                                        ),
-                                    },
-                                    port: None,
-                                },
-                            ),
-                            path: "/x/x.zeek",
-                            query: None,
-                            fragment: None,
-                        },
+                    container_name: Some(
+                        "mod_b",
                     ),
-                    range: Range {
-                        start: Position {
-                            line: 0,
-                            character: 14,
-                        },
-                        end: Position {
-                            line: 0,
-                            character: 27,
+                },
+                SymbolInformation {
+                    name: "mod_x::X",
+                    kind: Variable,
+                    tags: None,
+                    deprecated: None,
+                    location: Location {
+                        uri: Uri(
+                            Uri {
+                                scheme: Some(
+                                    "file",
+                                ),
+                                authority: Some(
+                                    Authority {
+                                        userinfo: None,
+                                        host: Host {
+                                            text: "",
+                                            data: RegName(
+                                                "",
+                                            ),
+                                        },
+                                        port: None,
+                                    },
+                                ),
+                                path: "/x/x.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 14,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 27,
+                            },
                         },
                     },
-                },
-                container_name: Some(
-                    "mod_x",
-                ),
-            },
-            SymbolInformation {
-                name: "mod_a::A",
-                kind: Variable,
-                tags: None,
-                deprecated: None,
-                location: Location {
-                    uri: Uri(
-                        Uri {
-                            scheme: Some(
-                                "file",
-                            ),
-                            authority: Some(
-                                Authority {
-                                    userinfo: None,
-                                    host: Host {
-                                        text: "",
-                                        data: RegName(
-                                            "",
-                                        ),
-                                    },
-                                    port: None,
-                                },
-                            ),
-                            path: "/p1/a.zeek",
-                            query: None,
-                            fragment: None,
-                        },
+                    container_name: Some(
+                        "mod_x",
                     ),
-                    range: Range {
-                        start: Position {
-                            line: 0,
-                            character: 14,
-                        },
-                        end: Position {
-                            line: 0,
-                            character: 27,
+                },
+                SymbolInformation {
+                    name: "mod_a::A",
+                    kind: Variable,
+                    tags: None,
+                    deprecated: None,
+                    location: Location {
+                        uri: Uri(
+                            Uri {
+                                scheme: Some(
+                                    "file",
+                                ),
+                                authority: Some(
+                                    Authority {
+                                        userinfo: None,
+                                        host: Host {
+                                            text: "",
+                                            data: RegName(
+                                                "",
+                                            ),
+                                        },
+                                        port: None,
+                                    },
+                                ),
+                                path: "/p1/a.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 14,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 27,
+                            },
                         },
                     },
+                    container_name: Some(
+                        "mod_a",
+                    ),
                 },
-                container_name: Some(
-                    "mod_a",
-                ),
-            },
-        ],
+            ],
+        ),
     ),
 )

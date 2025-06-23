@@ -12,7 +12,7 @@ criterion = { version = "2.10.1", default-features = false, features = ["async_t
 insta = "1.43.1"
 tempfile = "3.20.0"
 version-sync = "0.9.5"
-wiremock = "0.6.3"
+wiremock = "0.6.4"
 
 [features]
 default = []

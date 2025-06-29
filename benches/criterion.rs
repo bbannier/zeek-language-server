@@ -11,9 +11,10 @@ fn runtime() -> tokio::runtime::Runtime {
 }
 
 mod server {
-    use criterion::{criterion_group, Criterion};
+    use criterion::{Criterion, criterion_group};
     use serde_json::json;
     use tower_lsp_server::{
+        LanguageServer, UriExt,
         lsp_types::{
             CompletionContext, CompletionParams, CompletionTriggerKind,
             DidChangeWatchedFilesParams, DidOpenTextDocumentParams, FileChangeType, FileEvent,
@@ -21,7 +22,6 @@ mod server {
             ReferenceParams, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
             Uri, WorkDoneProgressParams,
         },
-        LanguageServer, UriExt,
     };
     use zeek_language_server::lsp::Backend;
 
@@ -223,7 +223,7 @@ levenshtein_distance("", "");
 }
 
 mod zeek {
-    use criterion::{criterion_group, Criterion};
+    use criterion::{Criterion, criterion_group};
     use zeek_language_server::zeek;
 
     async fn system_files() {

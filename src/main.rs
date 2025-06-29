@@ -9,9 +9,9 @@ use {
 
 #[cfg(feature = "telemetry")]
 use {
-    opentelemetry::{trace::TracerProvider, KeyValue},
+    opentelemetry::{KeyValue, trace::TracerProvider},
     opentelemetry_otlp::WithExportConfig,
-    opentelemetry_sdk::{trace, Resource},
+    opentelemetry_sdk::{Resource, trace},
     opentelemetry_semantic_conventions::resource::SERVICE_NAME,
 };
 

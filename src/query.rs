@@ -7,12 +7,12 @@ use std::{
     str::Utf8Error,
     sync::{Arc, LazyLock},
 };
-use streaming_iterator::{convert, StreamingIterator, StreamingIteratorMut};
+use streaming_iterator::{StreamingIterator, StreamingIteratorMut, convert};
 use tower_lsp_server::lsp_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{parse::Parse, rst::markdownify, Str};
+use crate::{Str, parse::Parse, rst::markdownify};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -1422,12 +1422,12 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::{lsp::TestDatabase, parse::Parse, query::Node, Files};
+    use crate::{Files, lsp::TestDatabase, parse::Parse, query::Node};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use tower_lsp_server::{
-        lsp_types::{Position, Uri},
         UriExt,
+        lsp_types::{Position, Uri},
     };
 
     use super::Query;

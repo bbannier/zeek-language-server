@@ -7,7 +7,7 @@ use std::{
     sync::LazyLock,
 };
 
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use path_clean::PathClean;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use walkdir::WalkDir;
@@ -246,11 +246,13 @@ mod test {
 
     #[tokio::test]
     async fn script_dir() {
-        assert!(zeek::dir(zeek::ZeekDir::Script)
-            .await
-            .expect("script_dir failed")
-            .join("base/init-default.zeek")
-            .exists());
+        assert!(
+            zeek::dir(zeek::ZeekDir::Script)
+                .await
+                .expect("script_dir failed")
+                .join("base/init-default.zeek")
+                .exists()
+        );
     }
 
     #[tokio::test]
@@ -315,10 +317,12 @@ mod test {
 
     #[tokio::test]
     async fn prefixes_from_env() {
-        assert!(zeek::prefixes(Some(String::new()))
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            zeek::prefixes(Some(String::new()))
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
         assert!(zeek::prefixes(Some(":".into())).await.unwrap().is_empty());
 

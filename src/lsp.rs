@@ -1,9 +1,10 @@
 pub(crate) use crate::{
-    ast::{load_to_file, Ast},
+    Client, Files, Str,
+    ast::{Ast, load_to_file},
     complete::complete,
     parse::Parse,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
-    zeek, Client, Files, Str,
+    zeek,
 };
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -13,13 +14,9 @@ use semver::Version;
 use serde::Deserialize;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp_server::{
+    LanguageServer, LspService, Server, UriExt,
     jsonrpc::{Error, Result},
     lsp_types::{
-        notification::Progress,
-        request::{
-            GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
-            WorkDoneProgressCreate,
-        },
         CodeAction, CodeActionKind, CodeActionParams, CodeActionProviderCapability,
         CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
         DeclarationCapability, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
@@ -40,8 +37,12 @@ use tower_lsp_server::{
         Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
         WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbol,
         WorkspaceSymbolParams,
+        notification::Progress,
+        request::{
+            GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
+            WorkDoneProgressCreate,
+        },
     },
-    LanguageServer, LspService, Server, UriExt,
 };
 use tracing::{error, instrument, trace_span, warn};
 use walkdir::WalkDir;
@@ -256,10 +257,9 @@ impl Backend {
             let diags = {
                 state.file_changed(Arc::clone(&uri));
 
-                if let Some(tree) = state.parse(Arc::clone(&uri)) {
-                    tree_diagnostics(&tree.root_node())
-                } else {
-                    Vec::new()
+                match state.parse(Arc::clone(&uri)) {
+                    Some(tree) => tree_diagnostics(&tree.root_node()),
+                    _ => Vec::new(),
                 }
             };
 
@@ -543,7 +543,8 @@ impl LanguageServer for Backend {
                     let source = match tokio::fs::read_to_string(c.uri.path().as_str()).await {
                         Ok(s) => s,
                         Err(e) => {
-                            warn!("failed to read '{}': {}", &c.uri.path(), e);
+                            let path = &c.uri.path();
+                            warn!("failed to read '{path}': {e}");
                             return None;
                         }
                     };
@@ -1354,13 +1355,15 @@ impl LanguageServer for Backend {
             .collect(),
         ));
 
-        Ok(Some(CodeActionResponse::from(vec![CodeAction {
-            title: format!("Insert missing '{missing}'"),
-            kind: Some(CodeActionKind::QUICKFIX),
-            edit,
-            ..CodeAction::default()
-        }
-        .into()])))
+        Ok(Some(CodeActionResponse::from(vec![
+            CodeAction {
+                title: format!("Insert missing '{missing}'"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                edit,
+                ..CodeAction::default()
+            }
+            .into(),
+        ])))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1914,7 +1917,7 @@ mod semantic_tokens {
 
                 Some((token_type, range))
             })
-            .sorted_by(|a, b| Ord::cmp(&a.1 .0.start, &b.1 .0.start))
+            .sorted_by(|a, b| Ord::cmp(&a.1.0.start, &b.1.0.start))
             .collect();
 
         let mut tokens = Vec::new();
@@ -1967,6 +1970,7 @@ pub(crate) mod test {
     use semver::Version;
     use serde_json::json;
     use tower_lsp_server::{
+        LanguageServer, UriExt,
         lsp_types::{
             ClientCapabilities, CodeActionContext, CodeActionParams, CompletionParams,
             CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions,
@@ -1974,15 +1978,15 @@ pub(crate) mod test {
             ReferenceParams, RenameParams, SemanticTokensParams, TextDocumentIdentifier,
             TextDocumentPositionParams, Uri, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
-        LanguageServer, UriExt,
     };
-    use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
     use crate::{
+        Client,
         ast::Ast,
         lsp::{self, tree_diagnostics},
         parse::Parse,
-        zeek, Client,
+        zeek,
     };
 
     use super::{Backend, SourceUpdate};
@@ -2644,14 +2648,16 @@ event x::foo() {}",
 
         let server = serve(db);
 
-        assert!(server
-            .formatting(DocumentFormattingParams {
-                text_document: TextDocumentIdentifier::new(uri_ok),
-                options: FormattingOptions::default(),
-                work_done_progress_params: WorkDoneProgressParams::default(),
-            })
-            .await
-            .is_ok());
+        assert!(
+            server
+                .formatting(DocumentFormattingParams {
+                    text_document: TextDocumentIdentifier::new(uri_ok),
+                    options: FormattingOptions::default(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+                .is_ok()
+        );
 
         assert_eq!(
             server
@@ -2679,15 +2685,17 @@ event x::foo() {}",
 
         let server = serve(db);
 
-        assert!(server
-            .range_formatting(DocumentRangeFormattingParams {
-                text_document: TextDocumentIdentifier::new(uri_ok),
-                options: FormattingOptions::default(),
-                range: Range::new(Position::new(0, 0), Position::new(1, 1)),
-                work_done_progress_params: WorkDoneProgressParams::default(),
-            })
-            .await
-            .is_ok());
+        assert!(
+            server
+                .range_formatting(DocumentRangeFormattingParams {
+                    text_document: TextDocumentIdentifier::new(uri_ok),
+                    options: FormattingOptions::default(),
+                    range: Range::new(Position::new(0, 0), Position::new(1, 1)),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+                .is_ok()
+        );
 
         assert_eq!(
             server

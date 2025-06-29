@@ -131,7 +131,9 @@ mod test {
             "[foo](https://example.com)"
         );
         assert_eq!(
-            markdownify("See `Wikipedia article <http://en.wikipedia.org/wiki/Levenshtein_distance>`__ for more information."),
+            markdownify(
+                "See `Wikipedia article <http://en.wikipedia.org/wiki/Levenshtein_distance>`__ for more information."
+            ),
             "See [Wikipedia article](http://en.wikipedia.org/wiki/Levenshtein_distance) for more information."
         );
 

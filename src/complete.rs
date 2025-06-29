@@ -2,11 +2,11 @@ use rustc_hash::FxHashSet;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
+    Files, Str,
     ast::{self, Ast},
     lsp::Database,
     parse::Parse,
     query::{self, Decl, DeclKind, Node, NodeLocation, Query},
-    Files, Str,
 };
 
 use itertools::Itertools;
@@ -692,13 +692,13 @@ mod test {
 
     use insta::assert_debug_snapshot;
     use tower_lsp_server::{
+        UriExt,
         lsp_types::{
             CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
             CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams,
             Position, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
             WorkDoneProgressParams,
         },
-        UriExt,
     };
 
     use crate::{complete::complete, lsp::test::TestDatabase};
@@ -930,27 +930,29 @@ mod test {
             ",
         );
 
-        assert_debug_snapshot!(complete(
-            &db.0,
-            CompletionParams {
-                text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri),
-                    Position::new(7, 15)
-                ),
-                work_done_progress_params: WorkDoneProgressParams::default(),
-                partial_result_params: PartialResultParams::default(),
-                context: None,
-            }
-        )
-        .map(|response| {
-            // Filter out keywords since they only add noise for this test.
-            let CompletionResponse::Array(xs) = response else {
-                unreachable!("expected response with array");
-            };
-            xs.into_iter()
-                .filter(|x| x.kind.is_some_and(|k| k != CompletionItemKind::KEYWORD))
-                .collect::<Vec<_>>()
-        }));
+        assert_debug_snapshot!(
+            complete(
+                &db.0,
+                CompletionParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri),
+                        Position::new(7, 15)
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: None,
+                }
+            )
+            .map(|response| {
+                // Filter out keywords since they only add noise for this test.
+                let CompletionResponse::Array(xs) = response else {
+                    unreachable!("expected response with array");
+                };
+                xs.into_iter()
+                    .filter(|x| x.kind.is_some_and(|k| k != CompletionItemKind::KEYWORD))
+                    .collect::<Vec<_>>()
+            })
+        );
     }
 
     #[test]
@@ -1364,30 +1366,32 @@ global x:X = [$
             ),
         );
 
-        assert_debug_snapshot!(complete(
-            &db.0,
-            CompletionParams {
-                text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.clone()),
-                    Position::new(1, 16),
-                ),
-                work_done_progress_params: WorkDoneProgressParams::default(),
-                partial_result_params: PartialResultParams::default(),
-                context: None,
-            },
-        )
-        .and_then(|completion| {
-            if let CompletionResponse::Array(items) = completion {
-                Some(
-                    items
-                        .into_iter()
-                        .filter(|item| matches!(item.kind, Some(CompletionItemKind::SNIPPET)))
-                        .collect::<Vec<_>>(),
-                )
-            } else {
-                None
-            }
-        }));
+        assert_debug_snapshot!(
+            complete(
+                &db.0,
+                CompletionParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(1, 16),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: None,
+                },
+            )
+            .and_then(|completion| {
+                if let CompletionResponse::Array(items) = completion {
+                    Some(
+                        items
+                            .into_iter()
+                            .filter(|item| matches!(item.kind, Some(CompletionItemKind::SNIPPET)))
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                }
+            })
+        );
     }
 
     #[test]

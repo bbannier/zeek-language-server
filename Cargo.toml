@@ -1,7 +1,7 @@
 [package]
 name = "zeek-language-server"
 version = "0.72.0"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/bbannier/zeek-language-server"
 

@@ -5,13 +5,14 @@ use std::{
     sync::Arc,
 };
 
-use tower_lsp_server::{lsp_types::Uri, UriExt};
+use tower_lsp_server::{UriExt, lsp_types::Uri};
 use tracing::{instrument, warn};
 
 use crate::{
+    Str,
     parse::Parse,
     query::{self, Decl, DeclKind, Index, NodeLocation, Query, Type},
-    zeek, Str,
+    zeek,
 };
 
 #[salsa::query_group(AstStorage)]
@@ -478,7 +479,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
         "type" => {
             return query::typ(node, source.as_bytes())
-                .and_then(|t| db.resolve_type(t, Some(location)))
+                .and_then(|t| db.resolve_type(t, Some(location)));
         }
 
         "expr" => {
@@ -860,16 +861,16 @@ mod test {
 
     use insta::assert_debug_snapshot;
     use tower_lsp_server::{
-        lsp_types::{Position, Range, Uri},
         UriExt,
+        lsp_types::{Position, Range, Uri},
     };
 
     use crate::{
+        Files,
         ast::Ast,
         lsp::TestDatabase,
         parse::Parse,
         query::{self, DeclKind, NodeLocation},
-        Files,
     };
 
     #[test]
@@ -1197,9 +1198,10 @@ global e_foo: E = eC;
             .named_descendant_for_position(Position::new(7, 14))
             .unwrap();
         assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eB"));
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri.clone(), type_))
-            .unwrap());
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri.clone(), type_))
+                .unwrap()
+        );
 
         let type_ = tree
             .root_node()
@@ -1266,24 +1268,30 @@ function f(a: A) {
             .named_descendant_for_position(Position::new(2, 7))
             .unwrap();
         assert_eq!(g.utf8_text(source.as_bytes()), Ok("g"));
-        assert_debug_snapshot!(db.typ(db.resolve(NodeLocation::from_node(uri.clone(), g)).unwrap()));
+        assert_debug_snapshot!(
+            db.typ(db.resolve(NodeLocation::from_node(uri.clone(), g)).unwrap())
+        );
 
         let f_a = tree
             .root_node()
             .named_descendant_for_position(Position::new(4, 11))
             .unwrap();
         assert_eq!(f_a.utf8_text(source.as_bytes()), Ok("a"));
-        assert_debug_snapshot!(db.typ(
-            db.resolve(NodeLocation::from_node(uri.clone(), f_a))
-                .unwrap()
-        ));
+        assert_debug_snapshot!(
+            db.typ(
+                db.resolve(NodeLocation::from_node(uri.clone(), f_a))
+                    .unwrap()
+            )
+        );
 
         let a = tree
             .root_node()
             .named_descendant_for_position(Position::new(5, 4))
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()), Ok("a"));
-        assert_debug_snapshot!(db.typ(db.resolve(NodeLocation::from_node(uri.clone(), a)).unwrap()));
+        assert_debug_snapshot!(
+            db.typ(db.resolve(NodeLocation::from_node(uri.clone(), a)).unwrap())
+        );
 
         let a_c = tree
             .root_node()
@@ -1443,9 +1451,10 @@ global x2 = f2();
             .named_descendant_for_position(Position::new(2, 22))
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri.clone(), a))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri.clone(), a))
+                .and_then(|d| db.typ(d))
+        );
     }
 
     #[test]
@@ -1469,17 +1478,19 @@ global x2 = f2();
             .named_descendant_for_position(Position::new(1, 22))
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri.clone(), a))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri.clone(), a))
+                .and_then(|d| db.typ(d))
+        );
 
         let b = root
             .named_descendant_for_position(Position::new(2, 22))
             .unwrap();
         assert_eq!(b.utf8_text(source.as_bytes()).unwrap(), "b");
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri.clone(), b))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri.clone(), b))
+                .and_then(|d| db.typ(d))
+        );
     }
 
     #[test]
@@ -1564,17 +1575,19 @@ global x2 = f2();
             .named_descendant_for_position(Position::new(1, 19))
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri.clone(), a))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri.clone(), a))
+                .and_then(|d| db.typ(d))
+        );
 
         let x = root
             .named_descendant_for_position(Position::new(4, 19))
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri, x))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri, x))
+                .and_then(|d| db.typ(d))
+        );
     }
 
     #[test]
@@ -1598,9 +1611,10 @@ global x2 = f2();
             .named_descendant_for_position(Position::new(2, 19))
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri, x))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri, x))
+                .and_then(|d| db.typ(d))
+        );
     }
 
     #[test]
@@ -1850,9 +1864,10 @@ local x18: opaque of count;
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "my_a");
 
-        assert_debug_snapshot!(db
-            .resolve(NodeLocation::from_node(uri.clone(), a))
-            .and_then(|d| db.typ(d)));
+        assert_debug_snapshot!(
+            db.resolve(NodeLocation::from_node(uri.clone(), a))
+                .and_then(|d| db.typ(d))
+        );
     }
 
     #[test]

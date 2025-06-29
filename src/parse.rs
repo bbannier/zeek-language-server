@@ -1,4 +1,4 @@
-use crate::{query::Node, Files};
+use crate::{Files, query::Node};
 use std::sync::Arc;
 use tower_lsp_server::lsp_types::Uri;
 use tracing::instrument;
@@ -57,7 +57,7 @@ mod test {
         crate::{lsp::TestDatabase, parse::Parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
-        tower_lsp_server::{lsp_types::Uri, UriExt},
+        tower_lsp_server::{UriExt, lsp_types::Uri},
     };
 
     const SOURCE: &str = "event zeek_init() {}";

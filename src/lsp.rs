@@ -1860,8 +1860,9 @@ mod semantic_tokens {
     pub(crate) fn highlight(source: &str, legend: &SemanticTokensLegend) -> Option<SemanticTokens> {
         let line_index = line_index::LineIndex::new(source);
 
-        let mut cur = None;
         let mut data = Vec::new();
+
+        let mut labels = Vec::new();
 
         for event in tree_sitter_highlight::Highlighter::new()
             .highlight(&config()?, source.as_bytes(), None, |_| None)
@@ -1879,18 +1880,15 @@ mod semantic_tokens {
                 .ok()?
             {
                 HighlightEvent::HighlightStart(Highlight(idx)) => {
-                    cur = Some((idx, None));
+                    labels.push(idx);
                 }
                 HighlightEvent::Source { start, end } => {
-                    if let Some((_, range)) = &mut cur {
-                        *range = Some((start, end));
+                    if let Some(idx) = labels.last() {
+                        data.push((*idx, (start, end)));
                     }
                 }
                 HighlightEvent::HighlightEnd => {
-                    if let Some((idx, Some(cur_range))) = cur {
-                        data.push((idx, cur_range));
-                    }
-                    cur = None;
+                    labels.pop();
                 }
             }
         }

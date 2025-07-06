@@ -1834,7 +1834,7 @@ mod semantic_tokens {
             .flat_map(|line| line.split_whitespace())
             .filter_map(|xs| {
                 let xs = xs.strip_prefix('@')?;
-                Some(xs.strip_suffix(')').unwrap_or(xs))
+                Some(xs.split_once(')').map_or(xs, |(xs, _)| xs))
             })
             .unique()
     }

@@ -1575,8 +1575,7 @@ impl LanguageServer for Backend {
         };
 
         let legend = semantic_tokens::legend();
-        semantic_tokens::highlight(&source, &legend)
-            .map(|hl| Some(SemanticTokensResult::Tokens(hl)))
+        Ok(semantic_tokens::highlight(&source, &legend).map(SemanticTokensResult::Tokens))
     }
 }
 
@@ -1818,7 +1817,7 @@ mod semantic_tokens {
         },
     };
     use tracing::error;
-    use tree_sitter_highlight::{Highlight, HighlightEvent};
+    use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent};
 
     pub(crate) fn legend() -> SemanticTokensLegend {
         let token_types = highlights().map(SemanticTokenType::from).collect();
@@ -1840,10 +1839,7 @@ mod semantic_tokens {
             .unique()
     }
 
-    pub(crate) fn highlight(
-        source: &str,
-        legend: &SemanticTokensLegend,
-    ) -> super::Result<SemanticTokens> {
+    fn config() -> Option<HighlightConfiguration> {
         let mut zeek_config = tree_sitter_highlight::HighlightConfiguration::new(
             tree_sitter_zeek::language_zeek(),
             "zeek",
@@ -1854,53 +1850,48 @@ mod semantic_tokens {
         .map_err(|e| {
             error!("failed to construct highlighter configuration: {e}");
             Error::internal_error()
-        })?;
+        })
+        .ok()?;
         zeek_config.configure(&highlights().collect::<Vec<_>>());
 
+        Some(zeek_config)
+    }
+
+    pub(crate) fn highlight(source: &str, legend: &SemanticTokensLegend) -> Option<SemanticTokens> {
         let line_index = line_index::LineIndex::new(source);
 
-        let mut cur_ty = None;
-        let mut cur_range = None;
+        let mut cur = None;
         let mut data = Vec::new();
 
         for event in tree_sitter_highlight::Highlighter::new()
-            .highlight(&zeek_config, source.as_bytes(), None, |_| None)
+            .highlight(&config()?, source.as_bytes(), None, |_| None)
             .map_err(|e| {
                 error!("failed to highlight source: {e}");
                 Error::internal_error()
-            })?
+            })
+            .ok()?
         {
-            match event.map_err(|e| {
-                error!("failed to highlight event: {e}");
-                Error::internal_error()
-            })? {
+            match event
+                .map_err(|e| {
+                    error!("failed to highlight event: {e}");
+                    Error::internal_error()
+                })
+                .ok()?
+            {
                 HighlightEvent::HighlightStart(Highlight(idx)) => {
-                    cur_ty = Some(idx);
+                    cur = Some((idx, None));
                 }
                 HighlightEvent::Source { start, end } => {
-                    let (Ok(start), Ok(end)) = (u32::try_from(start), u32::try_from(end)) else {
-                        return Err(Error::internal_error());
-                    };
-
-                    let start_ = line_index.line_col(start.into());
-                    let end_ = line_index.line_col(end.into());
-
-                    cur_range = Some((
-                        Range::new(
-                            Position::new(start_.line, start_.col),
-                            Position::new(end_.line, end_.col),
-                        ),
-                        end - start,
-                    ));
+                    if let Some((_, range)) = &mut cur {
+                        *range = Some((start, end));
+                    }
                 }
                 HighlightEvent::HighlightEnd => {
-                    cur_ty = None;
-                    cur_range = None;
+                    if let Some((idx, Some(cur_range))) = cur {
+                        data.push((idx, cur_range));
+                    }
+                    cur = None;
                 }
-            }
-
-            if let (Some(cur_ty), Some(cur_range)) = (cur_ty, cur_range) {
-                data.push((cur_ty, cur_range));
             }
         }
 
@@ -1917,7 +1908,23 @@ mod semantic_tokens {
 
                 Some((token_type, range))
             })
-            .sorted_by(|a, b| Ord::cmp(&a.1.0.start, &b.1.0.start))
+            .sorted_by(|(_, (a, _)), (_, (b, _))| Ord::cmp(&a, &b))
+            .filter_map(|(token_type, (start, end))| {
+                let range = end - start;
+                let start = line_index.line_col(start.try_into().ok()?);
+                let end = line_index.line_col(end.try_into().ok()?);
+
+                Some((
+                    token_type,
+                    (
+                        Range::new(
+                            Position::new(start.line, start.col),
+                            Position::new(end.line, end.col),
+                        ),
+                        range,
+                    ),
+                ))
+            })
             .collect();
 
         let mut tokens = Vec::new();
@@ -1925,12 +1932,16 @@ mod semantic_tokens {
         for (token_type, (range, length)) in data {
             let token = if let Some((_, prev_range)) = prev {
                 let delta_line = range.start.line - prev_range.start.line;
-                let delta_start =
-                    range.start.character - u32::from(delta_line == 0) * prev_range.start.character;
+                let delta_start = if delta_line == 0 {
+                    range.start.character - prev_range.start.character
+                } else {
+                    range.start.character
+                };
                 SemanticToken {
                     delta_line,
                     delta_start,
-                    length,
+                    length: length.try_into().ok()?,
+
                     token_type,
                     ..SemanticToken::default()
                 }
@@ -1949,10 +1960,55 @@ mod semantic_tokens {
             prev = Some((token_type, range));
         }
 
-        Ok(SemanticTokens {
+        Some(SemanticTokens {
             data: tokens,
             ..SemanticTokens::default()
         })
+    }
+
+    #[cfg(test)]
+    mod test {
+        use insta::assert_debug_snapshot;
+        use tower_lsp_server::lsp_types::{Position, SemanticToken};
+
+        use crate::lsp::semantic_tokens::{highlight, legend};
+
+        #[test]
+        fn encoding() {
+            let legend = legend();
+            let highlight = highlight(
+                "1;
+# foo", &legend,
+            )
+            .unwrap();
+
+            let mut highlights = Vec::new();
+            let mut prev = Position::new(0, 0);
+            for SemanticToken {
+                delta_line,
+                delta_start,
+                token_type,
+                ..
+            } in highlight.data
+            {
+                let line = prev.line + delta_line;
+                let col = if delta_line == 0 {
+                    prev.character + delta_start
+                } else {
+                    delta_start
+                };
+                let pos = Position::new(line, col);
+                prev = pos;
+
+                let token_type = legend
+                    .token_types
+                    .get(usize::try_from(token_type).unwrap())
+                    .unwrap();
+                highlights.push((pos, token_type));
+            }
+
+            assert_debug_snapshot!(highlights);
+        }
     }
 }
 

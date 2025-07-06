@@ -1,0 +1,33 @@
+---
+source: src/lsp.rs
+expression: highlights
+---
+[
+    (
+        Position {
+            line: 0,
+            character: 0,
+        },
+        SemanticTokenType(
+            "constant",
+        ),
+    ),
+    (
+        Position {
+            line: 0,
+            character: 1,
+        },
+        SemanticTokenType(
+            "punctuation.delimiter",
+        ),
+    ),
+    (
+        Position {
+            line: 1,
+            character: 0,
+        },
+        SemanticTokenType(
+            "comment",
+        ),
+    ),
+]

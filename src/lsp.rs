@@ -1809,6 +1809,8 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
 }
 
 mod semantic_tokens {
+    use std::sync::LazyLock;
+
     use itertools::Itertools;
     use tower_lsp_server::{
         jsonrpc::Error,
@@ -1820,7 +1822,10 @@ mod semantic_tokens {
     use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent};
 
     pub(crate) fn legend() -> SemanticTokensLegend {
-        let token_types = highlights().map(SemanticTokenType::from).collect();
+        let token_types = highlights()
+            .iter()
+            .map(|hl| SemanticTokenType::from(*hl))
+            .collect();
 
         SemanticTokensLegend {
             token_types,
@@ -1828,34 +1833,49 @@ mod semantic_tokens {
         }
     }
 
-    fn highlights() -> impl Iterator<Item = &'static str> {
-        tree_sitter_zeek::HIGHLIGHT_QUERY
-            .lines()
-            .flat_map(|line| line.split_whitespace())
-            .filter_map(|xs| {
-                let xs = xs.strip_prefix('@')?;
-                Some(xs.split_once(')').map_or(xs, |(xs, _)| xs))
+    fn highlights() -> &'static [&'static str] {
+        static ALL: LazyLock<Vec<&str>> = LazyLock::new(|| {
+            (ZEEK_CONFIG.query.capture_names())
+                .iter()
+                .copied()
+                // tree-sitter-highlight leaks injection queries, remove it.
+                .filter(|hl| *hl != "injection.content")
+                // LSP does not standardize names with subscopes, preserve only the top-level scope.
+                .map(|hl| hl.split_once('.').map_or(hl, |(hl, _)| hl))
+                .collect()
+        });
+
+        &ALL
+    }
+
+    fn highlight_config(lang: &str) -> Option<HighlightConfiguration> {
+        let mut config = config(lang)?;
+        config.configure(highlights());
+        Some(config)
+    }
+
+    fn config(lang: &str) -> Option<HighlightConfiguration> {
+        match lang {
+            ZEEK => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter_zeek::language_zeek(),
+                "zeek",
+                tree_sitter_zeek::HIGHLIGHT_QUERY,
+                "",
+                "",
+            )
+            .map_err(|e| {
+                error!("failed to construct highlighter configuration: {e}");
+                Error::internal_error()
             })
-            .unique()
+            .ok(),
+            _ => None,
+        }
     }
 
-    fn config() -> Option<HighlightConfiguration> {
-        let mut zeek_config = tree_sitter_highlight::HighlightConfiguration::new(
-            tree_sitter_zeek::language_zeek(),
-            "zeek",
-            tree_sitter_zeek::HIGHLIGHT_QUERY,
-            "",
-            "",
-        )
-        .map_err(|e| {
-            error!("failed to construct highlighter configuration: {e}");
-            Error::internal_error()
-        })
-        .ok()?;
-        zeek_config.configure(&highlights().collect::<Vec<_>>());
+    const ZEEK: &str = "zeek";
 
-        Some(zeek_config)
-    }
+    static ZEEK_CONFIG: LazyLock<HighlightConfiguration> =
+        LazyLock::new(|| config(ZEEK).expect("invalid config for 'zeek'"));
 
     pub(crate) fn highlight(source: &str, legend: &SemanticTokensLegend) -> Option<SemanticTokens> {
         let line_index = line_index::LineIndex::new(source);
@@ -1864,8 +1884,10 @@ mod semantic_tokens {
 
         let mut labels = Vec::new();
 
+        let zeek_config = highlight_config(ZEEK)?;
+
         for event in tree_sitter_highlight::Highlighter::new()
-            .highlight(&config()?, source.as_bytes(), None, |_| None)
+            .highlight(&zeek_config, source.as_bytes(), None, |_| None)
             .map_err(|e| {
                 error!("failed to highlight source: {e}");
                 Error::internal_error()
@@ -1893,11 +1915,10 @@ mod semantic_tokens {
             }
         }
 
-        let highlight_names: Vec<_> = highlights().collect();
         let data: Vec<_> = data
             .into_iter()
             .filter_map(|(ty, range)| {
-                let name = highlight_names.get(ty)?;
+                let name = highlights().get(ty)?;
                 let ty = SemanticTokenType::from(*name);
 
                 // Skip token types we didn't previously advertise.

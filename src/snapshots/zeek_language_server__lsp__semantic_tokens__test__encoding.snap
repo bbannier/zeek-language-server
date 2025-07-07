@@ -18,7 +18,7 @@ expression: highlights
             character: 1,
         },
         SemanticTokenType(
-            "punctuation.delimiter",
+            "punctuation",
         ),
     ),
     (

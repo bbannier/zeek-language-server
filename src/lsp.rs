@@ -1824,6 +1824,7 @@ mod semantic_tokens {
     pub(crate) fn legend() -> SemanticTokensLegend {
         let token_types = highlights()
             .iter()
+            .unique()
             .map(|hl| SemanticTokenType::from(*hl))
             .collect();
 
@@ -1837,6 +1838,10 @@ mod semantic_tokens {
         static ALL: LazyLock<Vec<&str>> = LazyLock::new(|| {
             (ZEEK_CONFIG.query.capture_names())
                 .iter()
+                .chain(BTEST_CONFIG.query.capture_names())
+                .chain(PRINTF_CONFIG.query.capture_names())
+                .chain(REGEX_CONFIG.query.capture_names())
+                .chain(SH_CONFIG.query.capture_names())
                 .copied()
                 // tree-sitter-highlight leaks injection queries, remove it.
                 .filter(|hl| *hl != "injection.content")
@@ -1856,27 +1861,68 @@ mod semantic_tokens {
 
     fn config(lang: &str) -> Option<HighlightConfiguration> {
         match lang {
-            ZEEK => tree_sitter_highlight::HighlightConfiguration::new(
-                tree_sitter_zeek::language_zeek(),
-                "zeek",
-                tree_sitter_zeek::HIGHLIGHT_QUERY,
+            BTEST => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter::Language::new(tree_sitter_btest::LANGUAGE),
+                lang,
+                tree_sitter_btest::HIGHLIGHTS_QUERY,
+                tree_sitter_btest::INJECTIONS_QUERY,
+                "",
+            )
+            .ok(),
+            PRINTF => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter::Language::new(tree_sitter_printf::LANGUAGE),
+                lang,
+                tree_sitter_printf::HIGHLIGHTS_QUERY,
                 "",
                 "",
             )
-            .map_err(|e| {
-                error!("failed to construct highlighter configuration: {e}");
-                Error::internal_error()
-            })
+            .ok(),
+            REGEX => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter::Language::new(tree_sitter_regex::LANGUAGE),
+                lang,
+                tree_sitter_regex::HIGHLIGHTS_QUERY,
+                "",
+                "",
+            )
+            .ok(),
+            SH => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter::Language::new(tree_sitter_bash::LANGUAGE),
+                lang,
+                tree_sitter_bash::HIGHLIGHT_QUERY,
+                "",
+                "",
+            )
+            .ok(),
+            ZEEK => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter_zeek::language_zeek(),
+                lang,
+                tree_sitter_zeek::HIGHLIGHT_QUERY,
+                tree_sitter_zeek::INJECTION_QUERY,
+                "",
+            )
             .ok(),
             _ => None,
         }
     }
 
+    const BTEST: &str = "btest";
+    const PRINTF: &str = "printf";
+    const REGEX: &str = "regex";
+    const SH: &str = "sh";
     const ZEEK: &str = "zeek";
 
+    static BTEST_CONFIG: LazyLock<HighlightConfiguration> =
+        LazyLock::new(|| config(BTEST).expect("invalid config for 'btest'"));
+    static PRINTF_CONFIG: LazyLock<HighlightConfiguration> =
+        LazyLock::new(|| config(PRINTF).expect("invalid config for 'printf'"));
+    static REGEX_CONFIG: LazyLock<HighlightConfiguration> =
+        LazyLock::new(|| config(REGEX).expect("invalid config for 'regex'"));
+    static SH_CONFIG: LazyLock<HighlightConfiguration> =
+        LazyLock::new(|| config(SH).expect("invalid config for 'sh'"));
     static ZEEK_CONFIG: LazyLock<HighlightConfiguration> =
         LazyLock::new(|| config(ZEEK).expect("invalid config for 'zeek'"));
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn highlight(source: &str, legend: &SemanticTokensLegend) -> Option<SemanticTokens> {
         let line_index = line_index::LineIndex::new(source);
 
@@ -1884,10 +1930,23 @@ mod semantic_tokens {
 
         let mut labels = Vec::new();
 
+        let btest_config = highlight_config(BTEST)?;
+        let printf_config = highlight_config(PRINTF)?;
+        let regex_config = highlight_config(REGEX)?;
+        let sh_config = highlight_config(SH)?;
         let zeek_config = highlight_config(ZEEK)?;
 
         for event in tree_sitter_highlight::Highlighter::new()
-            .highlight(&zeek_config, source.as_bytes(), None, |_| None)
+            .highlight(&zeek_config, source.as_bytes(), None, |lang| match lang {
+                BTEST => Some(&btest_config),
+                PRINTF => Some(&printf_config),
+                REGEX => Some(&regex_config),
+                SH => Some(&sh_config),
+                _ => {
+                    error!("cannot highlight unknown language {lang}");
+                    None
+                }
+            })
             .map_err(|e| {
                 error!("failed to highlight source: {e}");
                 Error::internal_error()
@@ -1988,7 +2047,7 @@ mod semantic_tokens {
     #[cfg(test)]
     mod test {
         use insta::assert_debug_snapshot;
-        use tower_lsp_server::lsp_types::{Position, SemanticToken};
+        use tower_lsp_server::lsp_types::{Position, SemanticToken, SemanticTokenType};
 
         use crate::lsp::semantic_tokens::{highlight, legend};
 
@@ -2027,6 +2086,30 @@ mod semantic_tokens {
             }
 
             assert_debug_snapshot!(highlights);
+        }
+
+        #[test]
+        fn injection() {
+            fn tokens(source: &str) -> Vec<SemanticTokenType> {
+                let legend = legend();
+
+                highlight(source, &legend)
+                    .unwrap()
+                    .data
+                    .into_iter()
+                    .map(|hl| {
+                        legend
+                            .token_types
+                            .get(usize::try_from(hl.token_type).unwrap())
+                            .unwrap()
+                            .clone()
+                    })
+                    .collect()
+            }
+
+            assert_debug_snapshot!(tokens(r#""Foo %s";"#));
+            assert_debug_snapshot!(tokens("/1?/;"));
+            assert_debug_snapshot!(tokens("# @TEST-EXEC: false"));
         }
     }
 }

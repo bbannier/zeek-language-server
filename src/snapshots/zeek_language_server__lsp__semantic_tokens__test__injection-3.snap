@@ -1,0 +1,18 @@
+---
+source: src/lsp.rs
+expression: "tokens(\"# @TEST-EXEC: false\")"
+---
+[
+    SemanticTokenType(
+        "comment",
+    ),
+    SemanticTokenType(
+        "macro",
+    ),
+    SemanticTokenType(
+        "none",
+    ),
+    SemanticTokenType(
+        "function",
+    ),
+]

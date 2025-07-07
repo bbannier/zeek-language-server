@@ -1,0 +1,18 @@
+---
+source: src/lsp.rs
+expression: "tokens(\"/1?/;\")"
+---
+[
+    SemanticTokenType(
+        "operator",
+    ),
+    SemanticTokenType(
+        "string",
+    ),
+    SemanticTokenType(
+        "operator",
+    ),
+    SemanticTokenType(
+        "punctuation",
+    ),
+]

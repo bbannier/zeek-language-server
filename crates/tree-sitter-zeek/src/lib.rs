@@ -45,6 +45,7 @@ pub fn language_zeek() -> Language {
 
 /// The syntax highlighting query for this language.
 pub const HIGHLIGHT_QUERY: &str = include_str!("../vendor/tree-sitter-zeek/queries/highlights.scm");
+pub const INJECTION_QUERY: &str = include_str!("../vendor/tree-sitter-zeek/queries/injections.scm");
 
 // /// The local-variable syntax highlighting query for this language.
 // pub const LOCALS_QUERY: &str = "";

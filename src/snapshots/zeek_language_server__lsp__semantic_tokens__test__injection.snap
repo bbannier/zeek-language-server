@@ -1,0 +1,21 @@
+---
+source: src/lsp.rs
+expression: "tokens(r#\"\"Foo %s\";\"#)"
+---
+[
+    SemanticTokenType(
+        "string",
+    ),
+    SemanticTokenType(
+        "embedded",
+    ),
+    SemanticTokenType(
+        "embedded",
+    ),
+    SemanticTokenType(
+        "string",
+    ),
+    SemanticTokenType(
+        "punctuation",
+    ),
+]

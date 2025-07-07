@@ -2384,6 +2384,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-bash"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "871b0606e667e98a1237ebdc1b0d7056e0aebfdc3141d12b399865d4cb6ed8a6"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-btest"
+version = "0.1.0"
+source = "git+https://github.com/bbannier/tree-sitter-btest#e1cd8e552085589169b29915687d9a93f3275a4e"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-generate"
 version = "0.25.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2423,6 +2442,26 @@ name = "tree-sitter-language"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c199356c799a8945965bb5f2c55b2ad9d9aa7c4b4f6e587fe9dea0bc715e5f9c"
+
+[[package]]
+name = "tree-sitter-printf"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b83e4b6cb564318c486180bc6e59889bf990d97def220a1a847edaa85cc7922"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-regex"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "712656f8c262a5a4b7d6026e6246950787d178d613864952554e1516a33ab0c1"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree-sitter-zeek"
@@ -2866,7 +2905,11 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-btest",
  "tree-sitter-highlight",
+ "tree-sitter-printf",
+ "tree-sitter-regex",
  "tree-sitter-zeek",
  "version-sync",
  "walkdir",

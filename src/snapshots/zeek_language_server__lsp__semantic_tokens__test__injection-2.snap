@@ -4,13 +4,16 @@ expression: "tokens(\"/1?/;\")"
 ---
 [
     SemanticTokenType(
-        "operator",
+        "regexp",
     ),
     SemanticTokenType(
         "string",
     ),
     SemanticTokenType(
         "operator",
+    ),
+    SemanticTokenType(
+        "regexp",
     ),
     SemanticTokenType(
         "punctuation",

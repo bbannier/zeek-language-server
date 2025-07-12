@@ -3,7 +3,7 @@
   "displayName": "Zeek",
   "description": "Zeek language support for Visual Studio Code",
   "author": "Benjamin Bannier",
-  "version": "0.73.0",
+  "version": "0.73.1",
   "license": "MIT",
   "publisher": "bbannier",
   "preview": false,

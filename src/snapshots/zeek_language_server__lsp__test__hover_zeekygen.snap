@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.hover(HoverParams {\n            text_document_position_params: TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n                Position::new(3, 18)),\n            work_done_progress_params: WorkDoneProgressParams::default(),\n        }).await"
+expression: "server.hover(HoverParams\n{\n    text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n    Position::new(3, 18),), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
 ---
 Ok(
     Some(
@@ -16,7 +16,7 @@ Ok(
                 Range {
                     start: Position {
                         line: 3,
-                        character: 12,
+                        character: 14,
                     },
                     end: Position {
                         line: 3,

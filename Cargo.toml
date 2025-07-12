@@ -53,6 +53,7 @@ tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", ver
 tree-sitter-highlight = { version = "0.25.6", default-features = false }
 tree-sitter-printf = "0.5.0"
 tree-sitter-regex = "0.24.3"
+tree-sitter-rst = "0.2.0"
 tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }
 walkdir = "2.5.0"
 

@@ -1,0 +1,12 @@
+---
+source: src/lsp.rs
+expression: "tokens(\"## ``false``\")"
+---
+[
+    SemanticTokenType(
+        "comment",
+    ),
+    SemanticTokenType(
+        "macro",
+    ),
+]

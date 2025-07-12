@@ -750,7 +750,7 @@ impl LanguageServer for Backend {
                     contents.push(MarkedString::String(format!("`{}`", uri.path())));
                 }
             }
-            "zeekygen_head_comment" | "zeekygen_prev_comment" | "zeekygen_next_comment" => {
+            "comment_body" => {
                 // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
                 let try_update = |contents: &mut Vec<_>| {
                     let symbol = word_at_position(&source, position)?;
@@ -977,7 +977,7 @@ impl LanguageServer for Backend {
                     )
                     .map(|uri| Location::new((*uri).clone(), Range::default()))
                 }
-                "zeekygen_head_comment" | "zeekygen_prev_comment" | "zeekygen_next_comment" => {
+                "comment_body" => {
                     // If we are in a zeekygen comment try to recover an
                     // identifier under the cursor and use it as target.
                     let Some(symbol) = word_at_position(&source, position) else {
@@ -1821,6 +1821,8 @@ mod semantic_tokens {
     use tracing::error;
     use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent};
 
+    use crate::lsp::RST_HIGHLIGHT;
+
     pub(crate) fn legend() -> SemanticTokensLegend {
         let token_types = highlights()
             .iter()
@@ -1841,6 +1843,7 @@ mod semantic_tokens {
                 .chain(BTEST_CONFIG.query.capture_names())
                 .chain(PRINTF_CONFIG.query.capture_names())
                 .chain(REGEX_CONFIG.query.capture_names())
+                .chain(RST_CONFIG.query.capture_names())
                 .chain(SH_CONFIG.query.capture_names())
                 .copied()
                 // tree-sitter-highlight leaks injection queries, remove it.
@@ -1885,6 +1888,14 @@ mod semantic_tokens {
                 "",
             )
             .ok(),
+            RST => tree_sitter_highlight::HighlightConfiguration::new(
+                tree_sitter::Language::new(tree_sitter_rst::LANGUAGE),
+                lang,
+                RST_HIGHLIGHT,
+                "",
+                "",
+            )
+            .ok(),
             SH => tree_sitter_highlight::HighlightConfiguration::new(
                 tree_sitter::Language::new(tree_sitter_bash::LANGUAGE),
                 lang,
@@ -1908,6 +1919,7 @@ mod semantic_tokens {
     const BTEST: &str = "btest";
     const PRINTF: &str = "printf";
     const REGEX: &str = "regex";
+    const RST: &str = "rst";
     const SH: &str = "sh";
     const ZEEK: &str = "zeek";
 
@@ -1917,6 +1929,8 @@ mod semantic_tokens {
         LazyLock::new(|| config(PRINTF).expect("invalid config for 'printf'"));
     static REGEX_CONFIG: LazyLock<HighlightConfiguration> =
         LazyLock::new(|| config(REGEX).expect("invalid config for 'regex'"));
+    static RST_CONFIG: LazyLock<HighlightConfiguration> =
+        LazyLock::new(|| config(RST).expect("invalid config for 'rst'"));
     static SH_CONFIG: LazyLock<HighlightConfiguration> =
         LazyLock::new(|| config(SH).expect("invalid config for 'sh'"));
     static ZEEK_CONFIG: LazyLock<HighlightConfiguration> =
@@ -1933,6 +1947,7 @@ mod semantic_tokens {
         let btest_config = highlight_config(BTEST)?;
         let printf_config = highlight_config(PRINTF)?;
         let regex_config = highlight_config(REGEX)?;
+        let rst_config = highlight_config(RST)?;
         let sh_config = highlight_config(SH)?;
         let zeek_config = highlight_config(ZEEK)?;
 
@@ -1941,6 +1956,7 @@ mod semantic_tokens {
                 BTEST => Some(&btest_config),
                 PRINTF => Some(&printf_config),
                 REGEX => Some(&regex_config),
+                RST => Some(&rst_config),
                 SH => Some(&sh_config),
                 _ => {
                     error!("cannot highlight unknown language {lang}");
@@ -2110,9 +2126,23 @@ mod semantic_tokens {
             assert_debug_snapshot!(tokens(r#""Foo %s";"#));
             assert_debug_snapshot!(tokens("/1?/;"));
             assert_debug_snapshot!(tokens("# @TEST-EXEC: false"));
+            assert_debug_snapshot!(tokens("## ``false``"));
+            assert_debug_snapshot!(tokens("##! ``false``"));
+            assert_debug_snapshot!(tokens("##< ``false``"));
         }
     }
 }
+
+const RST_HIGHLIGHT: &str = "
+(literal) @macro
+
+(interpreted_text
+  (role) @modifier
+) @macro
+
+(directive
+  name: (type) @modifier
+)";
 
 #[cfg(test)]
 pub(crate) mod test {

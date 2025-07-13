@@ -179,30 +179,19 @@ levenshtein_distance("", "");
 
         c.bench_function("server::reference::exported_var", |b| {
             b.to_async(&runtime).iter(|| async {
-                let x = db
-                    .references(ReferenceParams {
-                        text_document_position: TextDocumentPositionParams::new(
-                            TextDocumentIdentifier::new(uri.clone()),
-                            Position::new(3, 6), // On first `x`.
-                        ),
-                        work_done_progress_params: WorkDoneProgressParams::default(),
-                        partial_result_params: PartialResultParams::default(),
-                        context: ReferenceContext {
-                            include_declaration: true,
-                        },
-                    })
-                    .await;
-                let Ok(x) = x else {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                    return;
-                };
-                let Some(x) = x else {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                    return;
-                };
-                if x.is_empty() {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
-                }
+                db.references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(3, 6), // On first `x`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                })
+                .await
+                .unwrap();
             });
         });
     }

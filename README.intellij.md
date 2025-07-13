@@ -51,7 +51,6 @@ repository.
 
      ```json
      {
-       "check_for_updates": true,
        "inlay_hints_parameters": true,
        "inlay_hints_variables": true,
        "references": false,

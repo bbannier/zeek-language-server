@@ -12,7 +12,6 @@ fn runtime() -> tokio::runtime::Runtime {
 
 mod server {
     use criterion::{Criterion, criterion_group};
-    use serde_json::json;
     use tower_lsp_server::{
         LanguageServer, UriExt,
         lsp_types::{
@@ -72,12 +71,7 @@ mod server {
 
         let (db, uri) = runtime.block_on(async {
             let db = Backend::default();
-            let _ = db
-                .initialize(InitializeParams {
-                    initialization_options: Some(json!({"check_for_updates": false})),
-                    ..InitializeParams::default()
-                })
-                .await;
+            let _ = db.initialize(InitializeParams::default()).await;
 
             // This triggers indexing.
             db.initialized(InitializedParams {}).await;
@@ -107,12 +101,7 @@ mod server {
 
         let (db, uri) = runtime.block_on(async {
             let db = Backend::default();
-            let _ = db
-                .initialize(InitializeParams {
-                    initialization_options: Some(json!({"check_for_updates": false})),
-                    ..InitializeParams::default()
-                })
-                .await;
+            let _ = db.initialize(InitializeParams::default()).await;
 
             // This triggers indexing.
             db.initialized(InitializedParams {}).await;

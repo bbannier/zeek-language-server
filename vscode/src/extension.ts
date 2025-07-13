@@ -353,12 +353,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
     serverExecutable.options = { env };
   }
 
-  let checkForUpdates = configuration.get<boolean>("checkForUpdates");
-  if (checkForUpdates === undefined || checkForUpdates === null) {
-    const path = configuration.get<string>("path");
-    checkForUpdates = path != null && path.length > 0;
-  }
-
   const inlay_hints_variables = configuration.get<boolean>(
     "inlayHints.variables.enabled",
   );
@@ -375,7 +369,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "zeek" }],
     initializationOptions: {
-      check_for_updates: checkForUpdates,
       inlay_hints_parameters,
       inlay_hints_variables,
       references,

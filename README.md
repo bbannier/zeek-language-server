@@ -21,8 +21,6 @@ For optional formatting support
 
 The server interprets the following `initializationOptions`:
 
-- `check_for_updates` (default: `true`):
-  Whether to check for newer releases during startup
 - `inlay_hints_parameters` (default: `true`):
   Whether to show inlay hints for function call parameters
 - `inlay_hints_variables` (default: `true`):

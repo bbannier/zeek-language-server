@@ -67,14 +67,6 @@
           "default": "",
           "description": "Colon-separated list of alternative Zeek prefixes to use. By default prefixes are determined from the output of zeek-config."
         },
-        "zeekLanguageServer.checkForUpdates": {
-          "type": [
-            "boolean",
-            "null"
-          ],
-          "default": "null",
-          "markdownDescription": "Check for updates of the server binary on startup. By default we check if `#zeekLanguageServer.path#` is set. This should only be needed if not using a server binary bundled with the extension."
-        },
         "zeekLanguageServer.debugLogging": {
           "enum": [
             "error",

@@ -10,7 +10,6 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use salsa::ParallelDatabase;
-use semver::Version;
 use serde::Deserialize;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp_server::{
@@ -164,13 +163,6 @@ impl Backend {
         self.client_message(MessageType::WARNING, message).await;
     }
 
-    async fn info_message<M>(&self, message: M)
-    where
-        M: std::fmt::Display,
-    {
-        self.client_message(MessageType::INFO, message).await;
-    }
-
     async fn progress_begin<T>(&self, title: T) -> Option<ProgressToken>
     where
         T: Into<String> + std::fmt::Display,
@@ -310,29 +302,6 @@ impl Backend {
             });
 
         Ok(system_files.chain(workspace_files).collect())
-    }
-
-    pub async fn get_latest_release(&self, uri: Option<&str>) -> Option<Version> {
-        #[derive(Deserialize, Debug)]
-        struct GithubRelease {
-            name: String,
-        }
-
-        let client = reqwest::ClientBuilder::new()
-            .user_agent("zeek-language-server")
-            .build()
-            .ok()?;
-
-        let uri = uri.unwrap_or(
-            "https://api.github.com/repos/bbannier/zeek-language-server/releases/latest",
-        );
-
-        let resp = client.get(uri).send().await.ok()?.text().await.ok()?;
-
-        let release: GithubRelease = serde_json::from_str(&resp).ok()?;
-        let latest = semver::Version::parse(release.name.trim_matches('v')).ok()?;
-
-        Some(latest)
     }
 
     /// This is wrapper around `zeek::check` directly publishing diagnostics.
@@ -481,23 +450,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
-        let initialization_options = self.state.read().await.initialization_options();
-
-        // Check whether a newer release is available.
-        if initialization_options.check_for_updates {
-            if let Some(latest) = self.get_latest_release(None).await {
-                let current =
-                    Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| latest.clone());
-
-                if current < latest {
-                    self.info_message(format!(
-                        "a newer release of zeek-language-server ({latest}) is available, currently running {current}"
-                    ))
-                    .await;
-                }
-            }
-        }
-
         // Load all currently visible files. These are likely only files in system prefixes.
         if let Ok(files) = self.visible_files().await {
             let update = self.did_change_watched_files(DidChangeWatchedFilesParams {
@@ -1642,9 +1594,6 @@ pub async fn run() {
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 /// Custom `initializationOptions` clients can send.
 pub struct InitializationOptions {
-    #[serde(default = "InitializationOptions::_default_check_for_updates")]
-    check_for_updates: bool,
-
     #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
     inlay_hints_parameters: bool,
 
@@ -1667,7 +1616,6 @@ pub struct InitializationOptions {
 impl InitializationOptions {
     const fn new() -> Self {
         Self {
-            check_for_updates: true,
             inlay_hints_variables: true,
             inlay_hints_parameters: true,
             references: false,
@@ -1675,10 +1623,6 @@ impl InitializationOptions {
             semantic_highlighting: true,
             debug_ast_nodes: false,
         }
-    }
-
-    const fn _default_check_for_updates() -> bool {
-        Self::new().check_for_updates
     }
 
     const fn _default_inlay_hints_parameters() -> bool {
@@ -2155,7 +2099,6 @@ pub(crate) mod test {
     };
 
     use insta::assert_debug_snapshot;
-    use semver::Version;
     use serde_json::json;
     use tower_lsp_server::{
         LanguageServer, UriExt,
@@ -2167,7 +2110,6 @@ pub(crate) mod test {
             TextDocumentPositionParams, Uri, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
     };
-    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
     use crate::{
         Client,
@@ -2899,32 +2841,6 @@ event x::foo() {}",
     }
 
     #[tokio::test]
-    async fn get_latest_release() {
-        let server = serve(TestDatabase::default());
-
-        {
-            // Good response from server.
-            let mock = MockServer::start().await;
-            Mock::given(method("GET"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"name":"v0.1.2"})))
-                .mount(&mock)
-                .await;
-
-            assert_eq!(
-                server.get_latest_release(Some(&mock.uri())).await,
-                Some(Version::new(0, 1, 2))
-            );
-        }
-
-        {
-            // Server unavailable/sending unexpected response.
-            let mock = MockServer::start().await;
-
-            assert_eq!(server.get_latest_release(Some(&mock.uri())).await, None);
-        }
-    }
-
-    #[tokio::test]
     async fn document_symbol() {
         let mut db = TestDatabase::default();
 
@@ -3119,7 +3035,6 @@ const x = 1;
         assert_eq!(
             InitializationOptions::new(),
             InitializationOptions {
-                check_for_updates: true,
                 inlay_hints_variables: true,
                 inlay_hints_parameters: true,
                 references: false,
@@ -3132,15 +3047,6 @@ const x = 1;
         assert_eq!(
             serde_json::from_value::<InitializationOptions>(json!({})).unwrap(),
             InitializationOptions::new()
-        );
-
-        assert_eq!(
-            serde_json::from_value::<InitializationOptions>(json!({"check_for_updates": false}))
-                .unwrap(),
-            InitializationOptions {
-                check_for_updates: false,
-                ..InitializationOptions::new()
-            }
         );
 
         assert_eq!(

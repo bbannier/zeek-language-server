@@ -991,11 +991,7 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
             .min_by_key(|m| node.0.range().start_byte - m.0.range().end_byte)
             .and_then(|m| {
                 Some(compute_module_id(
-                    m.named_children_not("nl")
-                        .into_iter()
-                        .next()?
-                        .utf8_text(source)
-                        .ok()?,
+                    m.named_child_not("nl")?.utf8_text(source).ok()?,
                 ))
             })
         else {

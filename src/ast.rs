@@ -551,15 +551,13 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                     });
 
                 if let Some(type_) = type_ {
-                    let Decl {
+                    if let Decl {
                         kind: DeclKind::Type(fields),
                         ..
                     } = type_.as_ref()
-                    else {
-                        return None;
-                    };
-
-                    return fields.iter().find(|f| f.id == id).cloned().map(Arc::new);
+                    {
+                        return fields.iter().find(|f| f.id == id).cloned().map(Arc::new);
+                    }
                 }
             }
         }
@@ -857,7 +855,7 @@ pub(crate) fn load_to_file(
 mod test {
     #![allow(clippy::unwrap_used)]
 
-    use std::{path::PathBuf, str::FromStr, sync::Arc};
+    use std::{ops::Deref, path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
     use tower_lsp_server::{
@@ -1036,6 +1034,31 @@ x$f;",
             .named_descendant_for_position(Position::new(4, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
+    }
+
+    #[test]
+    fn resolve_ref() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+
+        db.add_file(
+            Arc::deref(&uri).clone(),
+            "global x = 123;
+            function foo(x: int) {}
+            function bar() { foo(x); }
+            ",
+        );
+
+        let db = db.0;
+        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(uri.clone()).unwrap();
+
+        let node = tree.root_node();
+        let node = node
+            .named_descendant_for_position(Position::new(2, 33))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("x"));
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
     }
 

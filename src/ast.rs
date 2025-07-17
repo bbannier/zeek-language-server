@@ -566,7 +566,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
     // If the node is part of a field access or check resolve it in the referenced record.
     if let Some(p) = node.parent() {
-        if p.kind() == "field_access" || p.kind() == "field_check" {
+        if matches!(p.kind(), "field_access" | "field_check") {
             return db.resolve(NodeLocation::from_node(uri, p));
         }
     }

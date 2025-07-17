@@ -78,7 +78,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         if dd_triggered
             || ends_in_dd
             || node.parent().is_some_and(|p| {
-                p.kind() == "field_access" || p.kind() == "field_check"
+                matches!(p.kind() , "field_access" | "field_check")
             }) {
             complete_field(state, node, Arc::clone(&uri), is_partial)
         } else {
@@ -210,7 +210,7 @@ fn complete_field(
     if is_partial {
         let stem = node
             .parent()
-            .filter(|p| p.kind() == "field_access" || p.kind() == "field_check")
+            .filter(|p| matches!(p.kind(), "field_access" | "field_check"))
             .and_then(|p| p.named_child("expr"));
 
         // If we have a stem, perform any resolving with it; else use the original node.

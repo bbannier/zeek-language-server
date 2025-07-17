@@ -1,27 +1,27 @@
-import { inspect } from "node:util";
+import * as child_process from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as child_process from "node:child_process";
 import process from "node:process";
+import { inspect } from "node:util";
 import {
   commands,
   ConfigurationTarget,
   env,
-  ExtensionContext,
+  type ExtensionContext,
   ProgressLocation,
   Uri,
   window,
   workspace,
 } from "vscode";
 
+import * as tar from "tar";
 import {
-  Executable,
+  type Executable,
   LanguageClient,
-  LanguageClientOptions,
-  ServerOptions,
+  type LanguageClientOptions,
+  type ServerOptions,
 } from "vscode-languageclient/node";
 import { XzReadableStream } from "xz-decompress";
-import * as tar from "tar";
 
 const BASE_URL =
   "https://github.com/bbannier/zeek-language-server/releases/download";
@@ -32,7 +32,7 @@ class ZeekLanguageServer {
 
   constructor(context: ExtensionContext) {
     this.context = context;
-    this.version = context.extension.packageJSON["version"];
+    this.version = context.extension.packageJSON.version;
   }
 
   /** Finds the server binary. */
@@ -245,7 +245,7 @@ async function tryZeek(): Promise<void> {
   // try.zeek.org expects a file `main.zeek`. Add a dummy file loading
   // the main content unless the file is already called `main.zeek`.
   const sources: Source[] = [{ name, content }];
-  if (name != "main.zeek") {
+  if (name !== "main.zeek") {
     sources.push({ name: "main.zeek", content: `@load ${name}` });
   }
 
@@ -293,9 +293,9 @@ async function checkDependencies(): Promise<void> {
         installZeekFormat,
         doNotCheck,
       );
-      if (selected == installZeekFormat) {
+      if (selected === installZeekFormat) {
         env.openExternal(Uri.parse("https://github.com/zeek/zeekscript"));
-      } else if (selected == doNotCheck) {
+      } else if (selected === doNotCheck) {
         await workspace
           .getConfiguration()
           .update(
@@ -318,19 +318,19 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const configuration = workspace.getConfiguration("zeekLanguageServer");
 
   const cfg_path = configuration.get<string>("zeekBinaryDirectory");
-  const path = process.env["PATH"];
+  const path = process.env.PATH;
   if (cfg_path) {
-    env["PATH"] = `${cfg_path}:${path}`;
+    env.PATH = `${cfg_path}:${path}`;
   } else if (path) {
-    env["PATH"] = path;
+    env.PATH = path;
   }
 
   const zeekpath = configuration.get<string>("ZEEKPATH");
   if (zeekpath) {
-    env["ZEEKPATH"] = zeekpath;
+    env.ZEEKPATH = zeekpath;
   } else {
-    const zeekpath = process.env["ZEEKPATH"];
-    if (zeekpath) env["ZEEKPATH"] = zeekpath;
+    const zeekpath = process.env.ZEEKPATH;
+    if (zeekpath) env.ZEEKPATH = zeekpath;
   }
 
   const server_args = [];

@@ -96,10 +96,6 @@ jobs:
           cd vscode
           npm install
           npm install -g @vscode/vsce
-      - name: Lint
-        run: |
-          cd vscode
-          npm run lint
       - run: |
           cd vscode
           vsce package

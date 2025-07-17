@@ -1,195 +1,190 @@
 {
-  "name": "zeek-language-server",
-  "displayName": "Zeek",
-  "description": "Zeek language support for Visual Studio Code",
-  "author": "Benjamin Bannier",
-  "version": "0.73.2",
-  "license": "MIT",
-  "publisher": "bbannier",
-  "preview": false,
-  "private": true,
-  "categories": [
-    "Programming Languages",
-    "Snippets"
-  ],
-  "keywords": [
-    "language server",
-    "zeek"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/bbannier/zeek-language-server.git"
-  },
-  "bugs": {
-    "url": "https://github.com/bbannier/zeek-language-server/issues"
-  },
-  "homepage": "https://github.com/bbannier/zeek-language-server",
-  "engines": {
-    "vscode": "^1.82.0"
-  },
-  "main": "./out/extension",
-  "icon": "images/icon.png",
-  "contributes": {
-    "commands": [
-      {
-        "command": "zeek.tryZeek",
-        "title": "Publish to try.zeek.org"
-      }
-    ],
-    "menus": {
-      "commandPalette": [
-        {
-          "command": "zeek.tryZeek",
-          "when": "editorLangId == zeek"
-        }
-      ]
-    },
-    "configuration": {
-      "type": "object",
-      "properties": {
-        "zeekLanguageServer.zeekBinaryDirectory": {
-          "type": "string",
-          "default": "",
-          "description": "Directory containing Zeek executables. If unset we will attempt to find them in PATH."
-        },
-        "zeekLanguageServer.path": {
-          "type": "string",
-          "default": "",
-          "description": "Full path to the zeek-language-server executable. If unset we will attempt to look it up in PATH."
-        },
-        "zeekLanguageServer.checkZeekFormat": {
-          "type": "boolean",
-          "default": true,
-          "description": "Check for zeek-format on startup"
-        },
-        "zeekLanguageServer.ZEEKPATH": {
-          "type": "string",
-          "default": "",
-          "description": "Colon-separated list of alternative Zeek prefixes to use. By default prefixes are determined from the output of zeek-config."
-        },
-        "zeekLanguageServer.debugLogging": {
-          "enum": [
-            "error",
-            "warn",
-            "info",
-            "debug",
-            "trace"
-          ],
-          "default": "error",
-          "markdownDescription": "Logging verbosity of the server. When reporting bugs, please include a server log with `debug` verbosity if possible."
-        },
-        "zeekLanguageServer.inlayHints.parameters.enabled": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Whether to show inlay hints for function call parameters"
-        },
-        "zeekLanguageServer.inlayHints.variables.enabled": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Whether to show inlay hints for variable declarations"
-        },
-        "zeekLanguageServer.references.enabled": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Whether to enable _Go To References_.\n\n**WARNING**: Since typically Zeek scripts have incomplete `@load` statements the provided list is very likely incomplete. Use a tool like `grep` to search for all references of an identifier."
-        },
-        "zeekLanguageServer.rename.enabled": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Whether to enable _Rename_.\n\n**WARNING**: Since typically Zeek scripts have incomplete `@load` statements this operation might not rename all identifiers. It might work reasonably well for e.g., renaming a local identifiers. You can use _Go To References_ to preview all identifiers which would be renamed. Use a tool like `grep` to search and rename all uses of an identifier."
-        },
-        "zeekLanguageServer.semantic_highlighting.enabled": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Enable semantic highlighting"
-        },
-        "zeekLanguageServer.debug.AST_nodes": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Enable debug output of AST nodes on hover"
-        }
-      }
-    },
-    "languages": [
-      {
-        "id": "zeek",
-        "aliases": [
-          "Zeek",
-          "Bro",
-          "bro",
-          "zeek"
-        ],
-        "extensions": [
-          ".bro",
-          ".zeek"
-        ],
-        "configuration": "./language-configuration.json",
-        "icon": {
-          "light": "images/filetype-light.png",
-          "dark": "images/filetype-dark.png"
-        }
-      },
-      {
-        "id": "sig",
-        "aliases": [
-          "Signature",
-          "signature",
-          "Sig",
-          "sig"
-        ],
-        "extensions": [
-          ".sig"
-        ],
-        "configuration": "./language-configuration.json",
-        "icon": {
-          "light": "images/filetype-light.png",
-          "dark": "images/filetype-dark.png"
-        }
-      }
-    ],
-    "grammars": [
-      {
-        "language": "zeek",
-        "scopeName": "source.zeek",
-        "path": "./syntaxes/zeek.json"
-      },
-      {
-        "language": "sig",
-        "scopeName": "source.sig",
-        "path": "./syntaxes/sig.json"
-      }
-    ],
-    "snippets": [
-      {
-        "language": "sig",
-        "path": "./snippets/sig.json"
-      }
-    ]
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run build-base -- --minify",
-    "vsix": "vsce package -o zeek-language-server.vsix",
-    "build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node16",
-    "build": "npm run build-base -- --sourcemap",
-    "watch": "npm run build-base -- --sourcemap --watch",
-    "lint": "prettier --check . && eslint --ext=ts .",
-    "fix": "prettier --write . && eslint --ext=ts . --fix"
-  },
-  "devDependencies": {
-    "@types/node": "^24.0.13",
-    "@types/vscode": "^1.82.0",
-    "@typescript-eslint/eslint-plugin": "^8.36.0",
-    "@typescript-eslint/parser": "^8.35.0",
-    "@vscode/vsce": "^3.6.0",
-    "esbuild": "^0.25.6",
-    "eslint": "^8.57.0",
-    "mocha": "^11.7.1",
-    "prettier": "^3.6.2",
-    "typescript": "^5.7.3",
-    "vscode-languageclient": "^9.0.1"
-  },
-  "dependencies": {
-    "tar": "^7.4.3",
-    "xz-decompress": "^0.2.2"
-  }
+	"name": "zeek-language-server",
+	"displayName": "Zeek",
+	"description": "Zeek language support for Visual Studio Code",
+	"author": "Benjamin Bannier",
+	"version": "0.73.2",
+	"license": "MIT",
+	"publisher": "bbannier",
+	"preview": false,
+	"private": true,
+	"categories": [
+		"Programming Languages",
+		"Snippets"
+	],
+	"keywords": [
+		"language server",
+		"zeek"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/bbannier/zeek-language-server.git"
+	},
+	"bugs": {
+		"url": "https://github.com/bbannier/zeek-language-server/issues"
+	},
+	"homepage": "https://github.com/bbannier/zeek-language-server",
+	"engines": {
+		"vscode": "^1.82.0"
+	},
+	"main": "./out/extension",
+	"icon": "images/icon.png",
+	"contributes": {
+		"commands": [
+			{
+				"command": "zeek.tryZeek",
+				"title": "Publish to try.zeek.org"
+			}
+		],
+		"menus": {
+			"commandPalette": [
+				{
+					"command": "zeek.tryZeek",
+					"when": "editorLangId == zeek"
+				}
+			]
+		},
+		"configuration": {
+			"type": "object",
+			"properties": {
+				"zeekLanguageServer.zeekBinaryDirectory": {
+					"type": "string",
+					"default": "",
+					"description": "Directory containing Zeek executables. If unset we will attempt to find them in PATH."
+				},
+				"zeekLanguageServer.path": {
+					"type": "string",
+					"default": "",
+					"description": "Full path to the zeek-language-server executable. If unset we will attempt to look it up in PATH."
+				},
+				"zeekLanguageServer.checkZeekFormat": {
+					"type": "boolean",
+					"default": true,
+					"description": "Check for zeek-format on startup"
+				},
+				"zeekLanguageServer.ZEEKPATH": {
+					"type": "string",
+					"default": "",
+					"description": "Colon-separated list of alternative Zeek prefixes to use. By default prefixes are determined from the output of zeek-config."
+				},
+				"zeekLanguageServer.debugLogging": {
+					"enum": [
+						"error",
+						"warn",
+						"info",
+						"debug",
+						"trace"
+					],
+					"default": "error",
+					"markdownDescription": "Logging verbosity of the server. When reporting bugs, please include a server log with `debug` verbosity if possible."
+				},
+				"zeekLanguageServer.inlayHints.parameters.enabled": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "Whether to show inlay hints for function call parameters"
+				},
+				"zeekLanguageServer.inlayHints.variables.enabled": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "Whether to show inlay hints for variable declarations"
+				},
+				"zeekLanguageServer.references.enabled": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Whether to enable _Go To References_.\n\n**WARNING**: Since typically Zeek scripts have incomplete `@load` statements the provided list is very likely incomplete. Use a tool like `grep` to search for all references of an identifier."
+				},
+				"zeekLanguageServer.rename.enabled": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Whether to enable _Rename_.\n\n**WARNING**: Since typically Zeek scripts have incomplete `@load` statements this operation might not rename all identifiers. It might work reasonably well for e.g., renaming a local identifiers. You can use _Go To References_ to preview all identifiers which would be renamed. Use a tool like `grep` to search and rename all uses of an identifier."
+				},
+				"zeekLanguageServer.semantic_highlighting.enabled": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "Enable semantic highlighting"
+				},
+				"zeekLanguageServer.debug.AST_nodes": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Enable debug output of AST nodes on hover"
+				}
+			}
+		},
+		"languages": [
+			{
+				"id": "zeek",
+				"aliases": [
+					"Zeek",
+					"Bro",
+					"bro",
+					"zeek"
+				],
+				"extensions": [
+					".bro",
+					".zeek"
+				],
+				"configuration": "./language-configuration.json",
+				"icon": {
+					"light": "images/filetype-light.png",
+					"dark": "images/filetype-dark.png"
+				}
+			},
+			{
+				"id": "sig",
+				"aliases": [
+					"Signature",
+					"signature",
+					"Sig",
+					"sig"
+				],
+				"extensions": [
+					".sig"
+				],
+				"configuration": "./language-configuration.json",
+				"icon": {
+					"light": "images/filetype-light.png",
+					"dark": "images/filetype-dark.png"
+				}
+			}
+		],
+		"grammars": [
+			{
+				"language": "zeek",
+				"scopeName": "source.zeek",
+				"path": "./syntaxes/zeek.json"
+			},
+			{
+				"language": "sig",
+				"scopeName": "source.sig",
+				"path": "./syntaxes/sig.json"
+			}
+		],
+		"snippets": [
+			{
+				"language": "sig",
+				"path": "./snippets/sig.json"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run build-base -- --minify",
+		"vsix": "vsce package -o zeek-language-server.vsix",
+		"build-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node16",
+		"build": "npm run build-base -- --sourcemap",
+		"watch": "npm run build-base -- --sourcemap --watch"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.13",
+		"@types/vscode": "^1.82.0",
+		"@vscode/vsce": "^3.6.0",
+		"esbuild": "^0.25.6",
+		"mocha": "^11.7.1",
+		"prettier": "^3.6.2",
+		"typescript": "^5.7.3",
+		"vscode-languageclient": "^9.0.1"
+	},
+	"dependencies": {
+		"tar": "^7.4.3",
+		"xz-decompress": "^0.2.2"
+	}
 }

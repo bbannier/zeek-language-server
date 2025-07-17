@@ -28,11 +28,6 @@ repos:
         exclude: "^tests/Baseline|^doc/autogen|^doc/_static"
       - id: check-yaml
       - id: check-added-large-files
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
-    hooks:
-      - id: prettier
-        files: (^vscode|\.yml)
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.7
     hooks:
@@ -40,6 +35,7 @@ repos:
   - repo: https://github.com/biomejs/pre-commit
     rev: v2.1.1
     hooks:
+      - id: biome-format
       - id: biome-lint
 
 exclude: "(.github/workflows/release.yml|src/snapshots/)"

@@ -1,106 +1,106 @@
 {
-  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Zeek Signature",
-  "scopeName": "source.sig",
-  "fileTypes": ["sig"],
-  "patterns": [
-    {
-      "begin": "(##!|##<|##|#)",
-      "name": "comment.line.sig",
-      "beginCaptures": {
-        "1": {
-          "name": "punctuation.definition.comment.sig"
-        }
-      },
-      "end": "$"
-    },
-    {
-      "begin": "(\\\")",
-      "name": "string.quoted.double.sig",
-      "beginCaptures": {
-        "1": {
-          "name": "punctuation.definition.string.begin.sig"
-        }
-      },
-      "end": "(\\\")",
-      "endCaptures": {
-        "1": {
-          "name": "punctuation.definition.string.end.sig"
-        }
-      },
-      "patterns": [
-        {
-          "name": "constant.character.escape.sig",
-          "match": "\\\\."
-        },
-        {
-          "name": "constant.other.placeholder.sig",
-          "match": "%-?[0-9]*(\\.[0-9]+)?[DTdxsefg]"
-        }
-      ]
-    },
-    {
-      "begin": "(/)(?=.*/)",
-      "name": "string.regexp.sig",
-      "beginCaptures": {
-        "1": {
-          "name": "punctuation.definition.string.begin.sig"
-        }
-      },
-      "end": "(/)",
-      "endCaptures": {
-        "1": {
-          "name": "punctuation.definition.string.end.sig"
-        }
-      },
-      "patterns": [
-        {
-          "name": "constant.character.escape.sig",
-          "match": "\\\\."
-        }
-      ]
-    },
-    {
-      "match": "\\b(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\b",
-      "name": "constant.numeric.addr.sig",
-      "comment": "IPv4 address"
-    },
-    {
-      "match": "\\[([0-9a-fA-F]{0,4}:){2,7}([0-9a-fA-F]{0,4})?((25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2}))?\\]",
-      "name": "constant.numeric.addr.sig",
-      "comment": "IPv6 address"
-    },
-    {
-      "match": "\\b(signature)\\b",
-      "name": "storage.type.sig"
-    },
-    {
-      "match": "\\b(0x[0-9a-fA-F]+)\\b",
-      "name": "constant.numeric.integer.hexadecimal.sig"
-    },
-    {
-      "match": "\\b(\\d+)\\b",
-      "name": "constant.numeric.integer.decimal.sig"
-    },
-    {
-      "match": "\\b(src-ip|dst-ip|src-port|dst-port|ip-proto|ip-options|payload-size|payload|http-body|http-request-header|http-request-body|http-request|http-reply-header|http-reply-body|http|ftp|finger|requires-signature|requires-reverse-signature|eval|same-ip|tcp-state|udp-state|event|enable|disable|header|file-magic|file-mime)\\b",
-      "name": "storage.modifier.attribute.sig"
-    },
-    {
-      "match": "\\b(ip|ip6|udp|tcp|icmp|icmp6)\\b",
-      "name": "variable.other.enummember.proto.sig"
-    },
-    {
-      "match": "\\b(established|originator|responder)\\b",
-      "name": "variable.other.enummember.state.sig"
-    },
-    {
-      "match": "(=)|(==)|(!=)|(<=)|(<)|(>=)|(>)|(/)",
-      "name": "keyword.operator.sig"
-    },
-    {
-      "match": "\\b(true|false)\\b",
-      "name": "constant.language.sig"
-    }
-  ]
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Zeek Signature",
+	"scopeName": "source.sig",
+	"fileTypes": ["sig"],
+	"patterns": [
+		{
+			"begin": "(##!|##<|##|#)",
+			"name": "comment.line.sig",
+			"beginCaptures": {
+				"1": {
+					"name": "punctuation.definition.comment.sig"
+				}
+			},
+			"end": "$"
+		},
+		{
+			"begin": "(\\\")",
+			"name": "string.quoted.double.sig",
+			"beginCaptures": {
+				"1": {
+					"name": "punctuation.definition.string.begin.sig"
+				}
+			},
+			"end": "(\\\")",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.string.end.sig"
+				}
+			},
+			"patterns": [
+				{
+					"name": "constant.character.escape.sig",
+					"match": "\\\\."
+				},
+				{
+					"name": "constant.other.placeholder.sig",
+					"match": "%-?[0-9]*(\\.[0-9]+)?[DTdxsefg]"
+				}
+			]
+		},
+		{
+			"begin": "(/)(?=.*/)",
+			"name": "string.regexp.sig",
+			"beginCaptures": {
+				"1": {
+					"name": "punctuation.definition.string.begin.sig"
+				}
+			},
+			"end": "(/)",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.string.end.sig"
+				}
+			},
+			"patterns": [
+				{
+					"name": "constant.character.escape.sig",
+					"match": "\\\\."
+				}
+			]
+		},
+		{
+			"match": "\\b(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\b",
+			"name": "constant.numeric.addr.sig",
+			"comment": "IPv4 address"
+		},
+		{
+			"match": "\\[([0-9a-fA-F]{0,4}:){2,7}([0-9a-fA-F]{0,4})?((25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2})\\.(25[0-5]|2[0-4][0-9]|[0-1][0-9]{2}|[0-9]{1,2}))?\\]",
+			"name": "constant.numeric.addr.sig",
+			"comment": "IPv6 address"
+		},
+		{
+			"match": "\\b(signature)\\b",
+			"name": "storage.type.sig"
+		},
+		{
+			"match": "\\b(0x[0-9a-fA-F]+)\\b",
+			"name": "constant.numeric.integer.hexadecimal.sig"
+		},
+		{
+			"match": "\\b(\\d+)\\b",
+			"name": "constant.numeric.integer.decimal.sig"
+		},
+		{
+			"match": "\\b(src-ip|dst-ip|src-port|dst-port|ip-proto|ip-options|payload-size|payload|http-body|http-request-header|http-request-body|http-request|http-reply-header|http-reply-body|http|ftp|finger|requires-signature|requires-reverse-signature|eval|same-ip|tcp-state|udp-state|event|enable|disable|header|file-magic|file-mime)\\b",
+			"name": "storage.modifier.attribute.sig"
+		},
+		{
+			"match": "\\b(ip|ip6|udp|tcp|icmp|icmp6)\\b",
+			"name": "variable.other.enummember.proto.sig"
+		},
+		{
+			"match": "\\b(established|originator|responder)\\b",
+			"name": "variable.other.enummember.state.sig"
+		},
+		{
+			"match": "(=)|(==)|(!=)|(<=)|(<)|(>=)|(>)|(/)",
+			"name": "keyword.operator.sig"
+		},
+		{
+			"match": "\\b(true|false)\\b",
+			"name": "constant.language.sig"
+		}
+	]
 }

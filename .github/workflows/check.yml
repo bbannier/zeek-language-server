@@ -9,6 +9,8 @@ on:
 env:
   CARGO_INCREMENTAL: 0
   RUSTFLAGS: -D warnings
+  # For setup-rust
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   build:
@@ -33,12 +35,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+          persist-credentials: false
+
+      - uses: moonrepo/setup-rust@v1
         with:
+          channel: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          bins: cargo-hack
 
       - name: Install Zeek
         run: |
@@ -52,10 +55,9 @@ jobs:
           elif [[ ${{ matrix.name }} == *mac* ]]; then
             brew install zeek
           fi
+
       - name: Test
-        run: cargo test --workspace
-      - name: Test all features
-        run: cargo test --all-features --workspace
+        run: cargo hack test --each-feature --workspace
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
         env:
@@ -73,12 +75,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: pre-commit-cargo-${{ hashFiles('Cargo.lock') }}
+          persist-credentials: false
+      - uses: moonrepo/setup-rust@v1
       - uses: actions/setup-python@v5
       - uses: pre-commit/action@v3.0.1
 

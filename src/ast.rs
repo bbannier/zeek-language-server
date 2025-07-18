@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use rustc_hash::FxHashSet;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -661,15 +660,18 @@ fn loaded_files_recursive(db: &dyn Ast, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
 
 #[instrument(skip(db))]
 fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Decl]> {
-    let mut decls: FxHashSet<_> = db.decls(Arc::clone(&uri)).iter().cloned().collect();
+    let d = db.decls(Arc::clone(&uri));
+    let decls1 = d.iter().cloned();
 
-    for load in db.loaded_files_recursive(uri).as_ref() {
-        for decl in &*db.decls(Arc::clone(load)) {
-            decls.insert(decl.clone());
-        }
-    }
+    let d = db.loaded_files_recursive(uri);
+    let decls2 = d.iter().flat_map(|load| {
+        let decls: Vec<_> = db.decls(Arc::clone(load)).iter().cloned().collect();
+        decls
+    });
 
-    Arc::from(decls.into_iter().collect::<Vec<_>>())
+    let d = decls1.chain(decls2).unique();
+
+    Arc::from(d.into_iter().collect::<Vec<_>>())
 }
 
 #[instrument(skip(db))]
@@ -709,19 +711,21 @@ fn implicit_loads(db: &dyn Ast) -> Arc<[Arc<Uri>]> {
 
 #[instrument(skip(db))]
 fn implicit_decls(db: &dyn Ast) -> Arc<[Decl]> {
-    let mut decls = FxHashSet::default();
+    let loads = db.implicit_loads();
 
-    for implicit_load in db.implicit_loads().as_ref() {
-        decls.extend(
-            db.explicit_decls_recursive(Arc::clone(implicit_load))
-                .as_ref()
+    loads
+        .iter()
+        .cloned()
+        .flat_map(|load| {
+            let xs: Vec<_> = db
+                .explicit_decls_recursive(Arc::clone(&load))
                 .iter()
-                .cloned(),
-        );
-    }
-
-    let decls = decls.into_iter().collect::<Vec<_>>();
-    Arc::from(decls)
+                .cloned()
+                .collect();
+            xs
+        })
+        .unique()
+        .collect()
 }
 
 #[instrument(skip(db))]
@@ -783,18 +787,14 @@ fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
     let loaded_decls = db.explicit_decls_recursive(Arc::clone(&scope));
     let decls = db.decls(scope);
 
-    let all_decls: FxHashSet<_> = implicit_decls
+    implicit_decls
         .iter()
         .chain(loaded_decls.iter())
         .chain(decls.iter())
-        .collect();
-
-    let xs: Vec<_> = all_decls
-        .into_iter()
+        .unique()
         .filter(|x| x.fqid == redef.fqid)
         .cloned()
-        .collect();
-    Arc::from(xs)
+        .collect()
 }
 
 pub(crate) fn load_to_file(

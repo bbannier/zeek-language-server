@@ -185,6 +185,6 @@
 	},
 	"dependencies": {
 		"tar": "^7.4.3",
-		"xz-decompress": "^0.2.2"
+		"xz-decompress": "^0.2.3"
 	}
 }

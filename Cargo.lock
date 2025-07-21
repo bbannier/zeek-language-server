@@ -2272,7 +2272,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-btest"
 version = "0.1.0"
-source = "git+https://github.com/bbannier/tree-sitter-btest#5da2ecd8ed562daf77a6b0ba01988102798327c6"
+source = "git+https://github.com/bbannier/tree-sitter-btest#b288d2318887671503b23dcd1d81542eaf6975c7"
 dependencies = [
  "cc",
  "tree-sitter-language",

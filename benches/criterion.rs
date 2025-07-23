@@ -205,11 +205,11 @@ mod zeek {
     use zeek_language_server::zeek;
 
     async fn system_files() {
-        zeek::system_files().await.unwrap();
+        let _: Vec<_> = zeek::system_files().await.unwrap().collect();
     }
 
     async fn prefixes() {
-        zeek::prefixes(None).await.unwrap();
+        let _: Vec<_> = zeek::prefixes(None).await.unwrap().collect();
     }
 
     pub fn bench(c: &mut Criterion) {

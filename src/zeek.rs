@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use itertools::Itertools;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -57,7 +57,7 @@ async fn dir(dir: ZeekDir) -> Result<PathBuf> {
 /// # Errors
 ///
 /// Will return `Err` if Zeek cannot be queried.
-pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
+pub async fn prefixes(zeekpath: Option<String>) -> Result<impl Iterator<Item = PathBuf>> {
     let zeekpath = zeekpath.or_else(|| std::env::var("ZEEKPATH").ok());
     let xs = if let Some(path) = zeekpath {
         let cwd = std::env::current_dir()?;
@@ -80,18 +80,7 @@ pub async fn prefixes(zeekpath: Option<String>) -> Result<Vec<PathBuf>> {
     };
 
     // Minimize the list of prefixes so each prefix is seen at most once. Order still matters.
-    let mut ys = Vec::new();
-    let mut seen = FxHashSet::default();
-    for x in xs {
-        if seen.contains(&x) {
-            continue;
-        }
-
-        seen.insert(x.clone());
-        ys.push(x);
-    }
-
-    Ok(ys)
+    Ok(xs.into_iter().unique())
 }
 
 #[derive(Debug)]
@@ -170,36 +159,33 @@ impl SystemFile {
     }
 }
 
-pub async fn system_files() -> Result<Vec<SystemFile>> {
-    Ok(prefixes(None)
-        .await?
-        .into_iter()
-        .flat_map(|dir| {
-            WalkDir::new(dir.clone())
-                .into_iter()
-                .filter_map(std::result::Result::ok)
-                .filter(|e| !e.file_type().is_dir())
-                .filter_map(|f| {
-                    if f.path().extension()? != "zeek" {
-                        return None;
-                    }
+pub async fn system_files() -> Result<impl Iterator<Item = SystemFile>> {
+    Ok(prefixes(None).await?.flat_map(|dir| {
+        WalkDir::new(dir.clone())
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+            .filter(|e| !e.file_type().is_dir())
+            .filter_map(|f| {
+                if f.path().extension()? != "zeek" {
+                    return None;
+                }
 
-                    Some(SystemFile::new(f.path().into(), dir.clone()))
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect())
+                Some(SystemFile::new(f.path().into(), dir.clone()))
+            })
+            .collect::<Vec<_>>()
+    }))
 }
 
-pub(crate) fn essential_input_files() -> Vec<&'static str> {
+pub(crate) fn essential_input_files() -> impl Iterator<Item = &'static str> {
     // TODO(bbannier): does this function need a flag for bare mode?
-    vec![
+    [
         "base/init-bare.zeek",
         "base/init-frameworks-and-bifs.zeek",
         "base/init-default.zeek",
         "builtin-plugins/__preload__.zeek",
         "builtin-plugins/__load__.zeek",
     ]
+    .into_iter()
 }
 
 pub(crate) async fn has_format() -> bool {
@@ -257,7 +243,10 @@ mod test {
 
     #[tokio::test]
     async fn system_files() {
-        let files = zeek::system_files().await.expect("can read system files");
+        let files: Vec<_> = zeek::system_files()
+            .await
+            .expect("can read system files")
+            .collect();
 
         assert_ne!(files, vec![]);
     }
@@ -317,39 +306,52 @@ mod test {
 
     #[tokio::test]
     async fn prefixes_from_env() {
-        assert!(
-            zeek::prefixes(Some(String::new()))
-                .await
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            zeek::prefixes(Some(String::new())).await.unwrap().count(),
+            0
         );
 
-        assert!(zeek::prefixes(Some(":".into())).await.unwrap().is_empty());
+        assert_eq!(zeek::prefixes(Some(":".into())).await.unwrap().count(), 0);
 
-        assert!(zeek::prefixes(Some("::".into())).await.unwrap().is_empty());
+        assert_eq!(zeek::prefixes(Some("::".into())).await.unwrap().count(), 0);
 
         assert_eq!(
-            zeek::prefixes(Some("/A".into())).await.unwrap(),
+            zeek::prefixes(Some("/A".into()))
+                .await
+                .unwrap()
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("/A")]
         );
 
         assert_eq!(
-            zeek::prefixes(Some("/A:/B".into())).await.unwrap(),
+            zeek::prefixes(Some("/A:/B".into()))
+                .await
+                .unwrap()
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("/A"), PathBuf::from("/B")]
         );
 
         assert_eq!(
-            zeek::prefixes(Some("/A::/B".into())).await.unwrap(),
+            zeek::prefixes(Some("/A::/B".into()))
+                .await
+                .unwrap()
+                .collect::<Vec<_>>(),
             vec![PathBuf::from("/A"), PathBuf::from("/B")]
         );
 
         assert_eq!(
-            zeek::prefixes(Some(".".into())).await.unwrap(),
+            zeek::prefixes(Some(".".into()))
+                .await
+                .unwrap()
+                .collect::<Vec<_>>(),
             vec![std::env::current_dir().unwrap()]
         );
 
         assert_eq!(
-            zeek::prefixes(Some("/A:/B:/A:/C".into())).await.unwrap(),
+            zeek::prefixes(Some("/A:/B:/A:/C".into()))
+                .await
+                .unwrap()
+                .collect::<Vec<_>>(),
             vec![
                 PathBuf::from("/A"),
                 PathBuf::from("/B"),

@@ -130,11 +130,10 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     // Snippet completions are always added.
     if let Some(text) = completion_text(node, &source, false) {
         let snippets = complete_snippet(text);
-        if !snippets.is_empty() {
-            let mut items_ = items.unwrap_or_default();
-            items_.extend_from_slice(&snippets);
-            items = Some(items_);
-        }
+        items = items.map(|mut xs| {
+            xs.extend(snippets);
+            xs
+        });
     }
 
     items
@@ -248,11 +247,14 @@ fn complete_field(
 }
 
 fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
+    let implicit_decls = state.implicit_decls();
+    let explicit_decls_recursive = state.explicit_decls_recursive(Arc::clone(&uri));
+
     state
-        .decls(Arc::clone(&uri))
+        .decls(uri)
         .iter()
-        .chain(state.implicit_decls().iter())
-        .chain(state.explicit_decls_recursive(uri).iter())
+        .chain(implicit_decls.iter())
+        .chain(explicit_decls_recursive.iter())
         .filter(|d| match &d.kind {
             DeclKind::EventDecl(_) => kind == "event",
             DeclKind::FuncDecl(_) => kind == "function",
@@ -298,7 +300,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
 }
 
 #[allow(clippy::too_many_lines)]
-fn complete_snippet(text: &str) -> Vec<CompletionItem> {
+fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
     let snippets = vec![
         (
             "record",
@@ -391,7 +393,7 @@ fn complete_snippet(text: &str) -> Vec<CompletionItem> {
 
     snippets
         .into_iter()
-        .filter_map(|(trigger, completion)| {
+        .filter_map(move |(trigger, completion)| {
             if trigger.contains(text) {
                 let label = trigger.into();
                 let insert_text = Some(completion.join("\n"));
@@ -407,7 +409,6 @@ fn complete_snippet(text: &str) -> Vec<CompletionItem> {
                 None
             }
         })
-        .collect()
 }
 
 fn complete_record_initializer(

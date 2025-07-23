@@ -250,7 +250,7 @@ impl Backend {
                 state.file_changed(Arc::clone(&uri));
 
                 match state.parse(Arc::clone(&uri)) {
-                    Some(tree) => tree_diagnostics(&tree.root_node()),
+                    Some(tree) => tree_diagnostics(&tree.root_node()).collect(),
                     _ => Vec::new(),
                 }
             };
@@ -278,13 +278,12 @@ impl Backend {
                 error!("could not read system files: {e}");
                 Error::internal_error()
             })?
-            .into_par_iter()
             .filter_map(|f| Uri::from_file_path(f.path));
 
         let workspace_folders = self.state.read().await.workspace_folders();
 
         let workspace_files = workspace_folders
-            .par_iter()
+            .iter()
             .filter_map(UriExt::to_file_path)
             .flat_map(|dir| {
                 WalkDir::new(dir)
@@ -390,7 +389,11 @@ impl LanguageServer for Backend {
 
         // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
-            Ok(prefixes) => self.state.write().await.set_prefixes(Arc::from(prefixes)),
+            Ok(prefixes) => self
+                .state
+                .write()
+                .await
+                .set_prefixes(Arc::from(prefixes.collect::<Vec<_>>())),
             Err(e) => {
                 self.warn_message(format!(
                     "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
@@ -707,11 +710,7 @@ impl LanguageServer for Backend {
                 let try_update = |contents: &mut Vec<_>| {
                     let symbol = word_at_position(&source, position)?;
 
-                    let mut x = fuzzy_search_symbol(&state, &symbol);
-                    x.sort_by(|(r1, _), (r2, _)| r1.total_cmp(r2));
-
                     if let Some(docs) = fuzzy_search_symbol(&state, &symbol)
-                        .iter()
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
@@ -854,7 +853,6 @@ impl LanguageServer for Backend {
         let symbols = {
             let state = self.state.read().await;
             fuzzy_search_symbol(&state, &query)
-                .into_iter()
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
 
@@ -936,12 +934,11 @@ impl LanguageServer for Backend {
                         return Ok(None);
                     };
                     fuzzy_search_symbol(&state, &symbol)
-                        .iter()
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
-                        .and_then(|(_, d)| d.loc.as_ref())
+                        .and_then(|(_, d)| d.loc)
                         .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
                 }
                 _ => None,
@@ -1285,7 +1282,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let state = self.state.read().await;
         let Some(missing) = state.parse(Arc::clone(&uri)).and_then(|t| {
-            t.root_node().errors().into_iter().find_map(|err| {
+            t.root_node().errors().find_map(|err| {
                 // Filter out `MISSING` nodes at the diagnostic.
                 if err.is_missing() && err.range() == diag.range {
                     // `kind` holds the fix for the `MISSING` error.
@@ -1540,24 +1537,19 @@ fn word_at_position(source: &str, position: Position) -> Option<Str> {
     Some(format!("{a}{b}").into())
 }
 
-fn fuzzy_search_symbol(db: &Database, symbol: &str) -> Vec<(f32, Decl)> {
-    let files = db.files();
-    files
-        .iter()
-        .flat_map(|uri| {
-            db.decls(Arc::clone(uri))
-                .iter()
-                .filter_map(|d| {
-                    let rank = rust_fuzzy_search::fuzzy_compare(symbol, &d.fqid.to_lowercase());
-                    if rank > 0.0 {
-                        Some((rank, d.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
+fn fuzzy_search_symbol(db: &Database, symbol: &str) -> impl Iterator<Item = (f32, Decl)> {
+    let symbol = String::from(symbol);
+
+    let files = db.files().iter().cloned().collect_vec();
+    files.into_iter().flat_map(move |uri| {
+        let symbol = symbol.clone();
+
+        let decls = db.decls(Arc::clone(&uri)).iter().cloned().collect_vec();
+        decls.into_iter().filter_map(move |d| {
+            let rank = rust_fuzzy_search::fuzzy_compare(&symbol, &d.fqid.to_lowercase());
+            if rank > 0.0 { Some((rank, d)) } else { None }
         })
-        .collect()
+    })
 }
 
 fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
@@ -1653,28 +1645,25 @@ impl InitializationOptions {
 const ERROR_CODE_IS_MISSING: i32 = 1;
 
 /// Extracts all errors in a AST.
-fn tree_diagnostics(tree: &query::Node) -> Vec<Diagnostic> {
-    tree.errors()
-        .into_iter()
-        .map(|err| {
-            let code = if err.is_missing() {
-                Some(ERROR_CODE_IS_MISSING)
-            } else {
-                None
-            }
-            .map(NumberOrString::Number);
+fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
+    tree.errors().map(|err| {
+        let code = if err.is_missing() {
+            Some(ERROR_CODE_IS_MISSING)
+        } else {
+            None
+        }
+        .map(NumberOrString::Number);
 
-            Diagnostic::new(
-                err.range(),
-                Some(DiagnosticSeverity::WARNING),
-                code,
-                None,
-                err.error().to_string(),
-                None,
-                None,
-            )
-        })
-        .collect()
+        Diagnostic::new(
+            err.range(),
+            Some(DiagnosticSeverity::WARNING),
+            code,
+            None,
+            err.error().to_string(),
+            None,
+            None,
+        )
+    })
 }
 
 async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
@@ -2293,7 +2282,7 @@ local x = f();
         let prefix = Path::new("/prefix");
         db.add_prefix(prefix.to_str().unwrap());
         db.add_file(
-            Uri::from_file_path(prefix.join(zeek::essential_input_files().first().unwrap()))
+            Uri::from_file_path(prefix.join(zeek::essential_input_files().next().unwrap()))
                 .unwrap(),
             "
             ##Declaration.
@@ -2893,7 +2882,7 @@ event x::foo() {}",
         let context =
             db.0.parse(uri.clone())
                 .map(|t| CodeActionContext {
-                    diagnostics: tree_diagnostics(&t.root_node()),
+                    diagnostics: tree_diagnostics(&t.root_node()).collect(),
                     ..CodeActionContext::default()
                 })
                 .unwrap();

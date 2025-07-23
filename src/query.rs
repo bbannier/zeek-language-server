@@ -406,8 +406,7 @@ impl<'a> Node<'a> {
     }
 
     /// Extract all error nodes under the node.
-    #[must_use]
-    pub fn errors(&self) -> Vec<Node> {
+    pub fn errors(&self) -> impl Iterator<Item = Node> {
         fn errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
             let mut cur = n.walk();
 
@@ -420,7 +419,7 @@ impl<'a> Node<'a> {
             }
         }
 
-        errors(self.0).into_iter().map(Node::from).collect()
+        errors(self.0).into_iter().map(Node::from)
     }
 }
 

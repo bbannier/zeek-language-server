@@ -180,7 +180,7 @@
 		"esbuild": "^0.25.8",
 		"mocha": "^11.7.1",
 		"prettier": "^3.6.2",
-		"typescript": "^5.7.3",
+		"typescript": "^5.9.2",
 		"vscode-languageclient": "^9.0.1"
 	},
 	"dependencies": {

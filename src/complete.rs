@@ -224,22 +224,22 @@ fn complete_field(
         });
 
         // Compute completion.
-        if let Some(decl) = decl {
-            if let DeclKind::Type(fields) = &decl.kind {
-                return Some(
-                    fields
-                        .iter()
-                        .map(to_completion_item)
-                        .filter_map(|item| {
-                            // By default we use FQIDs for completion labels. Since for
-                            // record fields this would be e.g., `mod::rec::field` where we
-                            // want just `field`, rework them slightly.
-                            let label = item.label.split("::").last()?.to_string();
-                            Some(CompletionItem { label, ..item })
-                        })
-                        .collect::<Vec<_>>(),
-                );
-            }
+        if let Some(decl) = decl
+            && let DeclKind::Type(fields) = &decl.kind
+        {
+            return Some(
+                fields
+                    .iter()
+                    .map(to_completion_item)
+                    .filter_map(|item| {
+                        // By default we use FQIDs for completion labels. Since for
+                        // record fields this would be e.g., `mod::rec::field` where we
+                        // want just `field`, rework them slightly.
+                        let label = item.label.split("::").last()?.to_string();
+                        Some(CompletionItem { label, ..item })
+                    })
+                    .collect::<Vec<_>>(),
+            );
         }
     }
 

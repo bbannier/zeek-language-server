@@ -295,10 +295,10 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
 fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     // If we see a type decl with location we are likely dealing with a builtin type already which
     // cannot be further resolved; return it directly.
-    if let DeclKind::Type(_) = &decl.kind {
-        if decl.loc.is_none() {
-            return Some(decl);
-        }
+    if let DeclKind::Type(_) = &decl.kind
+        && decl.loc.is_none()
+    {
+        return Some(decl);
     }
 
     let Some(loc) = &decl.loc else {
@@ -549,14 +549,13 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                         }
                     });
 
-                if let Some(type_) = type_ {
-                    if let Decl {
+                if let Some(type_) = type_
+                    && let Decl {
                         kind: DeclKind::Type(fields),
                         ..
                     } = type_.as_ref()
-                    {
-                        return fields.iter().find(|f| f.id == id).cloned().map(Arc::new);
-                    }
+                {
+                    return fields.iter().find(|f| f.id == id).cloned().map(Arc::new);
                 }
             }
         }
@@ -564,10 +563,10 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     }
 
     // If the node is part of a field access or check resolve it in the referenced record.
-    if let Some(p) = node.parent() {
-        if matches!(p.kind(), "field_access" | "field_check") {
-            return db.resolve(NodeLocation::from_node(uri, p));
-        }
+    if let Some(p) = node.parent()
+        && matches!(p.kind(), "field_access" | "field_check")
+    {
+        return db.resolve(NodeLocation::from_node(uri, p));
     }
 
     // Try to find a decl with name of the given node up the tree.
@@ -593,17 +592,15 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     // If we arrive here and the identifier does not contain `::` it could also refer to a
     // declaration in the same module, but defined in a different file. Try to find it by
     // searching for it by its fully-qualified name.
-    if !id.contains("::") {
-        if let Some(module) = tree
+    if !id.contains("::")
+        && let Some(module) = tree
             .root_node()
             .named_child("module_decl")
             .and_then(|d| d.named_child("id"))
             .and_then(|id| id.utf8_text(source.as_bytes()).ok())
-        {
-            if let Some(r) = db.resolve_id(format!("{module}::{id}").as_str().into(), location) {
-                return Some(r);
-            }
-        }
+        && let Some(r) = db.resolve_id(format!("{module}::{id}").as_str().into(), location)
+    {
+        return Some(r);
     }
     None
 }

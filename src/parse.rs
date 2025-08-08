@@ -10,7 +10,7 @@ pub struct Tree(tree_sitter::Tree);
 
 impl Tree {
     #[must_use]
-    pub fn root_node(&self) -> Node {
+    pub fn root_node(&self) -> Node<'_> {
         self.0.root_node().into()
     }
 }

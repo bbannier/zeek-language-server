@@ -406,7 +406,7 @@ impl<'a> Node<'a> {
     }
 
     /// Extract all error nodes under the node.
-    pub fn errors(&self) -> impl Iterator<Item = Node> {
+    pub fn errors(&self) -> impl Iterator<Item = Node<'_>> {
         fn errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
             let mut cur = n.walk();
 
@@ -809,10 +809,10 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             // If a redef record isn't already fully qualified it either refers to something in the
             // current module which we can find, or it refers to a GLOBAL record. Sanitize the FQID
             // for that.
-            if let DeclKind::RedefRecord(_) = &kind {
-                if !id_written.contains("::") {
-                    fqid = id.clone();
-                }
+            if let DeclKind::RedefRecord(_) = &kind
+                && !id_written.contains("::")
+            {
+                fqid = id.clone();
             }
 
             Some(

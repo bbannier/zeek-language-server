@@ -21,7 +21,7 @@ pub fn markdownify(rst: &str) -> Str {
     rst.into()
 }
 
-fn external_link(rst: &str) -> Cow<str> {
+fn external_link(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(r"`(\S+(\s+\S+)*)\s+<(.*)>`_{1,2}").expect("invalid regexp")
     });
@@ -29,14 +29,14 @@ fn external_link(rst: &str) -> Cow<str> {
     RE.replace_all(rst, "[$1]($3)")
 }
 
-fn inline_code(rst: &str) -> Cow<str> {
+fn inline_code(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r"``([^`]+)``").expect("invalid regexp"));
 
     RE.replace_all(rst, "`$1`")
 }
 
-fn zeek_field(rst: &str) -> Cow<str> {
+fn zeek_field(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r":zeek:field:`([^`]+)`").expect("invalid regexp"));
 
@@ -45,7 +45,7 @@ fn zeek_field(rst: &str) -> Cow<str> {
     })
 }
 
-fn zeek_id(rst: &str) -> Cow<str> {
+fn zeek_id(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r":zeek:id:`([^`]+)`").expect("invalid regexp"));
 
@@ -54,7 +54,7 @@ fn zeek_id(rst: &str) -> Cow<str> {
     })
 }
 
-fn zeek_keyword(rst: &str) -> Cow<str> {
+fn zeek_keyword(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r":zeek:keyword:`([^`]+)`").expect("invalid regexp"));
 
@@ -63,7 +63,7 @@ fn zeek_keyword(rst: &str) -> Cow<str> {
     })
 }
 
-fn zeek_see_inline(rst: &str) -> Cow<str> {
+fn zeek_see_inline(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r":zeek:see:`([^`]+)`").expect("invalid regexp"));
 
@@ -72,7 +72,7 @@ fn zeek_see_inline(rst: &str) -> Cow<str> {
     })
 }
 
-fn zeek_see_block(rst: &str) -> Cow<str> {
+fn zeek_see_block(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(r"(?m)^\.\.\s+zeek:see::(.*)$").expect("invalid regexp")
     });
@@ -86,7 +86,7 @@ fn zeek_see_block(rst: &str) -> Cow<str> {
     })
 }
 
-fn zeek_type(rst: &str) -> Cow<str> {
+fn zeek_type(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r":zeek:type:`([^`]+)`").expect("invalid regexp"));
 
@@ -98,14 +98,14 @@ fn zeek_type(rst: &str) -> Cow<str> {
     })
 }
 
-fn note(rst: &str) -> Cow<str> {
+fn note(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r"(?m)^\.\.\s+(note::)(.*)$").expect("invalid regexp"));
 
     RE.replace_all(rst, "**Note:**$2")
 }
 
-fn todo(rst: &str) -> Cow<str> {
+fn todo(rst: &str) -> Cow<'_, str> {
     static RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r"(?m)^\.\.\s+(todo::)(.*)$").expect("invalid regexp"));
 

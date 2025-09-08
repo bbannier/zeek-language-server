@@ -77,7 +77,7 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: moonrepo/setup-rust@v1
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
       - uses: pre-commit/action@v3.0.1
 
   vscode:

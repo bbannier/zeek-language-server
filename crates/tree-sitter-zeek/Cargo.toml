@@ -12,4 +12,4 @@ tree-sitter = "0.25.9"
 [build-dependencies]
 cc = "1.2.36"
 regex = { version = "1.11.2", default-features = false }
-tree-sitter-generate = "0.25.8"
+tree-sitter-generate = "0.25.9"

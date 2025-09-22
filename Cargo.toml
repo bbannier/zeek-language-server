@@ -49,7 +49,7 @@ tree-sitter-bash = "0.25.0"
 tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", version = "0.1.0" }
 tree-sitter-highlight = { version = "0.25.9", default-features = false }
 tree-sitter-printf = "0.5.1"
-tree-sitter-regex = "0.24.3"
+tree-sitter-regex = "0.25.0"
 tree-sitter-rst = "0.2.0"
 tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }
 walkdir = "2.5.0"

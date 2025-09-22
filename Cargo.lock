@@ -2360,9 +2360,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-regex"
-version = "0.24.3"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712656f8c262a5a4b7d6026e6246950787d178d613864952554e1516a33ab0c1"
+checksum = "bd8a59be9f0ac131fd8f062eaaba14882b2fa5a6a7882a20134cb1d60df2e625"
 dependencies = [
  "cc",
  "tree-sitter-language",

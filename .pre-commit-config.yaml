@@ -2,10 +2,19 @@ repos:
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:
-      - id: fmt
+      # - id: fmt
       - id: clippy
         args: ["--all", "--all-features"]
       - id: cargo-check
+  # Implement fmt by hand since above hook seems to have problems recognizing the Rust edition.
+  - repo: local
+    hooks:
+    - id: fmt
+      name: fmt
+      language: system
+      entry: cargo fmt --all
+      files: \.rs$
+      pass_filenames: false
   - repo: https://github.com/jorisroovers/gitlint
     rev: v0.19.1
     hooks:

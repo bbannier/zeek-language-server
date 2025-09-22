@@ -174,17 +174,17 @@
 		"watch": "npm run build-base -- --sourcemap --watch"
 	},
 	"devDependencies": {
-		"@types/node": "^24.4.0",
+		"@types/node": "^24.5.2",
 		"@types/vscode": "^1.82.0",
 		"@vscode/vsce": "^3.6.0",
-		"esbuild": "^0.25.9",
+		"esbuild": "^0.25.10",
 		"mocha": "^11.7.2",
 		"prettier": "^3.6.2",
 		"typescript": "^5.9.2",
 		"vscode-languageclient": "^9.0.1"
 	},
 	"dependencies": {
-		"tar": "^7.4.3",
+		"tar": "^7.4.4",
 		"xz-decompress": "^0.2.3"
 	}
 }

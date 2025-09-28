@@ -77,6 +77,8 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: moonrepo/setup-rust@v1
+        with:
+          components: clippy,rustfmt
       - uses: actions/setup-python@v6
       - uses: pre-commit/action@v3.0.1
 

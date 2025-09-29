@@ -26,7 +26,7 @@ itertools = "0.14.0"
 line-index = { version = "0.1.2", default-features = false }
 opentelemetry = { version = "0.26.0", features = ["trace"], optional = true }
 opentelemetry-otlp = { version = "0.26.0", features = ["grpc-tonic", "trace"], default-features = false, optional = true }
-opentelemetry-semantic-conventions = { version = "0.30.0", default-features = false }
+opentelemetry-semantic-conventions = { version = "0.31.0", default-features = false }
 opentelemetry_sdk = { version = "0.26.0", features = ["rt-tokio", "trace"], default-features = false, optional = true }
 path-clean = "1.0.1"
 rayon = "1.11.0"

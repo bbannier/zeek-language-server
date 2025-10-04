@@ -255,6 +255,8 @@ impl Backend {
                 }
             };
 
+            drop(state);
+
             let parse_result = if diags.is_empty() {
                 ParseResult::Ok
             } else {
@@ -726,6 +728,8 @@ impl LanguageServer for Backend {
             _ => {}
         }
 
+        drop(state);
+
         // In debug builds always debug AST nodes; in release mode honor the client config.
         #[cfg(all(debug_assertions, not(test)))]
         let debug_ast_nodes = true;
@@ -1107,6 +1111,8 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
+        drop(state);
+
         let Ok(formatted) = zeek::format(&source).await else {
             // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
@@ -1418,6 +1424,8 @@ impl LanguageServer for Backend {
             Vec::default()
         };
 
+        drop(state);
+
         let (params, vars) = futures::future::join(
             async {
                 futures::future::join_all(params)
@@ -1463,6 +1471,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // We hold a lock across an await which is safe here.
         let references = references(&state, decl).await;
 
         Ok(Some(
@@ -1491,6 +1500,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // We hold a lock across an await which is safe here.
         let references = references(&state, decl).await;
 
         let new_name = params.new_name;

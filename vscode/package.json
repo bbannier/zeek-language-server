@@ -178,7 +178,7 @@
 		"@types/vscode": "^1.82.0",
 		"@vscode/vsce": "^3.6.2",
 		"esbuild": "^0.25.10",
-		"typescript": "^5.9.2",
+		"typescript": "^5.9.3",
 		"vscode-languageclient": "^9.0.1"
 	},
 	"dependencies": {

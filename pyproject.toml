@@ -1,0 +1,12 @@
+[project]
+name = "zeek-language-server"
+version = "0.73.3"
+license = { file = "LICENSE" }
+readme = "README.md"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+bindings = "bin"

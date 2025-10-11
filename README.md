@@ -78,9 +78,6 @@ This project requires Rust to build which can be set up e.g., with
 The project can then be installed with
 
 ```sh
-# Also available in many distribution repositories.
-cargo install tree-sitter-cli
-
 # Install actual server.
 cargo install --git https://github.com/bbannier/zeek-language-server.git
 ```

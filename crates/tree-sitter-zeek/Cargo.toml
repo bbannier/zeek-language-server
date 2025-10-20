@@ -11,5 +11,5 @@ tree-sitter = "0.25.10"
 
 [build-dependencies]
 cc = "1.2.41"
-regex = { version = "1.12.1", default-features = false }
+regex = { version = "1.12.2", default-features = false }
 tree-sitter-generate = "0.25.10"

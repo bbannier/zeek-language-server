@@ -177,7 +177,7 @@
 		"@types/node": "^24.9.1",
 		"@types/vscode": "^1.82.0",
 		"@vscode/vsce": "^3.6.2",
-		"esbuild": "^0.25.11",
+		"esbuild": "^0.25.12",
 		"typescript": "^5.9.3",
 		"vscode-languageclient": "^9.0.1"
 	},

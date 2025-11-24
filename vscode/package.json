@@ -174,7 +174,7 @@
 		"watch": "npm run build-base -- --sourcemap --watch"
 	},
 	"devDependencies": {
-		"@types/node": "^24.10.0",
+		"@types/node": "^24.10.1",
 		"@types/vscode": "^1.82.0",
 		"@vscode/vsce": "^3.7.0",
 		"esbuild": "^0.27.0",

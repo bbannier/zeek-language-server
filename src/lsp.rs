@@ -630,6 +630,7 @@ impl LanguageServer for Backend {
         self.check(params.text_document.uri, None).await;
     }
 
+    #[allow(clippy::too_many_lines)]
     #[instrument]
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let params = params.text_document_position_params;
@@ -816,10 +817,10 @@ impl LanguageServer for Backend {
                 .filter(|d| d.kind != DeclKind::EnumMember)
                 .collect::<Vec<_>>();
             decls.sort_by_key(|d| format!("{}", d.module));
-            let (decls_w_mod, decls_wo_mod): (Vec<_>, _) =
+            let (decls_with_mod, decls_without_mod): (Vec<_>, _) =
                 decls.into_iter().partition(|d| d.module != ModuleId::None);
 
-            decls_w_mod
+            decls_with_mod
                 .into_iter()
                 .chunk_by(|d| &d.module)
                 .into_iter()
@@ -840,7 +841,7 @@ impl LanguageServer for Backend {
                         tags: None,
                     }
                 })
-                .chain(decls_wo_mod.into_iter().filter_map(symbol))
+                .chain(decls_without_mod.into_iter().filter_map(symbol))
                 .collect()
         };
 

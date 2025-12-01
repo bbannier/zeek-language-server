@@ -9,7 +9,7 @@ repository = "https://github.com/bbannier/zeek-language-server"
 
 [dev-dependencies]
 criterion = { version = "2.10.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
-insta = "1.44.1"
+insta = "1.44.3"
 tempfile = "3.23.0"
 version-sync = "0.9.5"
 

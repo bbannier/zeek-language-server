@@ -55,6 +55,7 @@ pub trait Ast: Parse + Query {
     fn resolve_type(&self, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>>;
 }
 
+#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 #[instrument(skip(db))]
 fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
@@ -97,7 +98,7 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
         decls.extend(
             // Find all decls with this name, defined before the node. We do this so that e.g.,
             // redefs in the same file are only in effect after they have been declared.
-            query::decls_(scope, Arc::clone(&uri), source.as_bytes())
+            query::decls_(scope, &uri, source.as_bytes())
                 .into_iter()
                 .filter(|d| d.id == id || d.fqid == id)
                 .filter(|d| {
@@ -725,6 +726,7 @@ fn implicit_decls(db: &dyn Ast) -> Arc<[Decl]> {
         .collect()
 }
 
+#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 fn possible_loads(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Str]> {
     let Some(path) = uri.to_file_path() else {

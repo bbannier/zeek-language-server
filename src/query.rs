@@ -442,9 +442,10 @@ fn in_export(mut node: Node) -> bool {
     }
 }
 
+#[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         let signature = "((formal_args)? (type)?@fn_result)@signature";
         let signature = format!("[{signature} (func_params ({signature}))]");
@@ -581,7 +582,7 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: arg_id_.range(),
                                 selection_range: arg.range(),
-                                uri: Arc::clone(&uri),
+                                uri: Arc::clone(uri),
                             }),
                             documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                                 .as_str()
@@ -647,7 +648,7 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: id_.range(),
                                 selection_range: id_.range(),
-                                uri: Arc::clone(&uri),
+                                uri: Arc::clone(uri),
                             }),
                             documentation,
 
@@ -688,7 +689,7 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range,
                                     selection_range,
-                                    uri: Arc::clone(&uri),
+                                    uri: Arc::clone(uri),
                                 }),
                                 documentation,
                                 // An enum value is exported if its wrapping decl is exported.
@@ -775,7 +776,7 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range: id_.range(),
                                     selection_range: id_.range(),
-                                    uri: Arc::clone(&uri),
+                                    uri: Arc::clone(uri),
                                 }),
                                 documentation,
 
@@ -825,7 +826,7 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                     loc: Some(Location {
                         range,
                         selection_range,
-                        uri: Arc::clone(&uri),
+                        uri: Arc::clone(uri),
                     }),
                     documentation,
                 })
@@ -834,9 +835,9 @@ pub fn decls_(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
         })
         .flatten()
         .chain(convert(
-            fn_param_decls(node, Arc::clone(&uri), source).into_iter(),
+            fn_param_decls(node, &Arc::clone(uri), source).into_iter(),
         ))
-        .chain(convert(loop_param_decls(node, &uri, source).into_iter()))
+        .chain(convert(loop_param_decls(node, uri, source).into_iter()))
         .cloned()
         .collect()
 }
@@ -936,7 +937,7 @@ fn typ_from_text(text: &str) -> Option<Type> {
 
 #[instrument]
 #[must_use]
-fn modules(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+fn modules(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)").expect("invalid query")
     });
@@ -1006,7 +1007,7 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
 
 /// Extract declarations for function parameters on the given node.
 #[instrument]
-pub fn fn_param_decls(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     match node.kind() {
         "func_decl" | "hook_decl" | "event_decl" => {}
         _ => return FxHashSet::default(),
@@ -1038,7 +1039,7 @@ pub fn fn_param_decls(node: Node, uri: Arc<Uri>, source: &[u8]) -> FxHashSet<Dec
                 loc: Some(Location {
                     range: arg_id_.range(),
                     selection_range: arg.range(),
-                    uri: Arc::clone(&uri),
+                    uri: Arc::clone(uri),
                 }),
                 documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                     .as_str()
@@ -1183,6 +1184,7 @@ pub trait Query: Parse {
     fn ids(&self, uri: Arc<Uri>) -> Arc<[NodeLocation]>;
 }
 
+#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     let Some(source) = db.source(Arc::clone(&uri)) else {
@@ -1193,8 +1195,8 @@ fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
         return Arc::default();
     };
 
-    let decls = decls_(tree.root_node(), Arc::clone(&uri), source.as_bytes());
-    let modules = modules(tree.root_node(), uri, source.as_bytes());
+    let decls = decls_(tree.root_node(), &uri, source.as_bytes());
+    let modules = modules(tree.root_node(), &uri, source.as_bytes());
 
     Arc::from(
         decls
@@ -1224,6 +1226,7 @@ fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Str]> {
     )
 }
 
+#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
@@ -1266,6 +1269,7 @@ fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     )
 }
 
+#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     // Match untyped var and const decls
@@ -1485,7 +1489,7 @@ mod test {
 
         let tree = db.0.parse(uri.clone()).expect("cannot parse");
 
-        let decls_ = |n: Node| super::decls_(n, uri.clone(), SOURCE.as_bytes());
+        let decls_ = |n: Node| super::decls_(n, &uri, SOURCE.as_bytes());
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
@@ -1570,7 +1574,7 @@ function f1(x: count, y: string) {
             .named_descendant_for_position(Position::new(1, 0))
             .unwrap();
         assert_eq!(in_f1.kind(), "func_decl");
-        let mut decls = super::fn_param_decls(in_f1, uri.clone(), source.as_bytes())
+        let mut decls = super::fn_param_decls(in_f1, &uri, source.as_bytes())
             .into_iter()
             .collect::<Vec<_>>();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
@@ -1580,7 +1584,7 @@ function f1(x: count, y: string) {
             .named_descendant_for_position(Position::new(0, 0))
             .unwrap();
         assert_eq!(outside_f1.kind(), "module_decl");
-        assert!(super::fn_param_decls(outside_f1, uri, source.as_bytes()).is_empty());
+        assert!(super::fn_param_decls(outside_f1, &uri, source.as_bytes()).is_empty());
     }
 
     #[test]
@@ -1600,7 +1604,7 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         let root = tree.root_node();
         let source = db.source(uri.clone()).unwrap();
 
-        assert_debug_snapshot!(super::decls_(root, uri, source.as_bytes()));
+        assert_debug_snapshot!(super::decls_(root, &uri, source.as_bytes()));
     }
 
     #[test]
@@ -1618,7 +1622,7 @@ function f() {}",
         let root = tree.root_node();
         let source = db.source(uri.clone()).unwrap();
 
-        let decls = super::decls_(root, uri, source.as_bytes());
+        let decls = super::decls_(root, &uri, source.as_bytes());
         assert_eq!(decls.len(), 1);
         let d = decls.iter().next().unwrap();
         assert_eq!(d.id, "f");

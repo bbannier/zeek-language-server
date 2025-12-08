@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use streaming_iterator::{StreamingIterator, StreamingIteratorMut, convert};
-use tower_lsp_server::lsp_types::{Position, Range, Uri};
+use tower_lsp_server::ls_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
@@ -1424,10 +1424,7 @@ mod test {
     use crate::{Files, lsp::TestDatabase, parse::Parse, query::Node};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
-    use tower_lsp_server::{
-        UriExt,
-        lsp_types::{Position, Uri},
-    };
+    use tower_lsp_server::ls_types::{Position, Uri};
 
     use super::Query;
 

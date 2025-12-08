@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use tower_lsp_server::{UriExt, lsp_types::Uri};
+use tower_lsp_server::ls_types::Uri;
 use tracing::{instrument, warn};
 
 use crate::{
@@ -857,10 +857,7 @@ mod test {
     use std::{ops::Deref, path::PathBuf, str::FromStr, sync::Arc};
 
     use insta::assert_debug_snapshot;
-    use tower_lsp_server::{
-        UriExt,
-        lsp_types::{Position, Range, Uri},
-    };
+    use tower_lsp_server::ls_types::{Position, Range, Uri};
 
     use crate::{
         Files,

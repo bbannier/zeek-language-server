@@ -1,6 +1,6 @@
 ---
 source: src/query.rs
-expression: "super::decls_(root, uri, source.as_bytes())"
+expression: "super::decls_(root, &uri, source.as_bytes())"
 ---
 {
     Decl {
@@ -41,18 +41,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -95,18 +91,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -149,18 +141,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -203,18 +191,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                 },
                 uri: Uri(
                     Uri {
-                        scheme: Some(
-                            "file",
-                        ),
+                        scheme: "file",
                         authority: Some(
                             Authority {
                                 userinfo: None,
-                                host: Host {
-                                    text: "",
-                                    data: RegName(
-                                        "",
-                                    ),
-                                },
+                                host: "",
+                                host_parsed: RegName(
+                                    "",
+                                ),
                                 port: None,
                             },
                         ),
@@ -267,18 +251,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -321,18 +301,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                 },
                 uri: Uri(
                     Uri {
-                        scheme: Some(
-                            "file",
-                        ),
+                        scheme: "file",
                         authority: Some(
                             Authority {
                                 userinfo: None,
-                                host: Host {
-                                    text: "",
-                                    data: RegName(
-                                        "",
-                                    ),
-                                },
+                                host: "",
+                                host_parsed: RegName(
+                                    "",
+                                ),
                                 port: None,
                             },
                         ),
@@ -383,18 +359,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -437,18 +409,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -491,18 +459,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                                 },
                                 uri: Uri(
                                     Uri {
-                                        scheme: Some(
-                                            "file",
-                                        ),
+                                        scheme: "file",
                                         authority: Some(
                                             Authority {
                                                 userinfo: None,
-                                                host: Host {
-                                                    text: "",
-                                                    data: RegName(
-                                                        "",
-                                                    ),
-                                                },
+                                                host: "",
+                                                host_parsed: RegName(
+                                                    "",
+                                                ),
                                                 port: None,
                                             },
                                         ),
@@ -545,18 +509,14 @@ expression: "super::decls_(root, uri, source.as_bytes())"
                 },
                 uri: Uri(
                     Uri {
-                        scheme: Some(
-                            "file",
-                        ),
+                        scheme: "file",
                         authority: Some(
                             Authority {
                                 userinfo: None,
-                                host: Host {
-                                    text: "",
-                                    data: RegName(
-                                        "",
-                                    ),
-                                },
+                                host: "",
+                                host_parsed: RegName(
+                                    "",
+                                ),
                                 port: None,
                             },
                         ),

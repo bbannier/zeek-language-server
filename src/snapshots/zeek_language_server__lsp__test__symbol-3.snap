@@ -4,7 +4,7 @@ expression: "query(\"A\").await"
 ---
 Ok(
     Some(
-        Left(
+        Flat(
             [],
         ),
     ),

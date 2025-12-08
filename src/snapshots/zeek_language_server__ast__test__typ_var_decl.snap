@@ -41,18 +41,14 @@ Some(
                             },
                             uri: Uri(
                                 Uri {
-                                    scheme: Some(
-                                        "file",
-                                    ),
+                                    scheme: "file",
                                     authority: Some(
                                         Authority {
                                             userinfo: None,
-                                            host: Host {
-                                                text: "",
-                                                data: RegName(
-                                                    "",
-                                                ),
-                                            },
+                                            host: "",
+                                            host_parsed: RegName(
+                                                "",
+                                            ),
                                             port: None,
                                         },
                                     ),
@@ -94,18 +90,14 @@ Some(
                 },
                 uri: Uri(
                     Uri {
-                        scheme: Some(
-                            "file",
-                        ),
+                        scheme: "file",
                         authority: Some(
                             Authority {
                                 userinfo: None,
-                                host: Host {
-                                    text: "",
-                                    data: RegName(
-                                        "",
-                                    ),
-                                },
+                                host: "",
+                                host_parsed: RegName(
+                                    "",
+                                ),
                                 port: None,
                             },
                         ),

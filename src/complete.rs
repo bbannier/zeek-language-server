@@ -10,7 +10,7 @@ use crate::{
 };
 
 use itertools::Itertools;
-use tower_lsp_server::lsp_types::{
+use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
     CompletionResponse, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position, Uri,
 };
@@ -692,14 +692,10 @@ mod test {
     #![allow(clippy::unwrap_used)]
 
     use insta::assert_debug_snapshot;
-    use tower_lsp_server::{
-        UriExt,
-        lsp_types::{
-            CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
-            CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams,
-            Position, TextDocumentIdentifier, TextDocumentPositionParams, Uri,
-            WorkDoneProgressParams,
-        },
+    use tower_lsp_server::ls_types::{
+        CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
+        CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams, Position,
+        TextDocumentIdentifier, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
     };
 
     use crate::{complete::complete, lsp::test::TestDatabase};

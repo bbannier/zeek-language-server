@@ -13,9 +13,9 @@ use salsa::ParallelDatabase;
 use serde::Deserialize;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp_server::{
-    LanguageServer, LspService, Server, UriExt,
+    LanguageServer, LspService, Server,
     jsonrpc::{Error, Result},
-    lsp_types::{
+    ls_types::{
         CodeAction, CodeActionKind, CodeActionParams, CodeActionProviderCapability,
         CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
         DeclarationCapability, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
@@ -34,8 +34,8 @@ use tower_lsp_server::{
         SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
         SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
         Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbol,
-        WorkspaceSymbolParams,
+        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
+        WorkspaceSymbolResponse,
         notification::Progress,
         request::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
@@ -286,7 +286,7 @@ impl Backend {
 
         let workspace_files = workspace_folders
             .iter()
-            .filter_map(UriExt::to_file_path)
+            .filter_map(Uri::to_file_path)
             .flat_map(|dir| {
                 WalkDir::new(dir)
                     .into_iter()
@@ -320,7 +320,7 @@ impl Backend {
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
         let workspace_folders = self.state.read().await.workspace_folders();
-        let workspace_folder = workspace_folders.first().and_then(UriExt::to_file_path);
+        let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
         let checks = if let Some(folder) = workspace_folder {
             zeek::check(&file, folder).await
@@ -852,7 +852,7 @@ impl LanguageServer for Backend {
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
-    ) -> Result<Option<OneOf<Vec<SymbolInformation>, Vec<WorkspaceSymbol>>>> {
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
         let query = params.query.to_lowercase();
 
         let symbols = {
@@ -876,7 +876,7 @@ impl LanguageServer for Backend {
                 .collect()
         };
 
-        Ok(Some(OneOf::Left(symbols)))
+        Ok(Some(WorkspaceSymbolResponse::Flat(symbols)))
     }
 
     #[instrument]
@@ -1758,7 +1758,7 @@ mod semantic_tokens {
     use itertools::Itertools;
     use tower_lsp_server::{
         jsonrpc::Error,
-        lsp_types::{
+        ls_types::{
             Position, Range, SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend,
         },
     };
@@ -2007,7 +2007,7 @@ mod semantic_tokens {
     #[cfg(test)]
     mod test {
         use insta::assert_debug_snapshot;
-        use tower_lsp_server::lsp_types::{Position, SemanticToken, SemanticTokenType};
+        use tower_lsp_server::ls_types::{Position, SemanticToken, SemanticTokenType};
 
         use crate::lsp::semantic_tokens::{highlight, legend};
 
@@ -2101,8 +2101,8 @@ pub(crate) mod test {
     use insta::assert_debug_snapshot;
     use serde_json::json;
     use tower_lsp_server::{
-        LanguageServer, UriExt,
-        lsp_types::{
+        LanguageServer,
+        ls_types::{
             ClientCapabilities, CodeActionContext, CodeActionParams, CompletionParams,
             CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions,
             HoverParams, InlayHintParams, PartialResultParams, Position, Range, ReferenceContext,

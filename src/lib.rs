@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tower_lsp_server::lsp_types::{ClientCapabilities, Uri};
+use tower_lsp_server::ls_types::{ClientCapabilities, Uri};
 use tracing::instrument;
 
 pub mod ast;

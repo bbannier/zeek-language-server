@@ -13,8 +13,8 @@ fn runtime() -> tokio::runtime::Runtime {
 mod server {
     use criterion::{Criterion, criterion_group};
     use tower_lsp_server::{
-        LanguageServer, UriExt,
-        lsp_types::{
+        LanguageServer,
+        ls_types::{
             CompletionContext, CompletionParams, CompletionTriggerKind,
             DidChangeWatchedFilesParams, DidOpenTextDocumentParams, FileChangeType, FileEvent,
             InitializeParams, InitializedParams, PartialResultParams, Position, ReferenceContext,

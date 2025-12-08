@@ -4,7 +4,7 @@ expression: "query(\"mod\").await"
 ---
 Ok(
     Some(
-        Left(
+        Flat(
             [
                 SymbolInformation {
                     name: "mod_b::B",
@@ -14,18 +14,14 @@ Ok(
                     location: Location {
                         uri: Uri(
                             Uri {
-                                scheme: Some(
-                                    "file",
-                                ),
+                                scheme: "file",
                                 authority: Some(
                                     Authority {
                                         userinfo: None,
-                                        host: Host {
-                                            text: "",
-                                            data: RegName(
-                                                "",
-                                            ),
-                                        },
+                                        host: "",
+                                        host_parsed: RegName(
+                                            "",
+                                        ),
                                         port: None,
                                     },
                                 ),
@@ -57,18 +53,14 @@ Ok(
                     location: Location {
                         uri: Uri(
                             Uri {
-                                scheme: Some(
-                                    "file",
-                                ),
+                                scheme: "file",
                                 authority: Some(
                                     Authority {
                                         userinfo: None,
-                                        host: Host {
-                                            text: "",
-                                            data: RegName(
-                                                "",
-                                            ),
-                                        },
+                                        host: "",
+                                        host_parsed: RegName(
+                                            "",
+                                        ),
                                         port: None,
                                     },
                                 ),
@@ -100,18 +92,14 @@ Ok(
                     location: Location {
                         uri: Uri(
                             Uri {
-                                scheme: Some(
-                                    "file",
-                                ),
+                                scheme: "file",
                                 authority: Some(
                                     Authority {
                                         userinfo: None,
-                                        host: Host {
-                                            text: "",
-                                            data: RegName(
-                                                "",
-                                            ),
-                                        },
+                                        host: "",
+                                        host_parsed: RegName(
+                                            "",
+                                        ),
                                         port: None,
                                     },
                                 ),

@@ -1333,14 +1333,15 @@ impl LanguageServer for Backend {
         let state = self.state.read().await;
 
         let params = if state.initialization_options().inlay_hints_parameters {
-            #[allow(clippy::redundant_clone)] // Used cloned iter for ownership with `tokio::spawn`
             state
                 .function_calls(Arc::clone(&uri))
                 .iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
-                .cloned()
                 .map(|c| {
                     let state = state.snapshot();
+
+                    let c = c.clone();
+
                     tokio::spawn(async move {
                         match &state.resolve(c.f.clone())?.kind {
                             DeclKind::FuncDef(s)
@@ -1394,7 +1395,6 @@ impl LanguageServer for Backend {
         };
 
         let vars = if state.initialization_options().inlay_hints_variables {
-            #[allow(clippy::redundant_clone)] // Used cloned iter for ownership with `tokio::spawn`
             state
                 .untyped_var_decls(Arc::clone(&uri))
                 .iter()
@@ -1403,9 +1403,11 @@ impl LanguageServer for Backend {
                         .as_ref()
                         .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
                 })
-                .cloned()
                 .map(|d| {
                     let state = state.snapshot();
+
+                    let d = d.clone();
+
                     tokio::spawn(async move {
                         let t = state.typ(Arc::new(d.clone()))?;
                         Some(InlayHint {

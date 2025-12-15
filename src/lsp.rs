@@ -2099,7 +2099,6 @@ pub(crate) mod test {
     };
 
     use insta::assert_debug_snapshot;
-    use serde_json::json;
     use tower_lsp_server::{
         LanguageServer,
         ls_types::{

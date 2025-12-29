@@ -35,7 +35,7 @@ rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.1.1"
 salsa = "0.16.1"
 serde = { version = "1.0.228", default-features = false }
-serde_json = { default-features = false, version = "1.0.145" }
+serde_json = { default-features = false, version = "1.0.148" }
 smol_str = { version = "0.3.4", default-features = false, features = ["std"] }
 streaming-iterator = { version = "0.1.9", default-features = false }
 tokio = { version = "1.48.0", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }

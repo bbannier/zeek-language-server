@@ -57,6 +57,8 @@ fn main() {
         ABI_VERSION,
         None,
         None,
+        true,
+        tree_sitter_generate::OptLevel::default(),
     )
     .expect("could not generate parser");
 

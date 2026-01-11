@@ -85,11 +85,11 @@ tracing = { features = ["attributes"], default-features = false, version = "0.1.
 tracing-appender = { version = "0.2.4", default-features = false }
 tracing-opentelemetry = { version = "0.27.0" }
 tracing-subscriber = { version = "0.3.22", features = ["tracing-log", "registry", "std"], default-features = false }
-tree-sitter = "0.25.10"
+tree-sitter = "0.26.3"
 tree-sitter-bash = "0.25.1"
 tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", version = "0.1.0" }
-tree-sitter-generate = "0.25.10"
-tree-sitter-highlight = { version = "0.25.10", default-features = false }
+tree-sitter-generate = "0.26.3"
+tree-sitter-highlight = { version = "0.26.3", default-features = false }
 tree-sitter-printf = "0.5.1"
 tree-sitter-regex = "0.25.0"
 tree-sitter-rst = "0.2.0"

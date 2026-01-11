@@ -7,9 +7,9 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tree-sitter = "0.25.10"
+tree-sitter = { workspace = true }
 
 [build-dependencies]
-cc = "1.2.51"
-regex = { version = "1.12.2", default-features = false }
-tree-sitter-generate = "0.25.10"
+cc = { workspace = true }
+regex = { workspace = true }
+tree-sitter-generate = { workspace = true }

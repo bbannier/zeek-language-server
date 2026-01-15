@@ -4,8 +4,8 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "file of count",
-    fqid: "file of count",
+    id: u!("file of count"),
+    fqid: u!("file of count"),
     kind: Builtin(
         File(
             Count,
@@ -13,5 +13,5 @@ Decl {
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'file of count'",
+    documentation: u!("Builtin type 'file of count'"),
 }

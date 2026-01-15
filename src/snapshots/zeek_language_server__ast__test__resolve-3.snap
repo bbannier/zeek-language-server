@@ -5,8 +5,8 @@ expression: "db.resolve(NodeLocation::from_node(uri.clone(), node))"
 Some(
     Decl {
         module: None,
-        id: "y",
-        fqid: "y",
+        id: u!("y"),
+        fqid: u!("y"),
         kind: Variable,
         is_export: None,
         loc: Some(
@@ -51,6 +51,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\ny: count\n```",
+        documentation: u!("```zeek\ny: count\n```"),
     },
 )

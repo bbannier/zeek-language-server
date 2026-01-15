@@ -7,8 +7,8 @@ expression: "(line,\ndb.resolve(NodeLocation::from_range(uri.clone(),\nRange::ne
     Some(
         Decl {
             module: Global,
-            id: "set[addr]",
-            fqid: "set[addr]",
+            id: u!("set[addr]"),
+            fqid: u!("set[addr]"),
             kind: Builtin(
                 Set(
                     [
@@ -18,7 +18,7 @@ expression: "(line,\ndb.resolve(NodeLocation::from_range(uri.clone(),\nRange::ne
             ),
             is_export: None,
             loc: None,
-            documentation: "Builtin type 'set[addr]'",
+            documentation: u!("Builtin type 'set[addr]'"),
         },
     ),
 )

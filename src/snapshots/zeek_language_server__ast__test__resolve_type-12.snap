@@ -4,8 +4,8 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "set[count, string]",
-    fqid: "set[count, string]",
+    id: u!("set[count, string]"),
+    fqid: u!("set[count, string]"),
     kind: Builtin(
         Set(
             [
@@ -16,5 +16,5 @@ Decl {
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'set[count, string]'",
+    documentation: u!("Builtin type 'set[count, string]'"),
 }

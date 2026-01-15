@@ -7,14 +7,14 @@ expression: "(line,\ndb.resolve(NodeLocation::from_range(uri.clone(),\nRange::ne
     Some(
         Decl {
             module: Global,
-            id: "addr",
-            fqid: "addr",
+            id: u!("addr"),
+            fqid: u!("addr"),
             kind: Builtin(
                 Addr,
             ),
             is_export: None,
             loc: None,
-            documentation: "Builtin type 'addr'",
+            documentation: u!("Builtin type 'addr'"),
         },
     ),
 )

@@ -4,8 +4,8 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "opaque of count",
-    fqid: "opaque of count",
+    id: u!("opaque of count"),
+    fqid: u!("opaque of count"),
     kind: Builtin(
         Opaque(
             Count,
@@ -13,5 +13,5 @@ Decl {
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'opaque of count'",
+    documentation: u!("Builtin type 'opaque of count'"),
 }

@@ -4,8 +4,8 @@ expression: "db.resolve(NodeLocation::from_node(uri.clone(), type_)).unwrap()"
 ---
 Decl {
     module: None,
-    id: "eB",
-    fqid: "eB",
+    id: u!("eB"),
+    fqid: u!("eB"),
     kind: EnumMember,
     is_export: Some(
         false,
@@ -52,5 +52,5 @@ Decl {
             ),
         },
     ),
-    documentation: "```zeek\n# In E\neB\n```",
+    documentation: u!("```zeek\n# In E\neB\n```"),
 }

@@ -12,7 +12,7 @@ use tower_lsp_server::ls_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{Str, parse::Parse, rst::markdownify};
+use crate::{InternedStr, parse::Parse, rst::markdownify};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -32,9 +32,9 @@ pub enum DeclKind {
     EventDecl(Signature),
     EventDef(Signature),
     Variable,
-    Field(Vec<Str> /*attributes*/),
+    Field(Vec<InternedStr> /*attributes*/),
     EnumMember,
-    Index(Index, Str), // Result of an indexing operation for a given init expression.
+    Index(Index, InternedStr), // Result of an indexing operation for a given init expression.
     Builtin(Type),
 }
 
@@ -47,7 +47,7 @@ pub enum Index {
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub enum Type {
-    Id(Str),
+    Id(InternedStr),
     Addr,
     Any,
     Bool,
@@ -114,12 +114,12 @@ impl Hash for Location {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Decl {
     pub module: ModuleId,
-    pub id: Str,
-    pub fqid: Str,
+    pub id: InternedStr,
+    pub fqid: InternedStr,
     pub kind: DeclKind,
     pub is_export: Option<bool>,
     pub loc: Option<Location>,
-    pub documentation: Str,
+    pub documentation: InternedStr,
 }
 
 impl PartialOrd for Decl {
@@ -225,7 +225,7 @@ impl Hash for NodeLocation {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ModuleId {
-    String(Str),
+    String(InternedStr),
     Global,
     None,
 }
@@ -283,7 +283,7 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    pub fn to_sexp(&self) -> Str {
+    pub fn to_sexp(&self) -> InternedStr {
         self.0.to_sexp().into()
     }
 
@@ -292,19 +292,19 @@ impl<'a> Node<'a> {
     }
 
     #[must_use]
-    pub fn error(&self) -> Str {
+    pub fn error(&self) -> InternedStr {
         if self.0.is_error() {
             self.0.child(0).map_or_else(
                 || self.to_sexp(),
                 |c| format!("unexpected {}", c.kind()).into(),
             )
         } else if self.0.is_missing() {
-            let msg = Str::from(self.to_sexp().replacen("MISSING", "missing", 1));
+            let msg = InternedStr::from(&self.to_sexp().replacen("MISSING", "missing", 1));
 
             #[allow(clippy::map_unwrap_or)]
             msg.strip_prefix('(')
                 .and_then(|m| m.strip_suffix(')'))
-                .map(Str::from)
+                .map(InternedStr::from)
                 .unwrap_or_else(|| msg)
         } else {
             self.to_sexp()
@@ -527,7 +527,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             let range = decl.range();
             let selection_range = id.range();
 
-            let id: Str = {
+            let id: InternedStr = {
                 // The grammar doesn't expose module ids in identifiers like `mod::f` directly, parse by hand.
                 let spl = id_written.splitn(2, "::").collect::<Vec<_>>();
 
@@ -562,7 +562,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             .into();
 
             let mut fqid = match &module {
-                ModuleId::Global | ModuleId::None => id.clone(),
+                ModuleId::Global | ModuleId::None => id,
                 ModuleId::String(m) => format!("{}::{}", &m, &id).into(),
             };
 
@@ -596,7 +596,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 })
             };
 
-            let extract_documentation = |n: Node| -> Option<Str> {
+            let extract_documentation = |n: Node| -> Option<InternedStr> {
                 let documentation = if let Some(docs) = zeekygen_comments(n, source) {
                     format!(
                         "{docs}\n* * *\n```zeek\n# In {fqid}\n{source}\n```",
@@ -636,7 +636,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 xs.named_children("attr")
                                     .into_iter()
                                     .filter_map(|attr| attr.utf8_text(source).ok())
-                                    .map(Str::new)
+                                    .map(InternedStr::from)
                                     .collect()
                             })
                             .unwrap_or_default();
@@ -670,11 +670,11 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                         .into_iter()
                         .filter_map(|n| {
                             let id_ = n.named_child("id")?;
-                            let id: Str = id_.utf8_text(source).ok()?.into();
+                            let id: InternedStr = id_.utf8_text(source).ok()?.into();
 
                             // Enum values live in the parent scope.
                             let fqid = match &module_name {
-                                ModuleId::Global | ModuleId::None => id.clone(),
+                                ModuleId::Global | ModuleId::None => id,
                                 ModuleId::String(m) => format!("{m}::{id}").into(),
                             };
 
@@ -740,7 +740,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                         match scope.kind() {
                             "global" => DeclKind::Global,
                             "local" => {
-                                fqid = id.clone();
+                                fqid = id;
                                 module = ModuleId::None;
                                 DeclKind::Variable
                             }
@@ -813,7 +813,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             if let DeclKind::RedefRecord(_) = &kind
                 && !id_written.contains("::")
             {
-                fqid = id.clone();
+                fqid = id;
             }
 
             Some(
@@ -1115,7 +1115,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl
                     .filter_map(|(n, kind)| {
                         let n: Node = n.into();
 
-                        let id: Str = n.utf8_text(source).ok()?.into();
+                        let id: InternedStr = n.utf8_text(source).ok()?.into();
 
                         let documentation = match kind {
                             Index::Loop(i) => format!("Index {i} of `{init}`"),
@@ -1128,7 +1128,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl
 
                         Some(Decl {
                             module: ModuleId::None,
-                            id: id.clone(),
+                            id,
                             fqid: id,
                             kind,
                             is_export: None,
@@ -1172,7 +1172,7 @@ pub trait Query: Parse {
     fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
 
     #[must_use]
-    fn loads(&self, uri: Arc<Uri>) -> Arc<[Str]>;
+    fn loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]>;
 
     #[must_use]
     fn function_calls(&self, uri: Arc<Uri>) -> Arc<[FunctionCall]>;
@@ -1208,7 +1208,7 @@ fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
 }
 
 #[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Str]> {
+fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1220,8 +1220,7 @@ fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Str]> {
     Arc::from(
         loads_raw(tree.root_node(), &source)
             .iter()
-            .map(ToString::to_string)
-            .map(Str::from)
+            .map(|x| InternedStr::from(x))
             .collect::<Vec<_>>(),
     )
 }
@@ -1313,15 +1312,15 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
                     _ => return None,
                 };
 
-                let empty: Str = "".into();
+                let empty: InternedStr = "".into();
 
                 // Definite abuse of the Decl type since we really only transport out locations. We
                 // use `range` for the range of the decl, and `selection_range` for the range of
                 // the identifier.
                 Some(Decl {
                     module: ModuleId::None,
-                    id: empty.clone(),
-                    fqid: empty.clone(),
+                    id: empty,
+                    fqid: empty,
                     kind,
                     is_export: None,
                     loc: Some(Location {
@@ -1371,7 +1370,7 @@ fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
 }
 
 /// Extracts pre and post zeekygen comments for the given node.
-fn zeekygen_comments(x: Node, source: &[u8]) -> Option<Str> {
+fn zeekygen_comments(x: Node, source: &[u8]) -> Option<InternedStr> {
     // Extracting the zeekygen comments with the query seems to hit some polynomial
     // edge case in tree-sitter. Extract them by hand for the time being.
     let mut docs = VecDeque::new();

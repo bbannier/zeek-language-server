@@ -5,15 +5,15 @@ expression: "db.resolve(NodeLocation::from_node(uri.clone(), b)).and_then(|d| db
 Some(
     Decl {
         module: Global,
-        id: "<integer>",
-        fqid: "<integer>",
+        id: u!("<integer>"),
+        fqid: u!("<integer>"),
         kind: Builtin(
             Id(
-                "<integer>",
+                u!("<integer>"),
             ),
         ),
         is_export: None,
         loc: None,
-        documentation: "Builtin type '<integer>'",
+        documentation: u!("Builtin type '<integer>'"),
     },
 )

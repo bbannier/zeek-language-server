@@ -5,14 +5,14 @@ expression: db.typ(decl)
 Some(
     Decl {
         module: None,
-        id: "B",
-        fqid: "B",
+        id: u!("B"),
+        fqid: u!("B"),
         kind: Type(
             [
                 Decl {
                     module: None,
-                    id: "i",
-                    fqid: "B::i",
+                    id: u!("i"),
+                    fqid: u!("B::i"),
                     kind: Field(
                         [],
                     ),
@@ -59,7 +59,7 @@ Some(
                             ),
                         },
                     ),
-                    documentation: "```zeek\n# In B\ni: count;\n```",
+                    documentation: u!("```zeek\n# In B\ni: count;\n```"),
                 },
             ],
         ),
@@ -108,6 +108,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\ntype B: record {\n                i: count;\n            };\n```",
+        documentation: u!("```zeek\ntype B: record {\n                i: count;\n            };\n```"),
     },
 )

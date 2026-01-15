@@ -5,13 +5,13 @@ expression: "db.resolve(NodeLocation::from_node(uri, tb))"
 Some(
     Decl {
         module: None,
-        id: "tb",
-        fqid: "tb",
+        id: u!("tb"),
+        fqid: u!("tb"),
         kind: Index(
             Loop(
                 1,
             ),
-            "table([1]=\"a\", [2]=\"b\")",
+            u!("table([1]=\"a\", [2]=\"b\")"),
         ),
         is_export: None,
         loc: Some(
@@ -56,6 +56,6 @@ Some(
                 ),
             },
         ),
-        documentation: "Index 1 of `table([1]=\"a\", [2]=\"b\")`",
+        documentation: u!("Index 1 of `table([1]=\"a\", [2]=\"b\")`"),
     },
 )

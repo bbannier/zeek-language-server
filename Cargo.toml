@@ -52,6 +52,7 @@ tree-sitter-printf = { workspace = true }
 tree-sitter-regex = { workspace = true }
 tree-sitter-rst = { workspace = true }
 tree-sitter-zeek = { path = "crates/tree-sitter-zeek" }
+ustr = "1.1.0"
 walkdir = { workspace = true }
 
 [workspace]

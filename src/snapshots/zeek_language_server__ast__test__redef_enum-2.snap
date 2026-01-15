@@ -4,10 +4,10 @@ expression: "db.resolve(NodeLocation::from_node(uri, type_)).unwrap()"
 ---
 Decl {
     module: String(
-        "foo",
+        u!("foo"),
     ),
-    id: "eC",
-    fqid: "foo::eC",
+    id: u!("eC"),
+    fqid: u!("foo::eC"),
     kind: EnumMember,
     is_export: Some(
         false,
@@ -54,5 +54,5 @@ Decl {
             ),
         },
     ),
-    documentation: "```zeek\n# In foo::E\neC\n```",
+    documentation: u!("```zeek\n# In foo::E\neC\n```"),
 }

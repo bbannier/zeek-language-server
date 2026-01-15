@@ -5,8 +5,8 @@ expression: "db.resolve(NodeLocation::from_node(uri, node))"
 Some(
     Decl {
         module: None,
-        id: "x",
-        fqid: "x",
+        id: u!("x"),
+        fqid: u!("x"),
         kind: Global,
         is_export: Some(
             false,
@@ -53,6 +53,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\nglobal x = 123;\n```",
+        documentation: u!("```zeek\nglobal x = 123;\n```"),
     },
 )

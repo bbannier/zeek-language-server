@@ -5,13 +5,13 @@ expression: "db.resolve(NodeLocation::from_node(uri.clone(), s))"
 Some(
     Decl {
         module: None,
-        id: "s",
-        fqid: "s",
+        id: u!("s"),
+        fqid: u!("s"),
         kind: Index(
             Loop(
                 0,
             ),
-            "set(1, 2, 3)",
+            u!("set(1, 2, 3)"),
         ),
         is_export: None,
         loc: Some(
@@ -56,6 +56,6 @@ Some(
                 ),
             },
         ),
-        documentation: "Index 0 of `set(1, 2, 3)`",
+        documentation: u!("Index 0 of `set(1, 2, 3)`"),
     },
 )

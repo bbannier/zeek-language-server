@@ -8,7 +8,7 @@ use tower_lsp_server::ls_types::Uri;
 use tracing::{instrument, warn};
 
 use crate::{
-    Str,
+    InternedStr,
     parse::Parse,
     query::{self, Decl, DeclKind, Index, NodeLocation, Query, Type},
     zeek,
@@ -39,7 +39,7 @@ pub trait Ast: Parse + Query {
     fn implicit_decls(&self) -> Arc<[Decl]>;
 
     #[must_use]
-    fn possible_loads(&self, uri: Arc<Uri>) -> Arc<[Str]>;
+    fn possible_loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]>;
 
     /// Find decl with ID from the node up the tree and in all other loaded files.
     #[must_use]
@@ -49,7 +49,7 @@ pub trait Ast: Parse + Query {
     fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>>;
 
     /// Resolve identifier in a scope.
-    fn resolve_id(&self, id: Str, scope: NodeLocation) -> Option<Arc<Decl>>;
+    fn resolve_id(&self, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>>;
 
     /// Resolve type in a scope.
     fn resolve_type(&self, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>>;
@@ -57,7 +57,7 @@ pub trait Ast: Parse + Query {
 
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 #[instrument(skip(db))]
-fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
+fn resolve_id(db: &dyn Ast, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
     let tree = db.parse(Arc::clone(&uri))?;
     let scope = tree
@@ -199,11 +199,11 @@ fn resolve_id(db: &dyn Ast, id: Str, scope: NodeLocation) -> Option<Arc<Decl>> {
 #[instrument(skip(db))]
 fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>> {
     #[allow(clippy::needless_pass_by_value)]
-    fn builtin_type(id: Str, typ: Type) -> Arc<Decl> {
+    fn builtin_type(id: InternedStr, typ: Type) -> Arc<Decl> {
         Arc::new(Decl {
             module: query::ModuleId::Global,
-            id: id.clone(),
-            fqid: id.clone(),
+            id,
+            fqid: id,
             kind: DeclKind::Builtin(typ),
             is_export: None,
             loc: None,
@@ -213,7 +213,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
 
     Some(match &typ {
         Type::Id(id) => scope
-            .and_then(|s| resolve_id(db, id.clone(), s))
+            .and_then(|s| resolve_id(db, *id, s))
             .unwrap_or_else(|| builtin_type(format!("{id}").into(), typ.clone())),
         Type::Addr => builtin_type("addr".into(), typ),
         Type::Any => builtin_type("any".into(), typ),
@@ -229,24 +229,16 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
         Type::Table(ks, v) => {
             let ks: Vec<_> = ks
                 .iter()
-                .map(|k| {
-                    db.resolve_type(k.clone(), scope.clone())
-                        .map(|d| d.fqid.clone())
-                })
+                .map(|k| db.resolve_type(k.clone(), scope.clone()).map(|d| d.fqid))
                 .collect::<Option<_>>()?;
             let ks = ks.into_iter().join(", ");
-            let v = db
-                .resolve_type((**v).clone(), scope)
-                .map(|d| d.fqid.clone())?;
+            let v = db.resolve_type((**v).clone(), scope).map(|d| d.fqid)?;
             builtin_type(format!("table[{ks}] of {v}").into(), typ)
         }
         Type::Set(xs) => {
             let xs = xs
                 .iter()
-                .map(|x| {
-                    db.resolve_type(x.clone(), scope.clone())
-                        .map(|d| d.fqid.clone())
-                })
+                .map(|x| db.resolve_type(x.clone(), scope.clone()).map(|d| d.fqid))
                 .collect::<Option<Vec<_>>>()?;
             let xs = xs.into_iter().join(", ");
             builtin_type(format!("set[{xs}]").into(), typ)
@@ -256,8 +248,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
         Type::List(x) => builtin_type(
             format!(
                 "list of {}",
-                db.resolve_type((**x).clone(), scope)
-                    .map(|d| d.fqid.clone())?
+                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -265,8 +256,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
         Type::Vector(x) => builtin_type(
             format!(
                 "vector of {}",
-                db.resolve_type((**x).clone(), scope)
-                    .map(|d| d.fqid.clone())?
+                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -274,8 +264,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
         Type::File(x) => builtin_type(
             format!(
                 "file of {}",
-                db.resolve_type((**x).clone(), scope)
-                    .map(|d| d.fqid.clone())?
+                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -283,8 +272,7 @@ fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<
         Type::Opaque(x) => builtin_type(
             format!(
                 "opaque of {}",
-                db.resolve_type((**x).clone(), scope)
-                    .map(|d| d.fqid.clone())?
+                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -444,7 +432,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         .named_descendant_for_point_range(location.range)?;
     let source = db.source(Arc::clone(&uri))?;
 
-    let id: Str = node.utf8_text(source.as_bytes()).ok()?.into();
+    let id: InternedStr = node.utf8_text(source.as_bytes()).ok()?.into();
 
     match node.kind() {
         // Builtin types.
@@ -572,7 +560,7 @@ fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
     // Try to find a decl with name of the given node up the tree.
 
-    if let Some(r) = db.resolve_id(id.clone(), location.clone()) {
+    if let Some(r) = db.resolve_id(id, location.clone()) {
         // If we have found something which can have separate declaration and definition
         // return the declaration if possible. At this point this must be in another file.
         match r.kind {
@@ -728,7 +716,7 @@ fn implicit_decls(db: &dyn Ast) -> Arc<[Decl]> {
 
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-fn possible_loads(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Str]> {
+fn possible_loads(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(path) = uri.to_file_path() else {
         return Arc::default();
     };
@@ -755,11 +743,11 @@ fn possible_loads(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Str]> {
             };
 
             if let Ok(f) = f.strip_prefix(path) {
-                Some(Str::from(Path::new(".").join(f).to_str()?))
+                Some(InternedStr::from(Path::new(".").join(f).to_str()?))
             } else {
                 prefixes.iter().find_map(|p| {
                     let l = f.strip_prefix(p).ok()?.to_str()?;
-                    Some(Str::from(l))
+                    Some(InternedStr::from(l))
                 })
             }
         })

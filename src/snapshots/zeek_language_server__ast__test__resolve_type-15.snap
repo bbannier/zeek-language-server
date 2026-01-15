@@ -4,8 +4,8 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "list of count",
-    fqid: "list of count",
+    id: u!("list of count"),
+    fqid: u!("list of count"),
     kind: Builtin(
         List(
             Count,
@@ -13,5 +13,5 @@ Decl {
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'list of count'",
+    documentation: u!("Builtin type 'list of count'"),
 }

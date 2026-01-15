@@ -5,8 +5,8 @@ expression: "db.resolve(NodeLocation::from_node(uri, x2))"
 Some(
     Decl {
         module: None,
-        id: "x2",
-        fqid: "x::X::x2",
+        id: u!("x2"),
+        fqid: u!("x::X::x2"),
         kind: Field(
             [],
         ),
@@ -53,6 +53,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\n# In x::X\nx2: count;\n```",
+        documentation: u!("```zeek\n# In x::X\nx2: count;\n```"),
     },
 )

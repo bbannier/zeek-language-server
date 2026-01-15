@@ -5,19 +5,19 @@ expression: root_decls
 [
     Decl {
         module: String(
-            "bar",
+            u!("bar"),
         ),
-        id: "Y",
-        fqid: "Y",
+        id: u!("Y"),
+        fqid: u!("Y"),
         kind: RedefRecord(
             [
                 Decl {
                     module: None,
-                    id: "y2",
-                    fqid: "bar::Y::y2",
+                    id: u!("y2"),
+                    fqid: u!("bar::Y::y2"),
                     kind: Field(
                         [
-                            "&optional",
+                            u!("&optional"),
                         ],
                     ),
                     is_export: None,
@@ -63,7 +63,7 @@ expression: root_decls
                             ),
                         },
                     ),
-                    documentation: "A new field.\n* * *\n```zeek\n# In bar::Y\ny2: count &optional;\n```",
+                    documentation: u!("A new field.\n* * *\n```zeek\n# In bar::Y\ny2: count &optional;\n```"),
                 },
             ],
         ),
@@ -112,14 +112,14 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "```zeek\nredef record Y += {\n                  ## A new field.\n                  y2: count &optional;\n              };\n```",
+        documentation: u!("```zeek\nredef record Y += {\n                  ## A new field.\n                  y2: count &optional;\n              };\n```"),
     },
     Decl {
         module: String(
-            "bar",
+            u!("bar"),
         ),
-        id: "fun",
-        fqid: "bar::fun",
+        id: u!("fun"),
+        fqid: u!("bar::fun"),
         kind: FuncDecl(
             Signature {
                 result: Some(
@@ -128,8 +128,8 @@ expression: root_decls
                 args: [
                     Decl {
                         module: None,
-                        id: "x",
-                        fqid: "x",
+                        id: u!("x"),
+                        fqid: u!("x"),
                         kind: Variable,
                         is_export: None,
                         loc: Some(
@@ -174,7 +174,7 @@ expression: root_decls
                                 ),
                             },
                         ),
-                        documentation: "```zeek\nx: count\n```",
+                        documentation: u!("```zeek\nx: count\n```"),
                     },
                 ],
             },
@@ -224,14 +224,14 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "```zeek\nglobal fun: function(x: count): string;\n```",
+        documentation: u!("```zeek\nglobal fun: function(x: count): string;\n```"),
     },
     Decl {
         module: String(
-            "bar",
+            u!("bar"),
         ),
-        id: "fun",
-        fqid: "bar::fun",
+        id: u!("fun"),
+        fqid: u!("bar::fun"),
         kind: FuncDef(
             Signature {
                 result: Some(
@@ -240,8 +240,8 @@ expression: root_decls
                 args: [
                     Decl {
                         module: None,
-                        id: "x",
-                        fqid: "x",
+                        id: u!("x"),
+                        fqid: u!("x"),
                         kind: Variable,
                         is_export: None,
                         loc: Some(
@@ -286,7 +286,7 @@ expression: root_decls
                                 ),
                             },
                         ),
-                        documentation: "```zeek\nx: count\n```",
+                        documentation: u!("```zeek\nx: count\n```"),
                     },
                 ],
             },
@@ -336,14 +336,14 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "```zeek\nfunction fun(x: count): string { return \"\"; }\n```",
+        documentation: u!("```zeek\nfunction fun(x: count): string { return \"\"; }\n```"),
     },
     Decl {
         module: String(
-            "bar",
+            u!("bar"),
         ),
-        id: "zeek_init",
-        fqid: "bar::zeek_init",
+        id: u!("zeek_init"),
+        fqid: u!("bar::zeek_init"),
         kind: EventDef(
             Signature {
                 result: None,
@@ -395,23 +395,23 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "```zeek\nevent zeek_init() { local x=1;\n                  # Comment.\n              }\n```",
+        documentation: u!("```zeek\nevent zeek_init() { local x=1;\n                  # Comment.\n              }\n```"),
     },
     Decl {
         module: String(
-            "test",
+            u!("test"),
         ),
-        id: "Y",
-        fqid: "test::Y",
+        id: u!("Y"),
+        fqid: u!("test::Y"),
         kind: Type(
             [
                 Decl {
                     module: None,
-                    id: "y",
-                    fqid: "test::Y::y",
+                    id: u!("y"),
+                    fqid: u!("test::Y::y"),
                     kind: Field(
                         [
-                            "&optional",
+                            u!("&optional"),
                         ],
                     ),
                     is_export: None,
@@ -457,7 +457,7 @@ expression: root_decls
                             ),
                         },
                     ),
-                    documentation: "A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```",
+                    documentation: u!("A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```"),
                 },
             ],
         ),
@@ -506,14 +506,14 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "Y does the y.\nIt takes no arguments.\nBut it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```",
+        documentation: u!("Y does the y.\nIt takes no arguments.\nBut it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```"),
     },
     Decl {
         module: String(
-            "test",
+            u!("test"),
         ),
-        id: "x",
-        fqid: "test::x",
+        id: u!("x"),
+        fqid: u!("test::x"),
         kind: Const,
         is_export: Some(
             true,
@@ -560,14 +560,14 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "```zeek\nconst x = 1 &redef;\n```",
+        documentation: u!("```zeek\nconst x = 1 &redef;\n```"),
     },
     Decl {
         module: String(
-            "test",
+            u!("test"),
         ),
-        id: "y",
-        fqid: "test::y",
+        id: u!("y"),
+        fqid: u!("test::y"),
         kind: Global,
         is_export: Some(
             true,
@@ -614,6 +614,6 @@ expression: root_decls
                 ),
             },
         ),
-        documentation: "```zeek\nglobal y = 1;\n```",
+        documentation: u!("```zeek\nglobal y = 1;\n```"),
     },
 ]

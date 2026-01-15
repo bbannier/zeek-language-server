@@ -5,19 +5,19 @@ expression: decls
 [
     Decl {
         module: None,
-        id: "x",
-        fqid: "x",
+        id: u!("x"),
+        fqid: u!("x"),
         kind: Module,
         is_export: None,
         loc: None,
-        documentation: "```zeek\nx\n```",
+        documentation: u!("```zeek\nx\n```"),
     },
     Decl {
         module: String(
-            "x",
+            u!("x"),
         ),
-        id: "f1",
-        fqid: "x::f1",
+        id: u!("f1"),
+        fqid: u!("x::f1"),
         kind: FuncDecl(
             Signature {
                 result: None,
@@ -69,14 +69,14 @@ expression: decls
                 ),
             },
         ),
-        documentation: "```zeek\nglobal f1: function();\n```",
+        documentation: u!("```zeek\nglobal f1: function();\n```"),
     },
     Decl {
         module: String(
-            "foo",
+            u!("foo"),
         ),
-        id: "f2",
-        fqid: "foo::f2",
+        id: u!("f2"),
+        fqid: u!("foo::f2"),
         kind: FuncDecl(
             Signature {
                 result: None,
@@ -128,12 +128,12 @@ expression: decls
                 ),
             },
         ),
-        documentation: "```zeek\nglobal foo::f2: function();\n```",
+        documentation: u!("```zeek\nglobal foo::f2: function();\n```"),
     },
     Decl {
         module: Global,
-        id: "f3",
-        fqid: "f3",
+        id: u!("f3"),
+        fqid: u!("f3"),
         kind: FuncDecl(
             Signature {
                 result: None,
@@ -185,6 +185,6 @@ expression: decls
                 ),
             },
         ),
-        documentation: "```zeek\nglobal GLOBAL::f3: function();\n```",
+        documentation: u!("```zeek\nglobal GLOBAL::f3: function();\n```"),
     },
 ]

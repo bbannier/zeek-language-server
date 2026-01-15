@@ -5,8 +5,8 @@ expression: "db.resolve(NodeLocation::from_node(uri, x)).and_then(|d| db.typ(d))
 Some(
     Decl {
         module: None,
-        id: "X",
-        fqid: "X",
+        id: u!("X"),
+        fqid: u!("X"),
         kind: Type(
             [],
         ),
@@ -55,6 +55,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\ntype X: record {};\n```",
+        documentation: u!("```zeek\ntype X: record {};\n```"),
     },
 )

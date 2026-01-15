@@ -5,11 +5,11 @@ expression: "db.resolve(NodeLocation::from_node(uri, node))"
 Some(
     Decl {
         module: None,
-        id: "f1",
-        fqid: "x::X::f1",
+        id: u!("f1"),
+        fqid: u!("x::X::f1"),
         kind: Field(
             [
-                "&optional",
+                u!("&optional"),
             ],
         ),
         is_export: None,
@@ -55,6 +55,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\n# In x::X\nf1: count &optional;\n```",
+        documentation: u!("```zeek\n# In x::X\nf1: count &optional;\n```"),
     },
 )

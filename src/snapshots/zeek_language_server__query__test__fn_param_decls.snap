@@ -5,8 +5,8 @@ expression: decls
 [
     Decl {
         module: None,
-        id: "x",
-        fqid: "x",
+        id: u!("x"),
+        fqid: u!("x"),
         kind: Variable,
         is_export: None,
         loc: Some(
@@ -51,12 +51,12 @@ expression: decls
                 ),
             },
         ),
-        documentation: "```zeek\nx: count\n```",
+        documentation: u!("```zeek\nx: count\n```"),
     },
     Decl {
         module: None,
-        id: "y",
-        fqid: "y",
+        id: u!("y"),
+        fqid: u!("y"),
         kind: Variable,
         is_export: None,
         loc: Some(
@@ -101,6 +101,6 @@ expression: decls
                 ),
             },
         ),
-        documentation: "```zeek\ny: string\n```",
+        documentation: u!("```zeek\ny: string\n```"),
     },
 ]

@@ -47,4 +47,5 @@ pub trait Client: salsa::Database {
     fn initialization_options(&self) -> Arc<lsp::InitializationOptions>;
 }
 
+type InternedStr = ustr::Ustr;
 type Str = smol_str::SmolStr;

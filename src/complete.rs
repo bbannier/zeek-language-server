@@ -2,7 +2,7 @@ use rustc_hash::FxHashSet;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
-    Files, Str,
+    Files, InternedStr,
     ast::{self, Ast},
     lsp::Database,
     parse::Parse,
@@ -275,7 +275,7 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
-                                .map(Str::from)
+                                .map(InternedStr::from)
                                 .ok()
                         })
                         .join(", "),

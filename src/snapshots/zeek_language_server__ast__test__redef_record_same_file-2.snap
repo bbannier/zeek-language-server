@@ -5,19 +5,19 @@ expression: "db.typ(db.resolve(NodeLocation::from_node(uri.clone(), f_a)).unwrap
 Some(
     Decl {
         module: String(
-            "x",
+            u!("x"),
         ),
-        id: "A",
-        fqid: "x::A",
+        id: u!("A"),
+        fqid: u!("x::A"),
         kind: Type(
             [
                 Decl {
                     module: None,
-                    id: "c",
-                    fqid: "x::A::c",
+                    id: u!("c"),
+                    fqid: u!("x::A::c"),
                     kind: Field(
                         [
-                            "&optional",
+                            u!("&optional"),
                         ],
                     ),
                     is_export: None,
@@ -63,7 +63,7 @@ Some(
                             ),
                         },
                     ),
-                    documentation: "```zeek\n# In x::A\nc: count &optional;\n```",
+                    documentation: u!("```zeek\n# In x::A\nc: count &optional;\n```"),
                 },
             ],
         ),
@@ -112,6 +112,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\ntype A: record {};\n```",
+        documentation: u!("```zeek\ntype A: record {};\n```"),
     },
 )

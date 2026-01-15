@@ -4,8 +4,8 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "table[count, string] of int",
-    fqid: "table[count, string] of int",
+    id: u!("table[count, string] of int"),
+    fqid: u!("table[count, string] of int"),
     kind: Builtin(
         Table(
             [
@@ -17,5 +17,5 @@ Decl {
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'table[count, string] of int'",
+    documentation: u!("Builtin type 'table[count, string] of int'"),
 }

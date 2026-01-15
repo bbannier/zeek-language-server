@@ -5,10 +5,10 @@ expression: "db.typ(db.resolve(NodeLocation::from_node(uri.clone(), g)).unwrap()
 Some(
     Decl {
         module: String(
-            "x",
+            u!("x"),
         ),
-        id: "A",
-        fqid: "x::A",
+        id: u!("A"),
+        fqid: u!("x::A"),
         kind: Type(
             [],
         ),
@@ -57,6 +57,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\ntype A: record {};\n```",
+        documentation: u!("```zeek\ntype A: record {};\n```"),
     },
 )

@@ -5,8 +5,8 @@ expression: func_decls
 {
     Decl {
         module: None,
-        id: "x",
-        fqid: "x",
+        id: u!("x"),
+        fqid: u!("x"),
         kind: Variable,
         is_export: Some(
             false,
@@ -53,6 +53,6 @@ expression: func_decls
                 ),
             },
         ),
-        documentation: "```zeek\nlocal x=1;\n```",
+        documentation: u!("```zeek\nlocal x=1;\n```"),
     },
 }

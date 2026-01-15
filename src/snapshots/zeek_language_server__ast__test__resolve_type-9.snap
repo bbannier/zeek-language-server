@@ -4,12 +4,12 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "pattern",
-    fqid: "pattern",
+    id: u!("pattern"),
+    fqid: u!("pattern"),
     kind: Builtin(
         Pattern,
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'pattern'",
+    documentation: u!("Builtin type 'pattern'"),
 }

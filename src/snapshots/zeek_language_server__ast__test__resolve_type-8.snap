@@ -4,12 +4,12 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "subnet",
-    fqid: "subnet",
+    id: u!("subnet"),
+    fqid: u!("subnet"),
     kind: Builtin(
         Subnet,
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'subnet'",
+    documentation: u!("Builtin type 'subnet'"),
 }

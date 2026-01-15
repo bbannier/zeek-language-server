@@ -5,10 +5,10 @@ expression: "db.resolve(NodeLocation::from_node(uri.clone(), node))"
 Some(
     Decl {
         module: String(
-            "x",
+            u!("x"),
         ),
-        id: "c",
-        fqid: "x::c",
+        id: u!("c"),
+        fqid: u!("x::c"),
         kind: Global,
         is_export: Some(
             false,
@@ -55,6 +55,6 @@ Some(
                 ),
             },
         ),
-        documentation: "```zeek\nglobal c: count;\n```",
+        documentation: u!("```zeek\nglobal c: count;\n```"),
     },
 )

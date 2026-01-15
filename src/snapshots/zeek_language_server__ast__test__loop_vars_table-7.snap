@@ -4,12 +4,12 @@ expression: typ
 ---
 Decl {
     module: Global,
-    id: "double",
-    fqid: "double",
+    id: u!("double"),
+    fqid: u!("double"),
     kind: Builtin(
         Double,
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'double'",
+    documentation: u!("Builtin type 'double'"),
 }

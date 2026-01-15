@@ -3,10 +3,10 @@ use std::{borrow::Cow, sync::LazyLock};
 use itertools::Itertools;
 use regex::Captures;
 
-use crate::Str;
+use crate::InternedStr;
 
 #[must_use]
-pub fn markdownify(rst: &str) -> Str {
+pub fn markdownify(rst: &str) -> InternedStr {
     let rst = external_link(rst);
     let rst = inline_code(&rst);
     let rst = zeek_field(&rst);

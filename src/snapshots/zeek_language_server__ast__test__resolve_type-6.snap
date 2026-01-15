@@ -4,12 +4,12 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "int",
-    fqid: "int",
+    id: u!("int"),
+    fqid: u!("int"),
     kind: Builtin(
         Int,
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'int'",
+    documentation: u!("Builtin type 'int'"),
 }

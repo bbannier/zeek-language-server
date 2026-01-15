@@ -4,8 +4,8 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "vector of count",
-    fqid: "vector of count",
+    id: u!("vector of count"),
+    fqid: u!("vector of count"),
     kind: Builtin(
         Vector(
             Count,
@@ -13,5 +13,5 @@ Decl {
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'vector of count'",
+    documentation: u!("Builtin type 'vector of count'"),
 }

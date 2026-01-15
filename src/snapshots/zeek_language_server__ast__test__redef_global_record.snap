@@ -4,14 +4,14 @@ expression: c_type
 ---
 Decl {
     module: Global,
-    id: "connection",
-    fqid: "connection",
+    id: u!("connection"),
+    fqid: u!("connection"),
     kind: Type(
         [
             Decl {
                 module: None,
-                id: "id",
-                fqid: "connection::id",
+                id: u!("id"),
+                fqid: u!("connection::id"),
                 kind: Field(
                     [],
                 ),
@@ -58,12 +58,12 @@ Decl {
                         ),
                     },
                 ),
-                documentation: "```zeek\n# In connection\nid: string;\n```",
+                documentation: u!("```zeek\n# In connection\nid: string;\n```"),
             },
             Decl {
                 module: None,
-                id: "name",
-                fqid: "x::connection::name",
+                id: u!("name"),
+                fqid: u!("x::connection::name"),
                 kind: Field(
                     [],
                 ),
@@ -110,7 +110,7 @@ Decl {
                         ),
                     },
                 ),
-                documentation: "```zeek\n# In x::connection\nname: string;\n```",
+                documentation: u!("```zeek\n# In x::connection\nname: string;\n```"),
             },
         ],
     ),
@@ -159,5 +159,5 @@ Decl {
             ),
         },
     ),
-    documentation: "```zeek\ntype connection: record { id: string; };\n```",
+    documentation: u!("```zeek\ntype connection: record { id: string; };\n```"),
 }

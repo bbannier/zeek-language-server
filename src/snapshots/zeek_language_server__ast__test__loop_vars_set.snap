@@ -4,12 +4,12 @@ expression: typ
 ---
 Decl {
     module: Global,
-    id: "string",
-    fqid: "string",
+    id: u!("string"),
+    fqid: u!("string"),
     kind: Builtin(
         String,
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'string'",
+    documentation: u!("Builtin type 'string'"),
 }

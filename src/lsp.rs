@@ -1,5 +1,6 @@
+use crate::Str;
 pub(crate) use crate::{
-    Client, Files, Str,
+    Client, Files, InternedStr,
     ast::{Ast, load_to_file},
     complete::complete,
     parse::Parse,
@@ -1541,7 +1542,7 @@ impl LanguageServer for Backend {
     }
 }
 
-fn word_at_position(source: &str, position: Position) -> Option<Str> {
+fn word_at_position(source: &str, position: Position) -> Option<InternedStr> {
     let line = source.lines().nth(usize::try_from(position.line).ok()?)?;
     let (a, b) = line.split_at(usize::try_from(position.character + 1).ok()?);
     let a = a.split_whitespace().last().unwrap_or_default();

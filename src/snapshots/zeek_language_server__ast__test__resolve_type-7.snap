@@ -4,12 +4,12 @@ expression: resolved
 ---
 Decl {
     module: Global,
-    id: "interval",
-    fqid: "interval",
+    id: u!("interval"),
+    fqid: u!("interval"),
     kind: Builtin(
         Interval,
     ),
     is_export: None,
     loc: None,
-    documentation: "Builtin type 'interval'",
+    documentation: u!("Builtin type 'interval'"),
 }

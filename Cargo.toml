@@ -10,7 +10,7 @@ rust-version = "1.89"
 
 [dev-dependencies]
 criterion = { version = "4.2.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
-insta = "1.46.0"
+insta = "1.46.1"
 tempfile = "3.24.0"
 version-sync = "0.9.5"
 

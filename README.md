@@ -32,7 +32,7 @@ Alternatively one can install the binary with a Python package manager, e.g.,
 
 ```console
 $ pipx install git+https://github.com/bbannier/zeek-language-server@t/wip
-  installed package zeek-language-server 0.73.3, installed using Python 3.13.8
+  installed package zeek-language-server 0.73.4, installed using Python 3.13.8
   These apps are now globally available
     - zeek-language-server
 done! ✨ 🌟 ✨

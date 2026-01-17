@@ -1,6 +1,6 @@
 [project]
 name = "zeek-language-server"
-version = "0.73.3"
+version = "0.73.4"
 license = { file = "LICENSE" }
 readme = "README.md"
 

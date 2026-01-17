@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
+    rev: eeee35a89e69d5772bdee97db1a6a898467b686e  # frozen: v1.0
     hooks:
       # - id: fmt
       - id: clippy
@@ -16,20 +16,20 @@ repos:
       files: \.rs$
       pass_filenames: false
   - repo: https://github.com/jorisroovers/gitlint
-    rev: v0.19.1
+    rev: acc9d9de6369b76d22cb4167029d2035e8730b98  # frozen: v0.19.1
     hooks:
       - id: gitlint
   - repo: https://github.com/crate-ci/typos
-    rev: v1.42.0
+    rev: bb4666ad77b539a6b4ce4eda7ebb6de553704021  # frozen: v1.42.0
     hooks:
       - id: typos
         exclude: "vscode/package-lock.json"
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.47.0
+    rev: 76b3d32d3f4b965e1d6425253c59407420ae2c43  # frozen: v0.47.0
     hooks:
       - id: markdownlint-fix
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude: "^tests/Baseline"
@@ -38,11 +38,11 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.10
+    rev: 0933c147c9d6587653d45fdcb4c497c57a65f9af  # frozen: v1.7.10
     hooks:
       - id: actionlint
   - repo: https://github.com/biomejs/pre-commit
-    rev: v2.3.11
+    rev: c02b96b96819cdad927ff56a2ec26c0ffd494b5c  # frozen: v2.3.11
     hooks:
       - id: biome-format
       - id: biome-lint

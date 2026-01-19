@@ -60,7 +60,7 @@ walkdir = { workspace = true }
 members = [".", "crates/tree-sitter-zeek"]
 
 [workspace.dependencies]
-cc = "1.2.52"
+cc = "1.2.53"
 clap = { version = "4.5.54", features = ["std", "derive", "help"], default-features = false }
 conv = { version = "0.3.3", default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }

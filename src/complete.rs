@@ -482,7 +482,10 @@ fn complete_record_initializer(
                         return None;
                     };
 
-                    if attrs.contains(&"&optional".into()) {
+                    if attrs
+                        .iter()
+                        .any(|a| a.starts_with("&optional") || a.starts_with("&default"))
+                    {
                         None
                     } else {
                         let id = &f.id;
@@ -1401,6 +1404,7 @@ type X: record {
     xa: count;
     xb: count &optional;
     y: count &optional;
+    z: count &default=0;
 };
             ",
         );

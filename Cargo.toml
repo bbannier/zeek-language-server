@@ -87,7 +87,7 @@ tracing = { features = ["attributes"], default-features = false, version = "0.1.
 tracing-appender = { version = "0.2.4", default-features = false }
 tracing-opentelemetry = { version = "0.27.0" }
 tracing-subscriber = { version = "0.3.22", features = ["tracing-log", "registry", "std"], default-features = false }
-tree-sitter = "0.26.3"
+tree-sitter = "0.26.5"
 tree-sitter-bash = "0.25.1"
 tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", version = "0.1.0" }
 tree-sitter-generate = "0.26.3"

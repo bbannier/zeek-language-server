@@ -90,7 +90,7 @@ tracing-subscriber = { version = "0.3.22", features = ["tracing-log", "registry"
 tree-sitter = "0.26.5"
 tree-sitter-bash = "0.25.1"
 tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", version = "0.1.0" }
-tree-sitter-generate = "0.26.3"
+tree-sitter-generate = "0.26.5"
 tree-sitter-highlight = { version = "0.26.3", default-features = false }
 tree-sitter-printf = "0.5.1"
 tree-sitter-regex = "0.25.0"

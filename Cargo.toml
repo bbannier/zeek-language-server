@@ -64,7 +64,7 @@ cc = "1.2.55"
 clap = { version = "4.5.57", features = ["std", "derive", "help"], default-features = false }
 conv = { version = "0.3.3", default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
-futures = { default-features = false, version = "0.3.31" }
+futures = { default-features = false, version = "0.3.32" }
 itertools = "0.14.0"
 line-index = { version = "0.1.2", default-features = false }
 opentelemetry = { version = "0.26.0", features = ["trace"] }

@@ -3,12 +3,12 @@ updates:
   - package-ecosystem: "cargo" # See documentation for possible values
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
   - package-ecosystem: "npm" # See documentation for possible values
     directory: "/vscode"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
   - package-ecosystem: "github-actions" # See documentation for possible values
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"

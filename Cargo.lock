@@ -2556,9 +2556,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-generate"
-version = "0.26.6"
+version = "0.26.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4da740422840806814dcb534ddf0b238bdee853c501c650bbd910435b85a62e4"
+checksum = "0ae735068914fc254ec72e1cbd38af499040bcd68f2057cff79efc93e8861691"
 dependencies = [
  "bitflags 2.10.0",
  "dunce",

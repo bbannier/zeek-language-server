@@ -38,7 +38,7 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
   - repo: https://github.com/rhysd/actionlint
-    rev: 0933c147c9d6587653d45fdcb4c497c57a65f9af  # frozen: v1.7.10
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
   - repo: https://github.com/biomejs/pre-commit

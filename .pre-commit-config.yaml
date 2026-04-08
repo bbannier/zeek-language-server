@@ -25,7 +25,7 @@ repos:
       - id: typos
         exclude: "vscode/package-lock.json"
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: 76b3d32d3f4b965e1d6425253c59407420ae2c43  # frozen: v0.47.0
+    rev: e72a3ca1632f0b11a07d171449fe447a7ff6795e  # frozen: v0.48.0
     hooks:
       - id: markdownlint-fix
   - repo: https://github.com/pre-commit/pre-commit-hooks

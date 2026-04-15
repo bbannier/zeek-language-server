@@ -27,6 +27,9 @@ jobs:
           - name: mac-x86-64
             os: macos-latest
             target: x86_64-apple-darwin
+          - name: windows
+            os: windows-2025
+            target: x86_64-pc-windows-msvc
 
     name: Binaries for ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -44,6 +47,7 @@ jobs:
           bins: cargo-hack
 
       - name: Install Zeek
+        if: matrix.name != 'windows'
         run: |
           # shellcheck disable=SC2193
           if [[ ${{ matrix.name }} == *linux* ]]; then

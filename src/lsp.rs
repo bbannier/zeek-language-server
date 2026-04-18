@@ -1691,7 +1691,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
         for l in &loads {
             recursive_loads.extend(db.loaded_files_recursive(Arc::clone(l)).iter().cloned());
         }
-        loads.extend(recursive_loads.into_iter());
+        loads.extend(recursive_loads);
 
         loads
     }

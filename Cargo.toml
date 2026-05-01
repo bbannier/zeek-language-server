@@ -84,7 +84,7 @@ streaming-iterator = { version = "0.1.9", default-features = false }
 tokio = { version = "1.52.1", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp-server = { version = "0.23.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.44" }
-tracing-appender = { version = "0.2.4", default-features = false }
+tracing-appender = { version = "0.2.5", default-features = false }
 tracing-opentelemetry = { version = "0.27.0" }
 tracing-subscriber = { version = "0.3.23", features = ["tracing-log", "registry", "std"], default-features = false }
 tree-sitter = "0.26.8"

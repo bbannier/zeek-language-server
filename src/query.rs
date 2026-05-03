@@ -981,28 +981,28 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
         return Some(ModuleId::None);
     };
 
-    if n.kind() == "source_file" {
-        // Found a source file. Now find the most recent
-        // module decl when looking backwards from `node`.
-        let Some(m) = n
-            .named_children("module_decl")
-            .iter()
-            .filter(|m| m.range().end < node.range().start)
-            .min_by_key(|m| node.0.range().start_byte - m.0.range().end_byte)
-            .and_then(|m| {
-                Some(compute_module_id(
-                    m.named_child_not("nl")?.utf8_text(source).ok()?,
-                ))
-            })
-        else {
-            return Some(ModuleId::None);
-        };
-
-        return Some(m);
+    // Go one level higher.
+    if n.kind() != "source_file" {
+        return parent_module(n, source);
     }
 
-    // Go one level higher.
-    parent_module(n, source)
+    // Found a source file. Now find the most recent
+    // module decl when looking backwards from `node`.
+    let Some(m) = n
+        .named_children("module_decl")
+        .into_iter()
+        .filter(|m| m.range().end < node.range().start)
+        .min_by_key(|m| node.0.range().start_byte - m.0.range().end_byte)
+        .and_then(|m| {
+            Some(compute_module_id(
+                m.named_child_not("nl")?.utf8_text(source).ok()?,
+            ))
+        })
+    else {
+        return Some(ModuleId::None);
+    };
+
+    Some(m)
 }
 
 /// Extract declarations for function parameters on the given node.

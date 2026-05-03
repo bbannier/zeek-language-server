@@ -1,9 +1,9 @@
 use itertools::Itertools;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-
 use tower_lsp_server::ls_types::Uri;
 use tracing::{instrument, warn};
 
@@ -799,7 +799,15 @@ pub(crate) fn load_to_file(
         Err(_) => load,
     };
 
-    file_dir.iter().chain(prefixes.iter()).find_map(|prefix| {
+    let load_with_extension = {
+        let mut l = load.as_os_str().to_owned();
+        l.push(".zeek");
+        l
+    };
+
+    let load_file = load.join("__load__.zeek");
+
+    let get_uri = |prefix: &PathBuf| {
         // Files in the given prefix.
         let files: Vec<_> = files
             .iter()
@@ -813,34 +821,33 @@ pub(crate) fn load_to_file(
             .collect();
 
         // File known w/ extension.
-        if let Some((uri, _)) = files.iter().find(|(_, p)| p.ends_with(load)) {
+        if let Some((uri, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(load)) {
             return Some(Arc::clone(uri));
         }
 
-        let load_with_extension = {
-            let mut l = load.as_os_str().to_owned();
-            l.push(".zeek");
-            PathBuf::from(l)
-        };
-
         // File known w/o extension.
         if let Some((uri, _)) = files
-            .iter()
-            .find(|(_, p)| p.ends_with(&load_with_extension))
+            .par_iter()
+            .find_any(|(_, p)| p.ends_with(&load_with_extension))
         {
             return Some(Arc::clone(uri));
         }
 
         // Load is directory with `__load__.zeek`.
-        if let Some((uri, _)) = files
-            .iter()
-            .find(|(_, p)| p.ends_with(load.join("__load__.zeek")))
-        {
+        if let Some((uri, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(&load_file)) {
             return Some(Arc::clone(uri));
         }
 
         None
-    })
+    };
+
+    if let Some(dir) = file_dir
+        && let Some(uri) = get_uri(&dir)
+    {
+        return Some(uri);
+    }
+
+    prefixes.par_iter().find_map_any(get_uri)
 }
 
 #[cfg(test)]

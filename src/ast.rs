@@ -813,7 +813,9 @@ pub(crate) fn load_to_file(
             .collect();
 
         // File known w/ extension.
-        let known_exactly = files.iter().find(|(_, p)| p.ends_with(load));
+        if let Some((uri, _)) = files.iter().find(|(_, p)| p.ends_with(load)) {
+            return Some(Arc::clone(uri));
+        }
 
         let load_with_extension = {
             let mut l = load.as_os_str().to_owned();
@@ -822,19 +824,22 @@ pub(crate) fn load_to_file(
         };
 
         // File known w/o extension.
-        let known_no_ext = files
+        if let Some((uri, _)) = files
             .iter()
-            .find(|(_, p)| p.ends_with(&load_with_extension));
+            .find(|(_, p)| p.ends_with(&load_with_extension))
+        {
+            return Some(Arc::clone(uri));
+        }
 
         // Load is directory with `__load__.zeek`.
-        let known_directory = files
+        if let Some((uri, _)) = files
             .iter()
-            .find(|(_, p)| p.ends_with(load.join("__load__.zeek")));
+            .find(|(_, p)| p.ends_with(load.join("__load__.zeek")))
+        {
+            return Some(Arc::clone(uri));
+        }
 
-        known_exactly
-            .or(known_no_ext)
-            .or(known_directory)
-            .map(|(f, _)| Arc::clone(f))
+        None
     })
 }
 

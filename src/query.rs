@@ -517,13 +517,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 .next()
                 .map(Node::from);
 
-            let fn_args = signature.map_or_else(Vec::new, |xs| xs.named_children("formal_arg"));
-
-            let fn_result = c
-                .nodes_for_capture_index(c_fn_result)
-                .next()
-                .and_then(|n| self::typ(n.into(), source));
-
             let range = decl.range();
             let selection_range = id.range();
 
@@ -567,6 +560,13 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             };
 
             let signature = || -> Option<Signature> {
+                let fn_args = signature.map_or_else(Vec::new, |xs| xs.named_children("formal_arg"));
+
+                let fn_result = c
+                    .nodes_for_capture_index(c_fn_result)
+                    .next()
+                    .and_then(|n| self::typ(n.into(), source));
+
                 let args = fn_args
                     .iter()
                     .filter_map(|arg| {

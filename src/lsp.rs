@@ -2009,6 +2009,8 @@ mod semantic_tokens {
 
     #[cfg(test)]
     mod test {
+        #![allow(clippy::unwrap_used)]
+
         use insta::assert_debug_snapshot;
         use tower_lsp_server::ls_types::{Position, SemanticToken, SemanticTokenType};
 
@@ -2098,7 +2100,6 @@ pub(crate) mod test {
     use std::{
         path::{Path, PathBuf},
         sync::Arc,
-        u32,
     };
 
     use insta::assert_debug_snapshot;
@@ -2136,7 +2137,7 @@ pub(crate) mod test {
         where
             P: Into<PathBuf>,
         {
-            let mut prefixes: Vec<_> = self.0.prefixes().into_iter().cloned().collect();
+            let mut prefixes: Vec<_> = self.0.prefixes().iter().cloned().collect();
             prefixes.push(prefix.into());
             self.0.set_prefixes(Arc::from(prefixes.clone()));
         }
@@ -2766,7 +2767,7 @@ event x::foo() {}",
         );
     }
 
-    #[ignore]
+    #[ignore = "requires spicy-format"]
     #[tokio::test]
     async fn formatting() {
         use super::DocumentFormattingParams;
@@ -2803,7 +2804,7 @@ event x::foo() {}",
         );
     }
 
-    #[ignore]
+    #[ignore = "requires spicy-format"]
     #[tokio::test]
     async fn range_formatting() {
         use super::DocumentRangeFormattingParams;
@@ -2893,7 +2894,7 @@ event x::foo() {}",
         db.add_file((*uri).clone(), source);
 
         let context =
-            db.0.parse(uri.clone())
+            db.0.parse(Arc::clone(&uri))
                 .map(|t| CodeActionContext {
                     diagnostics: tree_diagnostics(&t.root_node()).collect(),
                     ..CodeActionContext::default()

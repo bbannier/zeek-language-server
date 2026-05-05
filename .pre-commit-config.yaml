@@ -4,7 +4,7 @@ repos:
     hooks:
       # - id: fmt
       - id: clippy
-        args: ["--all", "--all-features"]
+        args: ["--all", "--all-features", "--all-targets"]
       - id: cargo-check
   # Implement fmt by hand since above hook seems to have problems recognizing the Rust edition.
   - repo: local

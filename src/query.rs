@@ -1483,7 +1483,7 @@ mod test {
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.0.parse(uri.clone()).expect("cannot parse");
+        let tree = db.0.parse(Arc::clone(&uri)).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, &uri, SOURCE.as_bytes());
 
@@ -1562,9 +1562,9 @@ function f1(x: count, y: string) {
         );
 
         let db = db.snapshot();
-        let tree = db.parse(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
@@ -1596,9 +1596,9 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         );
 
         let db = db.snapshot();
-        let tree = db.parse(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         assert_debug_snapshot!(super::decls_(root, &uri, source.as_bytes()));
     }
@@ -1614,9 +1614,9 @@ function f() {}",
         );
 
         let db = db.snapshot();
-        let tree = db.parse(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         let decls = super::decls_(root, &uri, source.as_bytes());
         assert_eq!(decls.len(), 1);

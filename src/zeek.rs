@@ -273,8 +273,7 @@ mod test {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         writeln!(
             file,
-            "{}",
-            "event http_stats(c: connection, stats: http_stats_rec) { c$removal_hooks; }"
+            "event http_stats(c: connection, stats: http_stats_rec) {{ c$removal_hooks; }}"
         )
         .unwrap();
 

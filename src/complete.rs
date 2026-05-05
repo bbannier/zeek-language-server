@@ -1254,6 +1254,7 @@ event zeek_init() {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn record_initializer() {
         let mut db = TestDatabase::default();
         db.add_file(
@@ -1271,11 +1272,9 @@ type X: record {
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x: X = [$
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(complete(
@@ -1293,11 +1292,9 @@ global x: X = [$
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x: X = [$x
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(complete(
@@ -1315,11 +1312,9 @@ global x: X = [$x
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x: X = [$y
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(complete(
@@ -1337,11 +1332,9 @@ global x: X = [$y
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x:X = [$y
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(complete(
@@ -1359,11 +1352,9 @@ global x:X = [$y
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x:X = [$
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(
@@ -1371,7 +1362,7 @@ global x:X = [$
                 &db.0,
                 CompletionParams {
                     text_document_position: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new(uri.clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(1, 16),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -1413,11 +1404,9 @@ type X: record {
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x = X($x
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(complete(
@@ -1435,18 +1424,16 @@ global x = X($x
 
         db.add_file(
             uri.clone(),
-            &format!(
-                "@load ./decls
+            "@load ./decls
 global x = X($
-        "
-            ),
+        ",
         );
 
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.clone()),
+                    TextDocumentIdentifier::new(uri),
                     Position::new(1, 14),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),

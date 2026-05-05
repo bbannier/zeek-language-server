@@ -954,8 +954,8 @@ y$yx$f1;
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         // `c` resolves to `local c: ...`.
@@ -963,41 +963,41 @@ y$yx$f1;
             .named_descendant_for_position(Position::new(13, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), node)));
 
         // `c?$f1` resolves to `f1: count`.
         let node = root
             .named_descendant_for_position(Position::new(15, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), node)));
 
         // `y` resolves to `y: count` via function argument.
         let node = root
             .named_descendant_for_position(Position::new(18, 4))
             .unwrap();
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), node)));
 
         // `x2$f1` resolves to `f1:count ...` via function argument.
         let node = root
             .named_descendant_for_position(Position::new(19, 7))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), node)));
 
         // `x$f1` resolves to `f1: count ...`.
         let node = root
             .named_descendant_for_position(Position::new(14, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), node)));
 
         // `x2$f1` resolves to `f1: count ...`.
         let node = root
             .named_descendant_for_position(Position::new(20, 8))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), node)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), node)));
 
         // Check resolution when multiple field accesses are involved.
         let node = root
@@ -1022,8 +1022,8 @@ x$f;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1047,8 +1047,8 @@ x$f;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1080,8 +1080,8 @@ x::x;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1113,8 +1113,8 @@ y;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1146,8 +1146,8 @@ x$x2;",
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let x = root
@@ -1155,7 +1155,7 @@ x$x2;",
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()), Ok("x"));
         assert_eq!(
-            db.resolve(NodeLocation::from_node(uri.clone(), x))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), x))
                 .unwrap()
                 .kind,
             super::DeclKind::Global
@@ -1166,7 +1166,7 @@ x$x2;",
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert!(matches!(
-            db.resolve(NodeLocation::from_node(uri.clone(), x1))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), x1))
                 .unwrap()
                 .kind,
             super::DeclKind::Field(_)
@@ -1209,8 +1209,8 @@ global e_foo: E = eC;
         );
 
         let db = db.snapshot();
-        let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         let type_ = tree
             .root_node()
@@ -1218,7 +1218,7 @@ global e_foo: E = eC;
             .unwrap();
         assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eB"));
         assert_debug_snapshot!(
-            db.resolve(NodeLocation::from_node(uri.clone(), type_))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), type_))
                 .unwrap()
         );
 
@@ -1249,8 +1249,8 @@ global c: connection;",
         );
 
         let db = db.snapshot();
-        let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         let c = tree
             .root_node()
@@ -1279,8 +1279,8 @@ function f(a: A) {
         );
 
         let db = db.snapshot();
-        let tree = db.parse(uri.clone()).unwrap();
-        let source = db.source(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         let g = tree
             .root_node()
@@ -1288,7 +1288,10 @@ function f(a: A) {
             .unwrap();
         assert_eq!(g.utf8_text(source.as_bytes()), Ok("g"));
         assert_debug_snapshot!(
-            db.typ(db.resolve(NodeLocation::from_node(uri.clone(), g)).unwrap())
+            db.typ(
+                db.resolve(NodeLocation::from_node(Arc::clone(&uri), g))
+                    .unwrap()
+            )
         );
 
         let f_a = tree
@@ -1298,7 +1301,7 @@ function f(a: A) {
         assert_eq!(f_a.utf8_text(source.as_bytes()), Ok("a"));
         assert_debug_snapshot!(
             db.typ(
-                db.resolve(NodeLocation::from_node(uri.clone(), f_a))
+                db.resolve(NodeLocation::from_node(Arc::clone(&uri), f_a))
                     .unwrap()
             )
         );
@@ -1309,7 +1312,10 @@ function f(a: A) {
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()), Ok("a"));
         assert_debug_snapshot!(
-            db.typ(db.resolve(NodeLocation::from_node(uri.clone(), a)).unwrap())
+            db.typ(
+                db.resolve(NodeLocation::from_node(Arc::clone(&uri), a))
+                    .unwrap()
+            )
         );
 
         let a_c = tree
@@ -1337,8 +1343,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let x1 = root
@@ -1347,7 +1353,7 @@ global x2 = f2();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert_eq!(
             &*db.typ(
-                db.resolve(NodeLocation::from_node(uri.clone(), x1))
+                db.resolve(NodeLocation::from_node(Arc::clone(&uri), x1))
                     .unwrap()
             )
             .unwrap()
@@ -1390,8 +1396,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         {
@@ -1401,7 +1407,7 @@ global x2 = f2();
             assert_eq!(b0.utf8_text(source.as_bytes()).unwrap(), "b0");
 
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), b0))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), b0))
                 .unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
@@ -1415,7 +1421,7 @@ global x2 = f2();
             assert_eq!(b1.utf8_text(source.as_bytes()).unwrap(), "b1");
 
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), b1))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), b1))
                 .unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
@@ -1429,7 +1435,7 @@ global x2 = f2();
             assert_eq!(i1.utf8_text(source.as_bytes()).unwrap(), "i1");
 
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), i1))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), i1))
                 .unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
@@ -1462,8 +1468,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1471,7 +1477,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(
-            db.resolve(NodeLocation::from_node(uri.clone(), a))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| db.typ(d))
         );
     }
@@ -1489,8 +1495,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1498,7 +1504,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(
-            db.resolve(NodeLocation::from_node(uri.clone(), a))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| db.typ(d))
         );
 
@@ -1507,7 +1513,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(b.utf8_text(source.as_bytes()).unwrap(), "b");
         assert_debug_snapshot!(
-            db.resolve(NodeLocation::from_node(uri.clone(), b))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), b))
                 .and_then(|d| db.typ(d))
         );
     }
@@ -1536,8 +1542,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         for (i, line) in source
@@ -1548,8 +1554,11 @@ global x2 = f2();
             let pos = Position::new(i.try_into().unwrap(), 19);
             assert_debug_snapshot!((
                 line,
-                db.resolve(NodeLocation::from_range(uri.clone(), Range::new(pos, pos)))
-                    .and_then(|d| db.typ(d))
+                db.resolve(NodeLocation::from_range(
+                    Arc::clone(&uri),
+                    Range::new(pos, pos)
+                ))
+                .and_then(|d| db.typ(d))
             ));
         }
 
@@ -1559,14 +1568,14 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
         let x_typ = db
-            .resolve(NodeLocation::from_node(uri.clone(), x))
+            .resolve(NodeLocation::from_node(Arc::clone(&uri), x))
             .and_then(|d| db.typ(d));
         let y = root
             .named_descendant_for_position(Position::new(2, 19))
             .unwrap();
         assert_eq!(y.utf8_text(source.as_bytes()).unwrap(), "y");
         let y_typ = db
-            .resolve(NodeLocation::from_node(uri.clone(), y))
+            .resolve(NodeLocation::from_node(Arc::clone(&uri), y))
             .and_then(|d| db.typ(d));
         assert_eq!(x_typ, y_typ);
     }
@@ -1586,8 +1595,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1595,7 +1604,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(
-            db.resolve(NodeLocation::from_node(uri.clone(), a))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| db.typ(d))
         );
 
@@ -1622,8 +1631,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let x = root
@@ -1651,32 +1660,32 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let tree = db.parse(uri.clone()).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
 
         // Vector iteration.
         let i1 = root
             .named_descendant_for_position(Position::new(1, 29))
             .unwrap();
         assert_eq!(i1.utf8_text(source.as_bytes()), Ok("i"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i1)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), i1)));
 
         let i2 = root
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
         assert_eq!(
-            i2.utf8_text(db.source(uri.clone()).unwrap().as_bytes()),
+            i2.utf8_text(db.source(Arc::clone(&uri)).unwrap().as_bytes()),
             Ok("i")
         );
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), i2)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), i2)));
 
         // Set iteration.
         let s = root
             .named_descendant_for_position(Position::new(3, 26))
             .unwrap();
         assert_eq!(s.utf8_text(source.as_bytes()), Ok("s"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), s)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), s)));
 
         // Table iteration.
         let ta = root
@@ -1687,7 +1696,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .unwrap();
         assert_eq!(ta.utf8_text(source.as_bytes()), Ok("ta"));
         assert_eq!(tb.utf8_text(source.as_bytes()), Ok("tb"));
-        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri.clone(), ta)));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(Arc::clone(&uri), ta)));
         assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, tb)));
     }
 
@@ -1715,8 +1724,8 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1724,7 +1733,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "A");
         assert_eq!(
-            db.resolve(NodeLocation::from_node(uri.clone(), a))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), a))
                 .unwrap()
                 .documentation
                 .lines()
@@ -1737,7 +1746,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .unwrap();
         assert_eq!(b.utf8_text(source.as_bytes()).unwrap(), "B");
         assert_eq!(
-            db.resolve(NodeLocation::from_node(uri.clone(), b))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), b))
                 .unwrap()
                 .documentation
                 .lines()
@@ -1750,7 +1759,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .unwrap();
         assert_eq!(c.utf8_text(source.as_bytes()).unwrap(), "C");
         assert_eq!(
-            db.resolve(NodeLocation::from_node(uri.clone(), c))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), c))
                 .unwrap()
                 .documentation
                 .lines()
@@ -1774,8 +1783,8 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let foo = root
@@ -1821,8 +1830,8 @@ local x18: opaque of count;
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let check = |position: Position, expected_id: &str| {
@@ -1831,7 +1840,7 @@ local x18: opaque of count;
             let typ = n.parent().unwrap().named_child("type").unwrap();
             let t = query::typ(typ, source.as_bytes()).unwrap();
             let resolved = db
-                .resolve_type(t, Some(NodeLocation::from_node(uri.clone(), typ)))
+                .resolve_type(t, Some(NodeLocation::from_node(Arc::clone(&uri), typ)))
                 .unwrap();
             assert_debug_snapshot!(resolved);
         };
@@ -1874,8 +1883,8 @@ local x18: opaque of count;
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1884,7 +1893,7 @@ local x18: opaque of count;
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "my_a");
 
         assert_debug_snapshot!(
-            db.resolve(NodeLocation::from_node(uri.clone(), a))
+            db.resolve(NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| db.typ(d))
         );
     }
@@ -1903,15 +1912,17 @@ event zeek_init() { for (i, v in vs) ; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let v = root
             .named_descendant_for_position(Position::new(2, 25))
             .unwrap();
         assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-        let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+        let decl = db
+            .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
+            .unwrap();
         let typ = db.typ(decl).unwrap();
         assert_debug_snapshot!(typ);
 
@@ -1919,7 +1930,9 @@ event zeek_init() { for (i, v in vs) ; }
             .named_descendant_for_position(Position::new(3, 25))
             .unwrap();
         assert_eq!(i.utf8_text(source.as_bytes()), Ok("i"));
-        let decl = db.resolve(NodeLocation::from_node(uri.clone(), i)).unwrap();
+        let decl = db
+            .resolve(NodeLocation::from_node(Arc::clone(&uri), i))
+            .unwrap();
         let typ = db.typ(decl).unwrap();
         assert_debug_snapshot!(typ);
 
@@ -1927,7 +1940,9 @@ event zeek_init() { for (i, v in vs) ; }
             .named_descendant_for_position(Position::new(3, 28))
             .unwrap();
         assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-        let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+        let decl = db
+            .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
+            .unwrap();
         let typ = db.typ(decl).unwrap();
         assert_debug_snapshot!(typ);
     }
@@ -1945,8 +1960,8 @@ event zeek_init() { for (v in vs) ; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let v = root
@@ -1971,15 +1986,17 @@ event zeek_init() { for ([c, s] in vs) ; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         let c = root
             .named_descendant_for_position(Position::new(2, 26))
             .unwrap();
         assert_eq!(c.utf8_text(source.as_bytes()), Ok("c"));
-        let decl = db.resolve(NodeLocation::from_node(uri.clone(), c)).unwrap();
+        let decl = db
+            .resolve(NodeLocation::from_node(Arc::clone(&uri), c))
+            .unwrap();
         let typ = db.typ(decl).unwrap();
         assert_debug_snapshot!(typ);
 
@@ -2009,8 +2026,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
         );
 
         let db = db.0;
-        let source = db.source(uri.clone()).unwrap();
-        let tree = db.parse(uri.clone()).unwrap();
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
 
         {
@@ -2018,7 +2035,9 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(4, 26))
                 .unwrap();
             assert_eq!(k.utf8_text(source.as_bytes()), Ok("k"));
-            let decl = db.resolve(NodeLocation::from_node(uri.clone(), k)).unwrap();
+            let decl = db
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), k))
+                .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
 
@@ -2026,7 +2045,9 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(4, 29))
                 .unwrap();
             assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-            let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+            let decl = db
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
+                .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
         }
@@ -2037,7 +2058,7 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .unwrap();
             assert_eq!(k1.utf8_text(source.as_bytes()), Ok("k1"));
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), k1))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), k1))
                 .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
@@ -2047,7 +2068,7 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .unwrap();
             assert_eq!(k2.utf8_text(source.as_bytes()), Ok("k2"));
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), k2))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), k2))
                 .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
@@ -2056,7 +2077,9 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(5, 38))
                 .unwrap();
             assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-            let decl = db.resolve(NodeLocation::from_node(uri.clone(), v)).unwrap();
+            let decl = db
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
+                .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
         }
@@ -2067,7 +2090,7 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .unwrap();
             assert_eq!(k1.utf8_text(source.as_bytes()), Ok("k1"));
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), k1))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), k1))
                 .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);
@@ -2077,7 +2100,7 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .unwrap();
             assert_eq!(k2.utf8_text(source.as_bytes()), Ok("k2"));
             let decl = db
-                .resolve(NodeLocation::from_node(uri.clone(), k2))
+                .resolve(NodeLocation::from_node(Arc::clone(&uri), k2))
                 .unwrap();
             let typ = db.typ(decl).unwrap();
             assert_debug_snapshot!(typ);

@@ -37,8 +37,6 @@ fn generate_keywords(parser_c: &Path) {
     );
 
     fs::write(dest_path, source).unwrap();
-
-    println!("cargo:rerun-if-changed=vendor/tree-sitter-zeek/grammar.js");
 }
 
 fn main() {

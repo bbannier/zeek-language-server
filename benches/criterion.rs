@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use criterion::criterion_main;
 
 fn runtime() -> tokio::runtime::Runtime {

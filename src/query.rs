@@ -12,7 +12,7 @@ use tower_lsp_server::ls_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{InternedStr, parse::Parse, rst::markdownify};
+use crate::{Db, InternedStr};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -32,9 +32,9 @@ pub enum DeclKind {
     EventDecl(Signature),
     EventDef(Signature),
     Variable,
-    Field(Vec<InternedStr> /*attributes*/),
+    Field(Vec<InternedStr>),
     EnumMember,
-    Index(Index, InternedStr), // Result of an indexing operation for a given init expression.
+    Index(Index, InternedStr),
     Builtin(Type),
 }
 
@@ -382,7 +382,6 @@ impl<'a> Node<'a> {
             tree_sitter::Point::new(range.start.line as usize, range.start.character as usize);
         let end = tree_sitter::Point::new(range.end.line as usize, range.end.character as usize);
 
-        // TODO(bbannier): this can still return a `nl` node :/
         self.0
             .named_descendant_for_point_range(start, end)
             .map(Into::into)
@@ -391,8 +390,6 @@ impl<'a> Node<'a> {
     #[must_use]
     pub fn descendant_for_position(&self, position: Position) -> Option<Self> {
         let start = tree_sitter::Point::new(position.line as usize, position.character as usize);
-
-        // TODO(bbannier): this can still return a `nl` node :/
 
         self.0
             .descendant_for_point_range(start, start)
@@ -405,7 +402,6 @@ impl<'a> Node<'a> {
         self.named_descendant_for_point_range(range)
     }
 
-    /// Extract all error nodes under the node.
     pub fn errors(&self) -> impl Iterator<Item = Node<'_>> {
         fn errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
             let mut cur = n.walk();
@@ -491,8 +487,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             let decl = c.nodes_for_capture_index(c_decl).next()?;
             let decl: Node = decl.into();
 
-            // Skip children not directly below the node or in an `export` below the node.
-            // TODO(bbannier): this would probably be better handled directly in the query.
             let outer_node = c
                 .nodes_for_capture_index(c_outer_node)
                 .next()
@@ -503,7 +497,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 return None;
             }
 
-            // Figure out the module this decl is for.
             let mut module = parent_module(decl, source)?;
             let module_name = module.clone();
 
@@ -521,18 +514,14 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             let selection_range = id.range();
 
             let id: InternedStr = {
-                // The grammar doesn't expose module ids in identifiers like `mod::f` directly, parse by hand.
                 let spl = id_written.splitn(2, "::").collect::<Vec<_>>();
 
                 match spl.len() {
-                    // The module was part of the ID.
                     2 => {
                         module = compute_module_id(spl[0]);
                         spl[1].into()
                     }
-                    // Just a plain local ID.
                     1 => spl[0].into(),
-                    // This just looks plain wrong.
                     _ => {
                         debug!("unexpected empty id at {:?}", id.range());
                         return None;
@@ -613,8 +602,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             };
 
             let extract_fields = |decl: Node| {
-                // Records wrap their field list in an extra `type` node, `redef_record_decl`
-                // directly contain them.
                 let typ = if let Some(c) = decl.named_child("type") {
                     c
                 } else {
@@ -672,7 +659,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             let id_ = n.named_child("id")?;
                             let id: InternedStr = id_.utf8_text(source).ok()?.into();
 
-                            // Enum values live in the parent scope.
                             let fqid = match &module_name {
                                 ModuleId::Global | ModuleId::None => id,
                                 ModuleId::String(m) => format!("{m}::{id}").into(),
@@ -692,7 +678,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                     uri: Arc::clone(uri),
                                 }),
                                 documentation,
-                                // An enum value is exported if its wrapping decl is exported.
                                 is_export: Some(in_export(decl)),
                             })
                         })
@@ -701,12 +686,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 }
             };
 
-            // Declarations like enums inject their fields into the current scope. Store them here
-            // so we can bubble them up as well.
-            //
-            // TODO(bbannier): This pollutes the global list of decls with decls which are
-            // conceptually nested. Maybe we could not expose them here, but still have them
-            // available in e.g., completions, lookups, etc.
             let mut additional_decls = Vec::new();
 
             let kind = match decl.kind() {
@@ -717,8 +696,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                         .next()
                         .expect("scope should be present");
 
-                    // Translate typ into possible func-like kind. We need this since the grammar
-                    // does not expose the type of these.
                     let fn_like = if let Some(typ) = typ.and_then(|n| n.utf8_text(source).ok()) {
                         if typ.starts_with("function(") {
                             Some(DeclKind::FuncDecl(signature()?))
@@ -736,7 +713,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                     if let Some(fn_like) = fn_like {
                         fn_like
                     } else {
-                        // Just a plain & clean variable declaration.
                         match scope.kind() {
                             "global" => DeclKind::Global,
                             "local" => {
@@ -759,7 +735,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             let id_ = c.named_child("id")?;
                             let id = id_.utf8_text(source).ok()?;
 
-                            // Enum values live in the parent scope.
                             let fqid = match &module_name {
                                 ModuleId::Global | ModuleId::None => id.into(),
                                 ModuleId::String(m) => format!("{m}::{id}").into(),
@@ -780,7 +755,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 }),
                                 documentation,
 
-                                // An enum value is exported if its wrapping decl is exported.
                                 is_export: Some(in_export(decl)),
                             })
                         })
@@ -807,9 +781,6 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 }
             };
 
-            // If a redef record isn't already fully qualified it either refers to something in the
-            // current module which we can find, or it refers to a GLOBAL record. Sanitize the FQID
-            // for that.
             if let DeclKind::RedefRecord(_) = &kind
                 && !id_written.contains("::")
             {
@@ -857,7 +828,7 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
                     .map(Into::into)?;
                 let xs = children
                     .iter()
-                    .take(children.len() - 1) // If we have `y` this never underflows.
+                    .take(children.len() - 1)
                     .map(|x| self::typ(*x, source))
                     .collect::<Option<_>>()?;
                 Type::Table(xs, y)
@@ -898,7 +869,6 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
     })
 }
 
-/// Try to get the cast target type from an expr in `n` assuming it holds `_ as @type`.
 pub(crate) fn typ_from_cast(n: Node, source: &[u8]) -> Option<Type> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), r#"(expr (expr) "as" (type)@typ)"#)
@@ -965,7 +935,6 @@ fn modules(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
         .collect()
 }
 
-/// Helper to compute a module ID from a given string.
 fn compute_module_id(id: &str) -> ModuleId {
     match id {
         "GLOBAL" => ModuleId::Global,
@@ -974,20 +943,16 @@ fn compute_module_id(id: &str) -> ModuleId {
     }
 }
 
-/// Compute the module a node is in.
 #[must_use]
 fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
     let Some(n) = node.parent() else {
         return Some(ModuleId::None);
     };
 
-    // Go one level higher.
     if n.kind() != "source_file" {
         return parent_module(n, source);
     }
 
-    // Found a source file. Now find the most recent
-    // module decl when looking backwards from `node`.
     let Some(m) = n
         .named_children("module_decl")
         .into_iter()
@@ -1005,7 +970,6 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
     Some(m)
 }
 
-/// Extract declarations for function parameters on the given node.
 #[instrument]
 pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     match node.kind() {
@@ -1013,8 +977,6 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
         _ => return FxHashSet::default(),
     }
 
-    // Synthesize declarations for function arguments. Ideally the grammar would expose
-    // these directly.
     let Some(func_params) = node.named_child("func_params") else {
         return FxHashSet::default();
     };
@@ -1049,7 +1011,6 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
         .collect()
 }
 
-/// Extract for loop parameters on the given node.
 #[instrument]
 fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -1166,27 +1127,10 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
-#[salsa::query_group(QueryStorage)]
-pub trait Query: Parse {
-    #[must_use]
-    fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
-
-    #[must_use]
-    fn loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]>;
-
-    #[must_use]
-    fn function_calls(&self, uri: Arc<Uri>) -> Arc<[FunctionCall]>;
-
-    #[must_use]
-    fn untyped_var_decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
-
-    #[must_use]
-    fn ids(&self, uri: Arc<Uri>) -> Arc<[NodeLocation]>;
-}
-
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
+
+pub(crate) fn decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
     let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1208,7 +1152,8 @@ fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
 }
 
 #[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+
+pub(crate) fn loads(db: &dyn Db, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1227,8 +1172,8 @@ fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
 
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
-    // Match things which look like function calls with arguments.
+
+pub(crate) fn function_calls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
             .expect("invalid query")
@@ -1270,8 +1215,8 @@ fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
 
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
-    // Match untyped var and const decls
+
+pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
             &language_zeek(),
@@ -1300,7 +1245,6 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
             .filter_map(|m| {
                 let m: Node = m.nodes_for_capture_index(c_var).next()?.into();
 
-                // Reject decls which have a type.
                 if m.named_child("type").is_some() {
                     return None;
                 }
@@ -1314,9 +1258,6 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
 
                 let empty: InternedStr = "".into();
 
-                // Definite abuse of the Decl type since we really only transport out locations. We
-                // use `range` for the range of the decl, and `selection_range` for the range of
-                // the identifier.
                 Some(Decl {
                     module: ModuleId::None,
                     id: empty,
@@ -1337,8 +1278,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
-    // Match any id.
+pub(crate) fn ids(db: &dyn Db, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
     });
@@ -1369,10 +1309,7 @@ fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
     )
 }
 
-/// Extracts pre and post zeekygen comments for the given node.
 fn zeekygen_comments(x: Node, source: &[u8]) -> Option<InternedStr> {
-    // Extracting the zeekygen comments with the query seems to hit some polynomial
-    // edge case in tree-sitter. Extract them by hand for the time being.
     let mut docs = VecDeque::new();
 
     let mut node = x.prev_sibling();
@@ -1410,7 +1347,7 @@ fn zeekygen_comments(x: Node, source: &[u8]) -> Option<InternedStr> {
     if docs.is_empty() {
         None
     } else {
-        Some(markdownify(&docs.iter().join("\n")))
+        Some(crate::rst::markdownify(&docs.iter().join("\n")))
     }
 }
 
@@ -1420,12 +1357,10 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::{Files, lsp::TestDatabase, parse::Parse, query::Node};
+    use crate::{Db, lsp::TestDatabase, query::Node};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use tower_lsp_server::ls_types::{Position, Uri};
-
-    use super::Query;
 
     const SOURCE: &str = r#"module test;
 
@@ -1462,7 +1397,7 @@ mod test {
             let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
 
             db.add_file((*uri).clone(), source);
-            db.0.parse(uri)
+            crate::parse::parse(&db.0, uri)
         };
 
         let loads = |source: &'static str| {
@@ -1483,18 +1418,14 @@ mod test {
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.0.parse(Arc::clone(&uri)).expect("cannot parse");
+        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, &uri, SOURCE.as_bytes());
 
-        // Test decls reachable from the root node. This is used e.g., to figure out what decls are
-        // available in a module. This should not contain e.g., function-scope decls.
         let root_decls: Vec<_> = decls_(tree.root_node()).into_iter().sorted().collect();
         assert_eq!(7, root_decls.len());
         assert_debug_snapshot!(root_decls);
 
-        // Test decls with scope. While they should not be visible from outside the scope (tested
-        // above), they should be visible inside the scope.
         let func_body = tree
             .root_node()
             .named_child("event_decl")
@@ -1521,7 +1452,7 @@ global GLOBAL::f3: function();
 }",
         );
 
-        let decls = db.0.decls(uri);
+        let decls = crate::query::decls(&db.0, uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
 
@@ -1533,7 +1464,7 @@ global GLOBAL::f3: function();
         let mut db = TestDatabase::default();
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
-        let tree = db.0.parse(uri).unwrap();
+        let tree = crate::parse::parse(&db.0, uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
 
@@ -1561,10 +1492,9 @@ function f1(x: count, y: string) {
 }",
         );
 
-        let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = db.0.source(Arc::clone(&uri)).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
@@ -1581,50 +1511,5 @@ function f1(x: count, y: string) {
             .unwrap();
         assert_eq!(outside_f1.kind(), "module_decl");
         assert!(super::fn_param_decls(outside_f1, &uri, source.as_bytes()).is_empty());
-    }
-
-    #[test]
-    fn fn_like_decls() {
-        let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
-        db.add_file(
-            (*uri).clone(),
-            "
-global fn: function(n: count): string;
-global ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);
-global hk: hook(info: Info, s: Seen, items: set[Item]);",
-        );
-
-        let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
-        let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
-
-        assert_debug_snapshot!(super::decls_(root, &uri, source.as_bytes()));
-    }
-
-    #[test]
-    fn markdown_docs() {
-        let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
-        db.add_file(
-            (*uri).clone(),
-            "## With `link <http://example.com>`__
-function f() {}",
-        );
-
-        let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
-        let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
-
-        let decls = super::decls_(root, &uri, source.as_bytes());
-        assert_eq!(decls.len(), 1);
-        let d = decls.iter().next().unwrap();
-        assert_eq!(d.id, "f");
-        assert_eq!(
-            d.documentation.lines().next(),
-            Some("With [link](http://example.com)")
-        );
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Files, query::Node};
+use crate::Db;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 use tracing::instrument;
@@ -10,7 +10,7 @@ pub struct Tree(tree_sitter::Tree);
 
 impl Tree {
     #[must_use]
-    pub fn root_node(&self) -> Node<'_> {
+    pub fn root_node(&self) -> crate::query::Node<'_> {
         self.0.root_node().into()
     }
 }
@@ -29,14 +29,8 @@ impl From<tree_sitter::Tree> for Tree {
 
 impl Eq for Tree {}
 
-#[salsa::query_group(ParseStorage)]
-pub trait Parse: Files {
-    #[must_use]
-    fn parse(&self, file: Arc<Uri>) -> Option<Arc<Tree>>;
-}
-
 #[instrument(skip(db))]
-fn parse(db: &dyn Parse, file: Arc<Uri>) -> Option<Arc<Tree>> {
+pub(crate) fn parse(db: &dyn Db, file: Arc<Uri>) -> Option<Arc<Tree>> {
     let mut parser = Parser::new();
     parser
         .set_language(&language_zeek())
@@ -54,7 +48,7 @@ mod test {
     #![allow(clippy::unwrap_used)]
 
     use {
-        crate::{lsp::TestDatabase, parse::Parse},
+        crate::{lsp::TestDatabase, parse::parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
         tower_lsp_server::ls_types::Uri,
@@ -69,7 +63,7 @@ mod test {
 
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.0.parse(uri);
+        let tree = parse(&db.0, uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
     }

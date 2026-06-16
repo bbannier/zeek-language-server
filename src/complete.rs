@@ -2,11 +2,10 @@ use rustc_hash::FxHashSet;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
-    Files, InternedStr,
-    ast::{self, Ast},
+    Db, InternedStr,
+    ast::{self},
     lsp::Database,
-    parse::Parse,
-    query::{self, Decl, DeclKind, Node, NodeLocation, Query},
+    query::{self, Decl, DeclKind, Node, NodeLocation},
 };
 
 use itertools::Itertools;

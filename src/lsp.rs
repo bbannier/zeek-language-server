@@ -1,42 +1,40 @@
 use crate::Str;
 pub(crate) use crate::{
-    Client, Files, InternedStr,
-    ast::{Ast, load_to_file},
+    Db, InternedStr,
+    ast::load_to_file,
     complete::complete,
-    parse::Parse,
-    query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
+    query::{self, Decl, DeclKind, ModuleId, NodeLocation},
     zeek,
 };
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use salsa::ParallelDatabase;
 use serde::Deserialize;
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp_server::{
     LanguageServer, LspService, Server,
     jsonrpc::{Error, Result},
     ls_types::{
-        CodeAction, CodeActionKind, CodeActionParams, CodeActionProviderCapability,
-        CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
-        DeclarationCapability, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-        DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentRangeFormattingParams,
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent,
-        FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip,
-        LanguageString, Location, MarkedString, MarkupContent, MarkupKind, MessageType,
-        NumberOrString, OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams,
-        ProgressParamsValue, ProgressToken, Range, ReferenceParams, RenameParams,
-        SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
-        SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
-        WorkspaceSymbolResponse,
+        ClientCapabilities, CodeAction, CodeActionKind, CodeActionParams,
+        CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
+        CompletionResponse, DeclarationCapability, Diagnostic, DiagnosticSeverity,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintKind,
+        InlayHintLabel, InlayHintParams, InlayHintTooltip, LanguageString, Location, MarkedString,
+        MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, ParameterInformation,
+        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
+        ReferenceParams, RenameParams, SemanticTokensFullOptions, SemanticTokensOptions,
+        SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
+        WorkspaceSymbolParams, WorkspaceSymbolResponse,
         notification::Progress,
         request::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
@@ -50,89 +48,162 @@ use walkdir::WalkDir;
 #[cfg(test)]
 pub(crate) use test::TestDatabase;
 
-#[salsa::database(
-    crate::ast::AstStorage,
-    crate::parse::ParseStorage,
-    crate::query::QueryStorage,
-    crate::FilesStorage,
-    crate::ClientStorage
-)]
+#[derive(Clone)]
 pub struct Database {
-    storage: salsa::Storage<Self>,
+    pub(crate) sources: HashMap<Arc<Uri>, Str>,
+    pub(crate) files: FxHashSet<Arc<Uri>>,
+    pub(crate) prefixes: Vec<PathBuf>,
+    pub(crate) workspace_folders: Arc<[Uri]>,
+    pub(crate) capabilities: Arc<ClientCapabilities>,
+    pub(crate) initialization_options: Arc<InitializationOptions>,
+    pub(crate) versions: HashMap<Arc<Uri>, i32>,
 }
-
-unsafe impl Sync for Database {}
 
 pub enum SourceUpdate {
     Remove(Arc<Uri>),
-    Update(Arc<Uri>, Str),
+    Update(Arc<Uri>, Str, Option<i32>),
 }
 
 impl Database {
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
-        let mut files: FxHashSet<_> = self.files().iter().cloned().collect();
-
-        let mut needs_files_update = false;
-
         for u in updates {
             match u {
-                SourceUpdate::Update(uri, source) => {
-                    self.set_unsafe_source(Arc::clone(uri), source.clone());
-
-                    if !files.contains(uri) {
-                        files.insert(Arc::clone(uri));
-                        needs_files_update = true;
+                SourceUpdate::Update(uri, source, version) => {
+                    if let Some(ver) = version {
+                        if let Some(&stored) = self.versions.get(uri)
+                            && *ver <= stored
+                        {
+                            warn!(
+                                "version {ver} is not larger than stored version {stored} for {uri:?}, skipping"
+                            );
+                            continue;
+                        }
+                        self.versions.insert(Arc::clone(uri), *ver);
                     }
+                    self.sources.insert(Arc::clone(uri), source.clone());
+                    self.files.insert(Arc::clone(uri));
                 }
                 SourceUpdate::Remove(uri) => {
-                    if files.contains(uri) {
-                        files.remove(uri);
-                        needs_files_update = true;
-                    }
+                    self.sources.remove(uri);
+                    self.files.remove(uri);
+                    self.versions.remove(uri);
                 }
             }
-        }
-
-        if needs_files_update {
-            self.set_files(Arc::from(files.into_iter().collect::<Vec<_>>()));
         }
     }
 
     fn file_changed(&self, uri: Arc<Uri>) {
-        // Precompute decls in this file.
-        let _d = self.decls(uri);
+        let _d = query::decls(self, uri);
     }
 }
 
 impl Default for Database {
     fn default() -> Self {
-        let mut db = Self {
-            storage: salsa::Storage::default(),
-        };
-
-        db.set_files(Arc::default());
-        db.set_prefixes(Arc::default());
-        db.set_workspace_folders(Arc::default());
-        db.set_capabilities(Arc::default());
-        db.set_initialization_options(Arc::new(InitializationOptions::new()));
-
-        db
-    }
-}
-
-impl salsa::Database for Database {}
-
-impl salsa::ParallelDatabase for Database {
-    fn snapshot(&self) -> salsa::Snapshot<Self> {
-        salsa::Snapshot::new(Database {
-            storage: self.storage.snapshot(),
-        })
+        Self {
+            sources: HashMap::default(),
+            files: FxHashSet::default(),
+            prefixes: Vec::default(),
+            workspace_folders: Arc::default(),
+            capabilities: Arc::default(),
+            initialization_options: Arc::new(InitializationOptions::new()),
+            versions: HashMap::default(),
+        }
     }
 }
 
 impl Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Database").finish()
+    }
+}
+
+impl Db for Database {
+    fn source(&self, uri: Arc<Uri>) -> Option<Str> {
+        self.sources.get(&uri).cloned()
+    }
+
+    fn files(&self) -> Arc<[Arc<Uri>]> {
+        Arc::from(self.files.iter().cloned().collect::<Vec<_>>())
+    }
+
+    fn prefixes(&self) -> Arc<[PathBuf]> {
+        Arc::from(self.prefixes.clone())
+    }
+
+    fn capabilities(&self) -> Arc<ClientCapabilities> {
+        Arc::clone(&self.capabilities)
+    }
+
+    fn initialization_options(&self) -> Arc<InitializationOptions> {
+        Arc::clone(&self.initialization_options)
+    }
+
+    fn parse(&self, file: Arc<Uri>) -> Option<Arc<crate::parse::Tree>> {
+        crate::parse::parse(self, file)
+    }
+
+    fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]> {
+        crate::query::decls(self, uri)
+    }
+
+    fn loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+        crate::query::loads(self, uri)
+    }
+
+    fn function_calls(&self, uri: Arc<Uri>) -> Arc<[query::FunctionCall]> {
+        crate::query::function_calls(self, uri)
+    }
+
+    fn untyped_var_decls(&self, uri: Arc<Uri>) -> Arc<[Decl]> {
+        crate::query::untyped_var_decls(self, uri)
+    }
+
+    fn ids(&self, uri: Arc<Uri>) -> Arc<[query::NodeLocation]> {
+        crate::query::ids(self, uri)
+    }
+
+    fn loaded_files(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+        crate::ast::loaded_files(self, url)
+    }
+
+    fn loaded_files_recursive(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+        crate::ast::loaded_files_recursive(self, url)
+    }
+
+    fn explicit_decls_recursive(&self, url: Arc<Uri>) -> Arc<[Decl]> {
+        crate::ast::explicit_decls_recursive(self, url)
+    }
+
+    fn implicit_loads(&self) -> Arc<[Arc<Uri>]> {
+        crate::ast::implicit_loads(self)
+    }
+
+    fn implicit_decls(&self) -> Arc<[Decl]> {
+        crate::ast::implicit_decls(self)
+    }
+
+    fn possible_loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+        crate::ast::possible_loads(self, uri)
+    }
+
+    fn resolve(&self, node: query::NodeLocation) -> Option<Arc<Decl>> {
+        crate::ast::resolve(self, node)
+    }
+
+    fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+        crate::ast::typ(self, decl)
+    }
+
+    fn resolve_id(&self, id: InternedStr, scope: query::NodeLocation) -> Option<Arc<Decl>> {
+        crate::ast::resolve_id(self, id, scope)
+    }
+
+    fn resolve_type(
+        &self,
+        typ: query::Type,
+        scope: Option<query::NodeLocation>,
+    ) -> Option<Arc<Decl>> {
+        crate::ast::resolve_type(self, typ, scope)
     }
 }
 
@@ -153,7 +224,6 @@ impl Backend {
         M: std::fmt::Display,
     {
         if let Some(client) = &self.client {
-            // Show warnings to the user.
             client.show_message(level, message).await;
         }
     }
@@ -168,7 +238,6 @@ impl Backend {
     where
         T: Into<String> + std::fmt::Display,
     {
-        // Short circuit progress report if client doesn't support it.
         if !self
             .state
             .read()
@@ -283,7 +352,7 @@ impl Backend {
             })?
             .filter_map(|f| Uri::from_file_path(f.path));
 
-        let workspace_folders = self.state.read().await.workspace_folders();
+        let workspace_folders = Arc::clone(&self.state.read().await.workspace_folders);
 
         let workspace_files = workspace_folders
             .iter()
@@ -306,9 +375,7 @@ impl Backend {
         Ok(system_files.chain(workspace_files).collect())
     }
 
-    /// This is wrapper around `zeek::check` directly publishing diagnostics.
     async fn check(&self, uri: Uri, version: Option<i32>) {
-        // If we have not client to publish to there is no need to run checks.
         let Some(client) = &self.client else {
             return;
         };
@@ -317,10 +384,7 @@ impl Backend {
             return;
         };
 
-        // Figure out a directory to run the check from. If there is any workspace folder we just
-        // pick the first one (TODO: this might be incorrect if there are multiple folders given);
-        // else use the directory the file is in.
-        let workspace_folders = self.state.read().await.workspace_folders();
+        let workspace_folders = Arc::clone(&self.state.read().await.workspace_folders);
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
         let checks = if let Some(folder) = workspace_folder {
@@ -342,11 +406,8 @@ impl Backend {
 
         let diags = checks
             .into_iter()
-            // Only look at diagnostics for the saved file.
-            // TODO(bbannier): We could look at all files here.
             .filter(|c| c.file == file.to_string_lossy())
             .map(|c| {
-                // Zeek positions index starting with one.
                 let line = if c.line == 0 { 0 } else { c.line - 1 };
                 let position = Position::new(line, 0);
 
@@ -380,23 +441,18 @@ impl LanguageServer for Backend {
 
         {
             let mut state = self.state.write().await;
-            state.set_workspace_folders(Arc::from(workspace_folders));
-            state.set_capabilities(Arc::new(params.capabilities));
-            state.set_initialization_options(Arc::new(
+            state.workspace_folders = Arc::from(workspace_folders);
+            state.capabilities = Arc::new(params.capabilities);
+            state.initialization_options = Arc::new(
                 params
                     .initialization_options
                     .and_then(|options| serde_json::from_value(options).ok())
                     .unwrap_or_else(InitializationOptions::new),
-            ));
+            );
         }
 
-        // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
-            Ok(prefixes) => self
-                .state
-                .write()
-                .await
-                .set_prefixes(Arc::from(prefixes.collect::<Vec<_>>())),
+            Ok(prefixes) => self.state.write().await.prefixes = prefixes.collect(),
             Err(e) => {
                 self.warn_message(format!(
                     "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
@@ -456,7 +512,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
-        // Load all currently visible files. These are likely only files in system prefixes.
         if let Ok(files) = self.visible_files().await {
             let update = self.did_change_watched_files(DidChangeWatchedFilesParams {
                 changes: files
@@ -507,7 +562,7 @@ impl LanguageServer for Backend {
                         }
                     };
 
-                    Some(SourceUpdate::Update(Arc::new(c.uri), source.into()))
+                    Some(SourceUpdate::Update(Arc::new(c.uri), source.into(), None))
                 })
             });
             let updates = futures::future::join_all(updates).await;
@@ -518,41 +573,34 @@ impl LanguageServer for Backend {
 
             let changes = removals.chain(updates).collect::<Vec<_>>();
 
-            // Update files.
             self.state.write().await.update_sources(&changes);
         }
 
-        // Preload expensive information. Ultimately we want to be able to load implicit
-        // declarations quickly since they are on the critical part of getting the user to useful
-        // completions right after server startup.
-        //
-        // We explicitly precompute per-file information here so we can parallelize this work.
-
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files = self.state.read().await.files();
+        let files: Vec<Arc<Uri>> = self.state.read().await.files().iter().cloned().collect();
 
         let preloaded_decls = {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
             let state = self.state.read().await;
+            let snap = snapshot(&state);
 
             files
                 .iter()
                 .map(|f| {
                     let f = Arc::clone(f);
-                    let db = state.snapshot();
+                    let db = snap.clone();
                     tokio::spawn(async move {
-                        let _x = db.decls(Arc::clone(&f));
-                        let _x = db.loaded_files(f);
+                        let _x = query::decls(&db, Arc::clone(&f));
+                        let _x = crate::ast::loaded_files(&db, f);
                     })
                 })
                 .collect::<Vec<_>>()
         };
         futures::future::join_all(preloaded_decls).await;
 
-        // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
         let _implicit = self.state.read().await.implicit_decls();
@@ -564,17 +612,15 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = Arc::new(params.text_document.uri.clone());
 
-        // Update source.
         self.state
             .write()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
                 params.text_document.text.into(),
+                Some(params.text_document.version),
             )]);
 
-        // Reload implicit declarations since their result depends on the list of known files and
-        // is on the critical path for e.g., completion.
         let _implicit = self.state.read().await.implicit_decls();
 
         let file_changed = self.file_changed(uri).await;
@@ -587,9 +633,7 @@ impl LanguageServer for Backend {
                 self.check(params.text_document.uri, Some(params.text_document.version))
                     .await;
             }
-            Ok(ParseResult::HasDiagnostics) => {
-                // Do not bother checking the file with zeek if it has parse errors.
-            }
+            Ok(ParseResult::HasDiagnostics) => {}
         }
     }
 
@@ -604,16 +648,15 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        // Update source.
         self.state
             .write()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
                 changes.text.as_str().into(),
+                Some(params.text_document.version),
             )]);
 
-        // Diagnostics are already triggered from `file_changed`.
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
         }
@@ -626,8 +669,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        // If a file is closed it means the full state of the document
-        // is now on disk and we can run a check on it.
         self.check(params.text_document.uri, None).await;
     }
 
@@ -699,23 +740,16 @@ impl LanguageServer for Backend {
             }
             "file" => {
                 let file = PathBuf::from(text);
-                let uri = load_to_file(
-                    &file,
-                    uri.as_ref(),
-                    state.files().as_ref(),
-                    state.prefixes().as_ref(),
-                );
+                let uri = load_to_file(&file, uri.as_ref(), &state.files(), &state.prefixes());
                 if let Some(uri) = uri {
                     contents.push(MarkedString::String(format!("`{}`", uri.path())));
                 }
             }
             "comment_body" => {
-                // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
                 let try_update = |contents: &mut Vec<_>| {
                     let symbol = word_at_position(&source, position)?;
 
                     if let Some(docs) = fuzzy_search_symbol(&state, &symbol)
-                        // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
@@ -732,7 +766,6 @@ impl LanguageServer for Backend {
 
         drop(state);
 
-        // In debug builds always debug AST nodes; in release mode honor the client config.
         #[cfg(all(debug_assertions, not(test)))]
         let debug_ast_nodes = true;
         #[cfg(not(all(debug_assertions, not(test))))]
@@ -807,14 +840,9 @@ impl LanguageServer for Backend {
         let modules = {
             let db = self.state.read().await;
 
-            // Even though a valid source file can only contain a single module, one can still make
-            // declarations in other modules. Sort declarations by module so users get a clean view.
-            // Then show declarations under their module, or at the top-level if they aren't exported
-            // into a module.
             let decls = db.decls(uri);
             let mut decls = decls
                 .iter()
-                // Filter out top-level enum members since they are also exposed inside their enum here.
                 .filter(|d| d.kind != DeclKind::EnumMember)
                 .collect::<Vec<_>>();
             decls.sort_by_key(|d| format!("{}", d.module));
@@ -832,7 +860,6 @@ impl LanguageServer for Backend {
                         kind: SymbolKind::NAMESPACE,
                         children: Some(decls.filter_map(symbol).collect()),
 
-                        // FIXME(bbannier): Weird ranges.
                         range: Range::new(Position::new(0, 0), Position::new(0, 0)),
                         selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
 
@@ -925,22 +952,14 @@ impl LanguageServer for Backend {
                     };
 
                     let file = PathBuf::from(text);
-                    load_to_file(
-                        &file,
-                        uri.as_ref(),
-                        state.files().as_ref(),
-                        state.prefixes().as_ref(),
-                    )
-                    .map(|uri| Location::new((*uri).clone(), Range::default()))
+                    load_to_file(&file, uri.as_ref(), &state.files(), &state.prefixes())
+                        .map(|uri| Location::new((*uri).clone(), Range::default()))
                 }
                 "comment_body" => {
-                    // If we are in a zeekygen comment try to recover an
-                    // identifier under the cursor and use it as target.
                     let Some(symbol) = word_at_position(&source, position) else {
                         return Ok(None);
                     };
                     fuzzy_search_symbol(&state, &symbol)
-                        // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
@@ -968,7 +987,6 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
         let Some(line) = source.lines().nth(position.line as usize) else {
             return Ok(None);
         };
@@ -979,7 +997,6 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Search backward in the line for '('. The identifier before that could be a function name.
         let Some(node) = line
             .chars()
             .rev()
@@ -1019,7 +1036,6 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Recompute `tree` and `source` in the context of the function declaration.
         let Some(loc) = &f.loc else { return Ok(None) };
         let Some(tree) = state.parse(Arc::clone(&loc.uri)) else {
             return Ok(None);
@@ -1116,7 +1132,6 @@ impl LanguageServer for Backend {
         drop(state);
 
         let Ok(formatted) = zeek::format(&source).await else {
-            // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
         };
 
@@ -1151,7 +1166,6 @@ impl LanguageServer for Backend {
             .join("\n");
 
         let Ok(formatted) = zeek::format(&lines).await else {
-            // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
         };
 
@@ -1184,11 +1198,9 @@ impl LanguageServer for Backend {
 
         let decl = {
             match &decl.kind {
-                // We are done as we have found a declaration.
                 DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
                     Some((*decl).clone())
                 }
-                // If we resolved to a definition, look for the declaration.
                 DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
                     .decls(Arc::clone(&uri))
                     .iter()
@@ -1277,7 +1289,6 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        // For now we only work on the first diagnostic on something missing in the source.
         let Some(diag) = params
             .context
             .diagnostics
@@ -1291,9 +1302,7 @@ impl LanguageServer for Backend {
         let state = self.state.read().await;
         let Some(missing) = state.parse(Arc::clone(&uri)).and_then(|t| {
             t.root_node().errors().find_map(|err| {
-                // Filter out `MISSING` nodes at the diagnostic.
                 if err.is_missing() && err.range() == diag.range {
-                    // `kind` holds the fix for the `MISSING` error.
                     Some(err.kind().to_string())
                 } else {
                     None
@@ -1339,12 +1348,11 @@ impl LanguageServer for Backend {
                 .iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
                 .map(|c| {
-                    let state = state.snapshot();
-
                     let c = c.clone();
+                    let snap = snapshot(&state);
 
                     tokio::spawn(async move {
-                        match &state.resolve(c.f.clone())?.kind {
+                        match &snap.resolve(c.f.clone())?.kind {
                             DeclKind::FuncDef(s)
                             | DeclKind::FuncDecl(s)
                             | DeclKind::HookDef(s)
@@ -1355,14 +1363,12 @@ impl LanguageServer for Backend {
                                     .into_iter()
                                     .zip(s.args.iter())
                                     .filter_map(|(p, a)| {
-                                        // If the argument has the same name as the parameter do
-                                        // not set an inlay hint.
                                         let uri = p.uri;
-                                        let tree = state.parse(Arc::clone(&uri))?;
+                                        let tree = snap.parse(Arc::clone(&uri))?;
                                         let node = tree
                                             .root_node()
                                             .named_descendant_for_point_range(p.range)?;
-                                        let source = state.source(uri)?;
+                                        let source = snap.source(uri)?;
                                         let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
                                         if maybe_id == a.id {
                                             return None;
@@ -1405,12 +1411,11 @@ impl LanguageServer for Backend {
                         .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
                 })
                 .map(|d| {
-                    let state = state.snapshot();
-
                     let d = d.clone();
+                    let snap = snapshot(&state);
 
                     tokio::spawn(async move {
-                        let t = state.typ(Arc::new(d.clone()))?;
+                        let t = snap.typ(Arc::new(d.clone()))?;
                         Some(InlayHint {
                             position: d.loc.as_ref().map(|l| l.selection_range.end)?,
                             label: InlayHintLabel::String(format!(": {}", t.id)),
@@ -1460,8 +1465,6 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        // TODO(bbannier): respect `params.context.include_declaration`.
-
         let state = self.state.read().await;
 
         let tree = state.parse(Arc::clone(&uri));
@@ -1475,8 +1478,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references(&state, decl).await;
+        let references = references_impl(&state, decl).await;
 
         Ok(Some(
             references
@@ -1504,8 +1506,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references(&state, decl).await;
+        let references = references_impl(&state, decl).await;
 
         let new_name = params.new_name;
 
@@ -1515,7 +1516,6 @@ impl LanguageServer for Backend {
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g
-                    // Send edits ordered from the back so we do not invalidate following positions.
                     .sorted_by_key(|l| l.range.start)
                     .rev()
                     .map(|l| TextEdit::new(l.range, new_name.clone()))
@@ -1585,6 +1585,10 @@ fn to_symbol_kind(kind: &DeclKind) -> SymbolKind {
     }
 }
 
+fn snapshot(db: &Database) -> Database {
+    db.clone()
+}
+
 pub async fn run() {
     let (service, socket) = LspService::new(|client| Backend {
         client: Some(client),
@@ -1598,7 +1602,6 @@ pub async fn run() {
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-/// Custom `initializationOptions` clients can send.
 pub struct InitializationOptions {
     #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
     inlay_hints_parameters: bool,
@@ -1658,7 +1661,6 @@ impl InitializationOptions {
 
 const ERROR_CODE_IS_MISSING: i32 = 1;
 
-/// Extracts all errors in a AST.
 fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     tree.errors().map(|err| {
         let code = if err.is_missing() {
@@ -1680,8 +1682,7 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     })
 }
 
-async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
-    /// Helper to compute all sources reachable from a given file.
+async fn references_impl(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     fn all_sources(f: Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
         let mut loads = FxHashSet::default();
         loads.extend(db.implicit_loads().iter().cloned());
@@ -1705,24 +1706,18 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
         let locs: Vec<_> = db
             .files()
             .iter()
-            .filter(|f| {
-                // If the file we look at does not load the file with the decl, no references to it
-                // can exist.
-                f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri)
-            })
+            .filter(|f| f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri))
             .map(|f| {
-                let db = db.snapshot();
+                let snap = snapshot(db);
                 let decl = Arc::clone(&decl);
                 let f = Arc::clone(f);
                 tokio::spawn(async move {
                     Some(
-                        db.ids(f)
+                        snap.ids(f)
                             .iter()
                             .filter_map(|loc| {
-                                // Prefilter ids so that they at least somewhere contain the text
-                                // of the decl.
-                                let tree = db.parse(Arc::clone(&loc.uri))?;
-                                let source = db.source(Arc::clone(&loc.uri))?;
+                                let tree = snap.parse(Arc::clone(&loc.uri))?;
+                                let source = snap.source(Arc::clone(&loc.uri))?;
                                 let txt = tree
                                     .root_node()
                                     .named_descendant_for_point_range(loc.range)?
@@ -1732,7 +1727,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
                                     return None;
                                 }
 
-                                db.resolve(loc.clone()).and_then(|resolved| {
+                                snap.resolve(loc.clone()).and_then(|resolved| {
                                     if resolved != decl {
                                         return None;
                                     }
@@ -1793,9 +1788,7 @@ mod semantic_tokens {
                 .chain(RST_CONFIG.query.capture_names())
                 .chain(SH_CONFIG.query.capture_names())
                 .copied()
-                // tree-sitter-highlight leaks injection queries, remove it.
                 .filter(|hl| *hl != "injection.content")
-                // LSP does not standardize names with subscopes, preserve only the top-level scope.
                 .map(|hl| hl.split_once('.').map_or(hl, |(hl, _)| hl))
                 .collect()
         });
@@ -1943,7 +1936,6 @@ mod semantic_tokens {
                 let name = highlights().get(ty)?;
                 let ty = SemanticTokenType::from(*name);
 
-                // Skip token types we didn't previously advertise.
                 let token_type =
                     u32::try_from(legend.token_types.iter().position(|x| *x == ty)?).ok()?;
 
@@ -2115,35 +2107,30 @@ pub(crate) mod test {
     };
 
     use crate::{
-        Client,
-        ast::Ast,
-        lsp::{self, tree_diagnostics},
-        parse::Parse,
+        Db,
+        lsp::{self, Database, tree_diagnostics},
         zeek,
     };
 
     use super::{Backend, SourceUpdate};
 
     #[derive(Default)]
-    pub(crate) struct TestDatabase(pub(crate) lsp::Database);
+    pub(crate) struct TestDatabase(pub(crate) Database);
 
     impl TestDatabase {
         pub(crate) fn add_file(&mut self, uri: Uri, source: impl AsRef<str>) {
-            self.0
-                .update_sources(&[SourceUpdate::Update(Arc::new(uri), source.as_ref().into())]);
+            self.0.update_sources(&[SourceUpdate::Update(
+                Arc::new(uri),
+                source.as_ref().into(),
+                None,
+            )]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)
         where
             P: Into<PathBuf>,
         {
-            let mut prefixes: Vec<_> = self.0.prefixes().iter().cloned().collect();
-            prefixes.push(prefix.into());
-            self.0.set_prefixes(Arc::from(prefixes.clone()));
-        }
-
-        pub(crate) fn snapshot(self) -> lsp::Database {
-            self.0
+            self.0.prefixes.push(prefix.into());
         }
     }
 
@@ -2235,7 +2222,6 @@ global GLOBAL::Y = 3;
             })
             .await;
 
-        // Sort results for debug output diffing.
         let result = if let Ok(Some(CompletionResponse::Array(mut r))) = result {
             r.sort_by(|a, b| a.label.cmp(&b.label));
             r
@@ -2861,7 +2847,6 @@ event x::foo() {}",
         );
         let server = serve(db);
 
-        // Nothing reported for unknown files.
         assert_eq!(
             Ok(Some(DocumentSymbolResponse::Nested(vec![]))),
             server
@@ -2873,7 +2858,6 @@ event x::foo() {}",
                 .await
         );
 
-        // Valid response for known file.
         assert_debug_snapshot!(
             server
                 .document_symbol(DocumentSymbolParams {
@@ -3006,7 +2990,7 @@ option x = T;
         for options in opts {
             let mut db = TestDatabase::default();
             let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
-            db.0.set_initialization_options(Arc::new(options));
+            db.0.initialization_options = Arc::new(options);
 
             let source = "
 global f: function(x: count);
@@ -3138,7 +3122,7 @@ levenshtein_distance("", "");
                 .references(ReferenceParams {
                     text_document_position: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new((*uri).clone()),
-                        Position::new(8, 1), // On `levenshtein_distance`.
+                        Position::new(8, 1),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                     partial_result_params: PartialResultParams::default(),
@@ -3154,7 +3138,7 @@ levenshtein_distance("", "");
                 .references(ReferenceParams {
                     text_document_position: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new((*uri).clone()),
-                        Position::new(7, 6), // On `z`.
+                        Position::new(7, 6),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                     partial_result_params: PartialResultParams::default(),
@@ -3170,7 +3154,7 @@ levenshtein_distance("", "");
                 .references(ReferenceParams {
                     text_document_position: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new((*uri).clone()),
-                        Position::new(4, 6), // On first `x`.
+                        Position::new(4, 6),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                     partial_result_params: PartialResultParams::default(),
@@ -3231,7 +3215,7 @@ const z = x;
         ";
 
         db.add_file(uri.clone(), source);
-        db.0.set_capabilities(Arc::new(ClientCapabilities::default()));
+        db.0.capabilities = Arc::new(ClientCapabilities::default());
 
         let server = serve(db);
 

@@ -288,7 +288,7 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 })?;
                 xs.get(idx).and_then(|x| db.resolve_type(x.clone(), loc))
             }
-            Type::List(_) => None,
+            Type::List(_) => None, // Not implemented in Zeek.
             Type::Table(ks, v) => {
                 let typ = match idx {
                     Some(0) => ks.first()?,
@@ -297,7 +297,7 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                     None => match *i {
                         Index::Key(i) => ks.get(i)?,
                         Index::Value => v,
-                        Index::Loop(_) => return None,
+                        Index::Loop(_) => return None, // Should not reach here.
                     },
                 };
                 db.resolve_type(typ.clone(), loc)
@@ -332,12 +332,17 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         let Some(loc) = &d.loc else { return Some(d) };
 
         match &d.kind {
+            // For function declarations produce the function's return type.
             DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_type(
                 sig.result.clone()?,
                 Some(NodeLocation::from_node(Arc::clone(&loc.uri), node)),
             ),
 
+            // For enum members return the enum.
             DeclKind::EnumMember => {
+                // Depending on whether we are in an enum type decl or enum redef decl we need to go up
+                // to a different height. In the end we only use the ID so detect that, so we go to the
+                // outer entity and then resolve the ID.
                 let mut n = tree
                     .root_node()
                     .named_descendant_for_point_range(loc.range)?;
@@ -354,12 +359,14 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 ))
             }
 
+            // Return the actual type for variable declarations.
             DeclKind::Const
             | DeclKind::Field(_)
             | DeclKind::Global
             | DeclKind::Index(_, _)
             | DeclKind::Variable => db.typ(d),
 
+            // Other kinds we return directly.
             _ => Some(d),
         }
     })
@@ -379,6 +386,11 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
     let id: InternedStr = node.utf8_text(source.as_bytes()).ok()?.into();
 
     match node.kind() {
+        // Builtin types.
+        // NOTE: This is driven by what types the parser exposes, extend as possible.
+
+        // TODO(bbannier): the parser doesn't cleanly expose whether an integer is an `int` or a
+        // `count`, use a dummy type until we resolve it
         "integer" => {
             return db.resolve_type(
                 Type::Id(format!("<{}>", node.kind()).into()),
@@ -410,6 +422,7 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
         }
 
         "expr" => {
+            // Try to interpret expr as a cast `_ as @type`.
             if let Some(typ) = query::typ_from_cast(node, source.as_bytes()) {
                 return db.resolve_type(typ, Some(location));
             }
@@ -418,6 +431,7 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
                 .named_child_not("nl")
                 .and_then(|c| db.resolve(NodeLocation::from_node(Arc::clone(&uri), c)));
         }
+        // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
             let xs = node.named_children_not("nl");
             let lhs = xs.first().copied()?;
@@ -437,6 +451,7 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
             }
         }
         "id" => {
+            // If the node is part of a record initializer resolve the field.
             if let Some(expr) = node
                 .parent()
                 .and_then(|p| if p.kind() == "expr" { p.parent() } else { None })
@@ -449,9 +464,11 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
                 })
                 .filter(|p| p.kind() == "expr")
             {
+                // If the expr has an ID we are in code like `X($abc=123)`.
                 let type_ = expr
                     .named_child("id")
                     .and_then(|id| db.resolve(NodeLocation::from_node(Arc::clone(&uri), id)))
+                    // Otherwise check the RHS for expressions like `local a: A = [$abc=123]`.
                     .or_else(|| {
                         let parent = expr.parent()?;
 
@@ -482,13 +499,17 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
         _ => {}
     }
 
+    // If the node is part of a field access or check resolve it in the referenced record.
     if let Some(p) = node.parent()
         && matches!(p.kind(), "field_access" | "field_check")
     {
         return db.resolve(NodeLocation::from_node(uri, p));
     }
 
+    // Try to find a decl with name of the given node up the tree.
     if let Some(r) = db.resolve_id(id, location.clone()) {
+        // If we have found something which can have separate declaration and definition
+        // return the declaration if possible. At this point this must be in another file.
         match r.kind {
             DeclKind::FuncDef(_) | DeclKind::EventDef(_) | DeclKind::HookDef(_) => {
                 if let Some(decl) =
@@ -503,6 +524,9 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
         return Some(r);
     }
 
+    // If we arrive here and the identifier does not contain `::` it could also refer to a
+    // declaration in the same module, but defined in a different file. Try to find it by
+    // searching for it by its fully-qualified name.
     if !id.contains("::")
         && let Some(module) = tree
             .root_node()
@@ -591,6 +615,8 @@ pub(crate) fn explicit_decls_recursive(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]
 pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
     let mut loads = Vec::new();
 
+    // These loops looks horrible, but is okay since this function will be cached most of the time
+    // (unless global state changes).
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
         for f in &*db.files() {
@@ -610,6 +636,8 @@ pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
             }
         }
 
+        // Not being able to resolve the load is potentially not an
+        // error since this might race with prefixes being loaded.
         if let Some(implicit_load) = implicit_file {
             loads.push(implicit_load);
         }
@@ -657,8 +685,10 @@ pub(crate) fn possible_loads(db: &dyn Db, uri: Arc<Uri>) -> Arc<[InternedStr]> {
         .iter()
         .filter(|f| f.path().as_str() != uri.path().as_str())
         .filter_map(|f| {
+            // Always strip any extension.
             let f = f.to_file_path()?.with_extension("");
 
+            // For `__load__.zeek` files one should use the directory name for loading.
             let f = if f.file_stem()? == "__load__" {
                 f.parent()?
             } else {
@@ -742,10 +772,12 @@ pub(crate) fn load_to_file(
             })
             .collect();
 
+        // File known w/ extension.
         if let Some((uri, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(load)) {
             return Some(Arc::clone(uri));
         }
 
+        // File known w/o extension.
         if let Some((uri, _)) = files
             .par_iter()
             .find_any(|(_, p)| p.ends_with(&load_with_extension))
@@ -753,6 +785,7 @@ pub(crate) fn load_to_file(
             return Some(Arc::clone(uri));
         }
 
+        // Load is directory with `__load__.zeek`.
         if let Some((uri, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(&load_file)) {
             return Some(Arc::clone(uri));
         }
@@ -1465,6 +1498,7 @@ global x2 = f2();
             ));
         }
 
+        // Validate that type is inferred for derived values.
         let x = root
             .named_descendant_for_position(Position::new(1, 19))
             .unwrap();

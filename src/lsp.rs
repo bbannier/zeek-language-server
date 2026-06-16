@@ -93,6 +93,7 @@ impl Database {
     }
 
     fn file_changed(&self, uri: Arc<Uri>) {
+        // Precompute decls in this file.
         let _d = query::decls(self, uri);
     }
 }
@@ -238,6 +239,7 @@ impl Backend {
     where
         T: Into<String> + std::fmt::Display,
     {
+        // Short circuit progress report if client doesn't support it.
         if !self
             .state
             .read()
@@ -375,7 +377,9 @@ impl Backend {
         Ok(system_files.chain(workspace_files).collect())
     }
 
+    /// This is a wrapper around [`zeek::check`] directly publishing diagnostics.
     async fn check(&self, uri: Uri, version: Option<i32>) {
+        // If we have not client to publish to there is no need to run checks.
         let Some(client) = &self.client else {
             return;
         };
@@ -384,6 +388,9 @@ impl Backend {
             return;
         };
 
+        // Figure out a directory to run the check from. If there is any workspace folder we just
+        // pick the first one (TODO: this might be incorrect if there are multiple folders given);
+        // else use the directory the file is in.
         let workspace_folders = Arc::clone(&self.state.read().await.workspace_folders);
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
@@ -406,8 +413,11 @@ impl Backend {
 
         let diags = checks
             .into_iter()
+            // Only look at diagnostics for the saved file.
+            // TODO(bbannier): We could look at all files here.
             .filter(|c| c.file == file.to_string_lossy())
             .map(|c| {
+                // Zeek positions index starting with one.
                 let line = if c.line == 0 { 0 } else { c.line - 1 };
                 let position = Position::new(line, 0);
 
@@ -451,6 +461,7 @@ impl LanguageServer for Backend {
             );
         }
 
+        // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
             Ok(prefixes) => self.state.write().await.prefixes = prefixes.collect(),
             Err(e) => {
@@ -512,6 +523,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn initialized(&self, _: InitializedParams) {
+        // Load all currently visible files. These are likely only files in system prefixes.
         if let Ok(files) = self.visible_files().await {
             let update = self.did_change_watched_files(DidChangeWatchedFilesParams {
                 changes: files
@@ -576,6 +588,12 @@ impl LanguageServer for Backend {
             self.state.write().await.update_sources(&changes);
         }
 
+        // Preload expensive information. Ultimately we want to be able to load implicit
+        // declarations quickly since they are on the critical part of getting the user to useful
+        // completions right after server startup.
+        //
+        // We explicitly precompute per-file information here so we can parallelize this work.
+
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
         let files: Vec<Arc<Uri>> = self.state.read().await.files().iter().cloned().collect();
@@ -601,6 +619,7 @@ impl LanguageServer for Backend {
         };
         futures::future::join_all(preloaded_decls).await;
 
+        // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
         let _implicit = self.state.read().await.implicit_decls();
@@ -621,6 +640,8 @@ impl LanguageServer for Backend {
                 Some(params.text_document.version),
             )]);
 
+        // Reload implicit declarations since their result depends on the list of known files and
+        // is on the critical path for e.g., completion.
         let _implicit = self.state.read().await.implicit_decls();
 
         let file_changed = self.file_changed(uri).await;
@@ -633,7 +654,9 @@ impl LanguageServer for Backend {
                 self.check(params.text_document.uri, Some(params.text_document.version))
                     .await;
             }
-            Ok(ParseResult::HasDiagnostics) => {}
+            Ok(ParseResult::HasDiagnostics) => {
+                // Do not bother checking the file with zeek if it has parse errors.
+            }
         }
     }
 
@@ -657,6 +680,7 @@ impl LanguageServer for Backend {
                 Some(params.text_document.version),
             )]);
 
+        // Diagnostics are already triggered from `file_changed`.
         if let Err(e) = self.file_changed(uri).await {
             error!("could not apply file change: {e}");
         }
@@ -669,6 +693,8 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        // If a file is closed it means the full state of the document
+        // is now on disk and we can run a check on it.
         self.check(params.text_document.uri, None).await;
     }
 
@@ -746,10 +772,12 @@ impl LanguageServer for Backend {
                 }
             }
             "comment_body" => {
+                // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
                 let try_update = |contents: &mut Vec<_>| {
                     let symbol = word_at_position(&source, position)?;
 
                     if let Some(docs) = fuzzy_search_symbol(&state, &symbol)
+                        // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
@@ -766,6 +794,7 @@ impl LanguageServer for Backend {
 
         drop(state);
 
+        // In debug builds always debug AST nodes; in release mode honor the client config.
         #[cfg(all(debug_assertions, not(test)))]
         let debug_ast_nodes = true;
         #[cfg(not(all(debug_assertions, not(test))))]
@@ -840,9 +869,14 @@ impl LanguageServer for Backend {
         let modules = {
             let db = self.state.read().await;
 
+            // Even though a valid source file can only contain a single module, one can still make
+            // declarations in other modules. Sort declarations by module so users get a clean view.
+            // Then show declarations under their module, or at the top-level if they aren't exported
+            // into a module.
             let decls = db.decls(uri);
             let mut decls = decls
                 .iter()
+                // Filter out top-level enum members since they are also exposed inside their enum here.
                 .filter(|d| d.kind != DeclKind::EnumMember)
                 .collect::<Vec<_>>();
             decls.sort_by_key(|d| format!("{}", d.module));
@@ -860,6 +894,7 @@ impl LanguageServer for Backend {
                         kind: SymbolKind::NAMESPACE,
                         children: Some(decls.filter_map(symbol).collect()),
 
+                        // FIXME(bbannier): Weird ranges.
                         range: Range::new(Position::new(0, 0), Position::new(0, 0)),
                         selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
 
@@ -956,10 +991,13 @@ impl LanguageServer for Backend {
                         .map(|uri| Location::new((*uri).clone(), Range::default()))
                 }
                 "comment_body" => {
+                    // If we are in a zeekygen comment try to recover an
+                    // identifier under the cursor and use it as target.
                     let Some(symbol) = word_at_position(&source, position) else {
                         return Ok(None);
                     };
                     fuzzy_search_symbol(&state, &symbol)
+                        // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
@@ -987,6 +1025,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
         let Some(line) = source.lines().nth(position.line as usize) else {
             return Ok(None);
         };
@@ -997,6 +1036,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // Search backward in the line for '('. The identifier before that could be a function name.
         let Some(node) = line
             .chars()
             .rev()
@@ -1037,6 +1077,7 @@ impl LanguageServer for Backend {
         };
 
         let Some(loc) = &f.loc else { return Ok(None) };
+        // Recompute `tree` and `source` in the context of the function declaration.
         let Some(tree) = state.parse(Arc::clone(&loc.uri)) else {
             return Ok(None);
         };
@@ -1132,6 +1173,7 @@ impl LanguageServer for Backend {
         drop(state);
 
         let Ok(formatted) = zeek::format(&source).await else {
+            // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
         };
 
@@ -1166,6 +1208,7 @@ impl LanguageServer for Backend {
             .join("\n");
 
         let Ok(formatted) = zeek::format(&lines).await else {
+            // Swallow errors from zeek-format, we likely already emitted a diagnostic.
             return Ok(None);
         };
 
@@ -1198,9 +1241,11 @@ impl LanguageServer for Backend {
 
         let decl = {
             match &decl.kind {
+                // We are done as we have found a declaration.
                 DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
                     Some((*decl).clone())
                 }
+                // If we resolved to a definition, look for the declaration.
                 DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
                     .decls(Arc::clone(&uri))
                     .iter()
@@ -1289,6 +1334,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        // For now we only work on the first diagnostic on something missing in the source.
         let Some(diag) = params
             .context
             .diagnostics
@@ -1303,6 +1349,7 @@ impl LanguageServer for Backend {
         let Some(missing) = state.parse(Arc::clone(&uri)).and_then(|t| {
             t.root_node().errors().find_map(|err| {
                 if err.is_missing() && err.range() == diag.range {
+                    // `kind` holds the fix for the `MISSING` error.
                     Some(err.kind().to_string())
                 } else {
                     None
@@ -1363,6 +1410,8 @@ impl LanguageServer for Backend {
                                     .into_iter()
                                     .zip(s.args.iter())
                                     .filter_map(|(p, a)| {
+                                        // If the argument has the same name as the parameter do
+                                        // not set an inlay hint.
                                         let uri = p.uri;
                                         let tree = snap.parse(Arc::clone(&uri))?;
                                         let node = tree
@@ -1465,6 +1514,8 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
+        // TODO(bbannier): respect `params.context.include_declaration`.
+
         let state = self.state.read().await;
 
         let tree = state.parse(Arc::clone(&uri));
@@ -1478,6 +1529,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // We hold a lock across an await which is safe here.
         let references = references_impl(&state, decl).await;
 
         Ok(Some(
@@ -1506,6 +1558,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        // We hold a lock across an await which is safe here.
         let references = references_impl(&state, decl).await;
 
         let new_name = params.new_name;
@@ -1516,6 +1569,7 @@ impl LanguageServer for Backend {
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g
+                    // Send edits ordered from the back so we do not invalidate following positions.
                     .sorted_by_key(|l| l.range.start)
                     .rev()
                     .map(|l| TextEdit::new(l.range, new_name.clone()))
@@ -1602,6 +1656,7 @@ pub async fn run() {
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+/// Custom `initializationOptions` clients can send.
 pub struct InitializationOptions {
     #[serde(default = "InitializationOptions::_default_inlay_hints_parameters")]
     inlay_hints_parameters: bool,
@@ -1661,6 +1716,7 @@ impl InitializationOptions {
 
 const ERROR_CODE_IS_MISSING: i32 = 1;
 
+/// Extracts all errors in a AST.
 fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     tree.errors().map(|err| {
         let code = if err.is_missing() {
@@ -1683,6 +1739,7 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
 }
 
 async fn references_impl(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+    /// Helper to compute all sources reachable from a given file.
     fn all_sources(f: Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
         let mut loads = FxHashSet::default();
         loads.extend(db.implicit_loads().iter().cloned());
@@ -1706,7 +1763,11 @@ async fn references_impl(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocati
         let locs: Vec<_> = db
             .files()
             .iter()
-            .filter(|f| f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri))
+            .filter(|f| {
+                // If the file we look at does not load the file with the decl, no references to it
+                // can exist.
+                f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri)
+            })
             .map(|f| {
                 let snap = snapshot(db);
                 let decl = Arc::clone(&decl);
@@ -1716,6 +1777,8 @@ async fn references_impl(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocati
                         snap.ids(f)
                             .iter()
                             .filter_map(|loc| {
+                                // Prefilter ids so that they at least somewhere contain the text
+                                // of the decl.
                                 let tree = snap.parse(Arc::clone(&loc.uri))?;
                                 let source = snap.source(Arc::clone(&loc.uri))?;
                                 let txt = tree
@@ -1788,7 +1851,9 @@ mod semantic_tokens {
                 .chain(RST_CONFIG.query.capture_names())
                 .chain(SH_CONFIG.query.capture_names())
                 .copied()
+                // tree-sitter-highlight leaks injection queries, remove it.
                 .filter(|hl| *hl != "injection.content")
+                // LSP does not standardize names with subscopes, preserve only the top-level scope.
                 .map(|hl| hl.split_once('.').map_or(hl, |(hl, _)| hl))
                 .collect()
         });
@@ -1936,6 +2001,7 @@ mod semantic_tokens {
                 let name = highlights().get(ty)?;
                 let ty = SemanticTokenType::from(*name);
 
+                // Skip token types we didn't previously advertise.
                 let token_type =
                     u32::try_from(legend.token_types.iter().position(|x| *x == ty)?).ok()?;
 
@@ -2222,6 +2288,7 @@ global GLOBAL::Y = 3;
             })
             .await;
 
+        // Sort results for debug output diffing.
         let result = if let Ok(Some(CompletionResponse::Array(mut r))) = result {
             r.sort_by(|a, b| a.label.cmp(&b.label));
             r

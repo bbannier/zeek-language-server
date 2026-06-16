@@ -13,6 +13,7 @@ type InternedStr = ustr::Ustr;
 type Str = smol_str::SmolStr;
 
 pub(crate) trait Db {
+    /// Gets the source code for a file if it is known.
     fn source(&self, uri: Arc<Uri>) -> Option<Str>;
     fn files(&self) -> Arc<[Arc<Uri>]>;
     fn prefixes(&self) -> Arc<[std::path::PathBuf]>;

@@ -32,9 +32,9 @@ pub enum DeclKind {
     EventDecl(Signature),
     EventDef(Signature),
     Variable,
-    Field(Vec<InternedStr>),
+    Field(Vec<InternedStr> /*attributes*/),
     EnumMember,
-    Index(Index, InternedStr),
+    Index(Index, InternedStr), // Result of an indexing operation for a given init expression.
     Builtin(Type),
 }
 
@@ -382,6 +382,7 @@ impl<'a> Node<'a> {
             tree_sitter::Point::new(range.start.line as usize, range.start.character as usize);
         let end = tree_sitter::Point::new(range.end.line as usize, range.end.character as usize);
 
+        // TODO(bbannier): this can still return a `nl` node :/
         self.0
             .named_descendant_for_point_range(start, end)
             .map(Into::into)
@@ -391,6 +392,7 @@ impl<'a> Node<'a> {
     pub fn descendant_for_position(&self, position: Position) -> Option<Self> {
         let start = tree_sitter::Point::new(position.line as usize, position.character as usize);
 
+        // TODO(bbannier): this can still return a `nl` node :/
         self.0
             .descendant_for_point_range(start, start)
             .map(Into::into)
@@ -402,6 +404,7 @@ impl<'a> Node<'a> {
         self.named_descendant_for_point_range(range)
     }
 
+    /// Extract all error nodes under the node.
     pub fn errors(&self) -> impl Iterator<Item = Node<'_>> {
         fn errors(n: tree_sitter::Node) -> Vec<tree_sitter::Node> {
             let mut cur = n.walk();
@@ -487,6 +490,8 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             let decl = c.nodes_for_capture_index(c_decl).next()?;
             let decl: Node = decl.into();
 
+            // Skip children not directly below the node or in an `export` below the node.
+            // TODO(bbannier): this would probably be better handled directly in the query.
             let outer_node = c
                 .nodes_for_capture_index(c_outer_node)
                 .next()
@@ -514,14 +519,18 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             let selection_range = id.range();
 
             let id: InternedStr = {
+                // The grammar doesn't expose module ids in identifiers like `mod::f` directly, parse by hand.
                 let spl = id_written.splitn(2, "::").collect::<Vec<_>>();
 
                 match spl.len() {
+                    // The module was part of the ID.
                     2 => {
                         module = compute_module_id(spl[0]);
                         spl[1].into()
                     }
+                    // Just a plain local ID.
                     1 => spl[0].into(),
+                    // This just looks plain wrong.
                     _ => {
                         debug!("unexpected empty id at {:?}", id.range());
                         return None;
@@ -602,6 +611,8 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             };
 
             let extract_fields = |decl: Node| {
+                // Records wrap their field list in an extra `type` node, `redef_record_decl`
+                // directly contain them.
                 let typ = if let Some(c) = decl.named_child("type") {
                     c
                 } else {
@@ -659,6 +670,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             let id_ = n.named_child("id")?;
                             let id: InternedStr = id_.utf8_text(source).ok()?.into();
 
+                            // Enum values live in the parent scope.
                             let fqid = match &module_name {
                                 ModuleId::Global | ModuleId::None => id,
                                 ModuleId::String(m) => format!("{m}::{id}").into(),
@@ -678,6 +690,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                     uri: Arc::clone(uri),
                                 }),
                                 documentation,
+                                // An enum value is exported if its wrapping decl is exported.
                                 is_export: Some(in_export(decl)),
                             })
                         })
@@ -686,6 +699,12 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 }
             };
 
+            // Declarations like enums inject their fields into the current scope. Store them here
+            // so we can bubble them up as well.
+            //
+            // TODO(bbannier): This pollutes the global list of decls with decls which are
+            // conceptually nested. Maybe we could not expose them here, but still have them
+            // available in e.g., completions, lookups, etc.
             let mut additional_decls = Vec::new();
 
             let kind = match decl.kind() {
@@ -696,6 +715,8 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                         .next()
                         .expect("scope should be present");
 
+                    // Translate typ into possible func-like kind. We need this since the grammar
+                    // does not expose the type of these.
                     let fn_like = if let Some(typ) = typ.and_then(|n| n.utf8_text(source).ok()) {
                         if typ.starts_with("function(") {
                             Some(DeclKind::FuncDecl(signature()?))
@@ -713,6 +734,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                     if let Some(fn_like) = fn_like {
                         fn_like
                     } else {
+                        // Just a plain & clean variable declaration.
                         match scope.kind() {
                             "global" => DeclKind::Global,
                             "local" => {
@@ -735,6 +757,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             let id_ = c.named_child("id")?;
                             let id = id_.utf8_text(source).ok()?;
 
+                            // Enum values live in the parent scope.
                             let fqid = match &module_name {
                                 ModuleId::Global | ModuleId::None => id.into(),
                                 ModuleId::String(m) => format!("{m}::{id}").into(),
@@ -755,6 +778,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 }),
                                 documentation,
 
+                                // An enum value is exported if its wrapping decl is exported.
                                 is_export: Some(in_export(decl)),
                             })
                         })
@@ -781,6 +805,9 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                 }
             };
 
+            // If a redef record isn't already fully qualified it either refers to something in the
+            // current module which we can find, or it refers to a GLOBAL record. Sanitize the FQID
+            // for that.
             if let DeclKind::RedefRecord(_) = &kind
                 && !id_written.contains("::")
             {
@@ -828,7 +855,7 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
                     .map(Into::into)?;
                 let xs = children
                     .iter()
-                    .take(children.len() - 1)
+                    .take(children.len() - 1) // If we have `y` this never underflows.
                     .map(|x| self::typ(*x, source))
                     .collect::<Option<_>>()?;
                 Type::Table(xs, y)
@@ -869,6 +896,7 @@ pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
     })
 }
 
+/// Try to get the cast target type from an expr in `n` assuming it holds `_ as @type`.
 pub(crate) fn typ_from_cast(n: Node, source: &[u8]) -> Option<Type> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), r#"(expr (expr) "as" (type)@typ)"#)
@@ -935,6 +963,7 @@ fn modules(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
         .collect()
 }
 
+/// Helper to compute a module ID from a given string.
 fn compute_module_id(id: &str) -> ModuleId {
     match id {
         "GLOBAL" => ModuleId::Global,
@@ -943,6 +972,7 @@ fn compute_module_id(id: &str) -> ModuleId {
     }
 }
 
+/// Compute the module a node is in.
 #[must_use]
 fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
     let Some(n) = node.parent() else {
@@ -953,6 +983,8 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
         return parent_module(n, source);
     }
 
+    // Found a source file. Now find the most recent
+    // module decl when looking backwards from `node`.
     let Some(m) = n
         .named_children("module_decl")
         .into_iter()
@@ -970,6 +1002,7 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
     Some(m)
 }
 
+/// Extract declarations for function parameters on the given node.
 #[instrument]
 pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     match node.kind() {
@@ -977,6 +1010,8 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
         _ => return FxHashSet::default(),
     }
 
+    // Synthesize declarations for function arguments. Ideally the grammar would expose
+    // these directly.
     let Some(func_params) = node.named_child("func_params") else {
         return FxHashSet::default();
     };
@@ -1011,6 +1046,7 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
         .collect()
 }
 
+/// Extract for loop parameters on the given node.
 #[instrument]
 fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -1174,6 +1210,7 @@ pub(crate) fn loads(db: &dyn Db, uri: Arc<Uri>) -> Arc<[InternedStr]> {
 #[instrument(skip(db))]
 
 pub(crate) fn function_calls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
+    // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
             .expect("invalid query")
@@ -1217,6 +1254,7 @@ pub(crate) fn function_calls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[FunctionCall]> 
 #[instrument(skip(db))]
 
 pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
+    // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
             &language_zeek(),
@@ -1245,6 +1283,7 @@ pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
             .filter_map(|m| {
                 let m: Node = m.nodes_for_capture_index(c_var).next()?.into();
 
+                // Reject decls which have a type.
                 if m.named_child("type").is_some() {
                     return None;
                 }
@@ -1258,6 +1297,9 @@ pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
 
                 let empty: InternedStr = "".into();
 
+                // Definite abuse of the Decl type since we really only transport out locations. We
+                // use `range` for the range of the decl, and `selection_range` for the range of
+                // the identifier.
                 Some(Decl {
                     module: ModuleId::None,
                     id: empty,
@@ -1279,6 +1321,7 @@ pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
 
 #[allow(clippy::needless_pass_by_value)]
 pub(crate) fn ids(db: &dyn Db, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
+    // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
     });
@@ -1309,7 +1352,10 @@ pub(crate) fn ids(db: &dyn Db, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
     )
 }
 
+/// Extracts pre and post zeekygen comments for the given node.
 fn zeekygen_comments(x: Node, source: &[u8]) -> Option<InternedStr> {
+    // Extracting the zeekygen comments with the query seems to hit some polynomial
+    // edge case in tree-sitter. Extract them by hand for the time being.
     let mut docs = VecDeque::new();
 
     let mut node = x.prev_sibling();

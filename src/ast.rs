@@ -8,7 +8,7 @@ use tower_lsp_server::ls_types::Uri;
 use tracing::{instrument, warn};
 
 use crate::{
-    Db, InternedStr, SourceFile,
+    Db, DeclFqid, InternedStr, SourceFile,
     query::{self, Decl, DeclKind, Index, NodeLocation, Type},
     zeek,
 };
@@ -116,22 +116,8 @@ pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> O
     };
 
     if is_redef(last_decl) {
-        // Collect all decls matching this fqid across the three sources,
-        // then fold redef-record fields into the original type declaration.
-        let decls: Vec<Decl> = {
-            let implicit_decls = crate::ast::implicit_decls(db);
-            let loaded_decls = crate::ast::explicit_decls_recursive(db, sf);
-            let decls = crate::query::decls(db, sf);
-
-            implicit_decls
-                .iter()
-                .chain(loaded_decls.iter())
-                .chain(decls.iter())
-                .unique()
-                .filter(|x| x.fqid == last_decl.fqid)
-                .cloned()
-                .collect()
-        };
+        let key = DeclFqid::new(db, last_decl.fqid, sf);
+        let decls = crate::ast::resolve_redef(db, key);
 
         let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
         let redefs = decls
@@ -745,6 +731,26 @@ pub fn is_redef(d: &Decl) -> bool {
         &d.kind,
         DeclKind::Redef | DeclKind::RedefEnum(_) | DeclKind::RedefRecord(_)
     )
+}
+
+#[instrument(skip(db))]
+#[salsa::tracked(no_eq)]
+fn resolve_redef(db: &dyn Db, key: DeclFqid<'_>) -> Arc<[Decl]> {
+    let fqid = key.fqid(db);
+    let scope = key.scope(db);
+
+    let implicit_decls = crate::ast::implicit_decls(db);
+    let loaded_decls = crate::ast::explicit_decls_recursive(db, scope);
+    let decls = crate::query::decls(db, scope);
+
+    implicit_decls
+        .iter()
+        .chain(loaded_decls.iter())
+        .chain(decls.iter())
+        .unique()
+        .filter(|x| x.fqid == fqid)
+        .cloned()
+        .collect()
 }
 
 pub(crate) fn load_to_file(

@@ -20,6 +20,13 @@ pub(crate) struct SourceFile {
     pub(crate) text: Str,
 }
 
+#[salsa::interned]
+#[derive(Debug)]
+pub(crate) struct DeclFqid {
+    pub(crate) fqid: InternedStr,
+    pub(crate) scope: SourceFile,
+}
+
 #[salsa::input(singleton)]
 pub(crate) struct ConfigRevision {
     pub(crate) revision: u64,

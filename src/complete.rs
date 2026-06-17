@@ -559,7 +559,7 @@ fn complete_any(state: &Database, root: Node, mut node: Node, uri: &Uri) -> Vec<
         };
     }
 
-    let loaded_decls = state.explicit_decls_recursive(&uri);
+    let loaded_decls = state.explicit_decls_recursive(uri);
     let implicit_decls = state.implicit_decls();
 
     let other_decls = loaded_decls

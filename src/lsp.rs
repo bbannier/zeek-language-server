@@ -94,15 +94,11 @@ impl Database {
         }
 
         // Update SourceFile inputs and removals.
-        let removals: Vec<_> = updates
-            .iter()
-            .filter_map(|u| match u {
-                SourceUpdate::Remove(uri) => Some(uri.clone()),
-                SourceUpdate::Update(..) => None,
-            })
-            .collect();
-        for uri in &removals {
-            self.source_files.remove(uri);
+        for uri in updates.iter().filter_map(|u| match u {
+            SourceUpdate::Remove(uri) => Some(uri),
+            SourceUpdate::Update(..) => None,
+        }) {
+            self.sources.remove(uri);
         }
         for u in updates {
             if let SourceUpdate::Update(uri, source, _) = u {

@@ -53,13 +53,12 @@ pub(crate) use test::TestDatabase;
 
 #[derive(Clone)]
 #[salsa::db]
-// FIXME(bbannier): can this derive Default?
 pub struct Database {
     storage: salsa::Storage<Self>,
     pub(crate) sources: FxHashMap<Uri, SourceFile>,
     pub(crate) prefixes: Vec<PathBuf>,
     pub(crate) workspace_folders: Arc<[Uri]>,
-    pub(crate) capabilities: Arc<ClientCapabilities>,
+    pub(crate) capabilities: ClientCapabilities,
     pub(crate) initialization_options: InitializationOptions,
 }
 
@@ -91,12 +90,14 @@ impl Database {
 impl Default for Database {
     fn default() -> Self {
         Self {
+            // Since this field does not implement `Default` we need to implement it ourself for
+            // `Database`.
+            initialization_options: InitializationOptions::new(),
             storage: salsa::Storage::default(),
             sources: HashMap::default(),
             prefixes: Vec::default(),
             workspace_folders: Arc::default(),
-            capabilities: Arc::default(),
-            initialization_options: InitializationOptions::new(),
+            capabilities: ClientCapabilities::default(),
         }
     }
 }
@@ -133,10 +134,6 @@ impl crate::Db for Database {
 impl Database {
     pub(crate) fn source(&self, uri: &Uri) -> Option<Str> {
         self.sources.get(uri).map(|f| f.text(self))
-    }
-
-    pub(crate) fn capabilities(&self) -> Arc<ClientCapabilities> {
-        Arc::clone(&self.capabilities)
     }
 
     pub(crate) fn parse(&self, file: &Uri) -> Option<Arc<crate::parse::Tree>> {
@@ -258,7 +255,7 @@ impl Backend {
             .state
             .lock()
             .await
-            .capabilities()
+            .capabilities
             .window
             .as_ref()
             .and_then(|w| w.work_done_progress)
@@ -462,7 +459,7 @@ impl LanguageServer for Backend {
         {
             let mut state = self.state.lock().await;
             state.workspace_folders = Arc::from(workspace_folders);
-            state.capabilities = Arc::new(params.capabilities);
+            state.capabilities = params.capabilities;
             state.initialization_options = params
                 .initialization_options
                 .and_then(|options| serde_json::from_value(options).ok())
@@ -2141,18 +2138,15 @@ const RST_HIGHLIGHT: &str = "
 pub(crate) mod test {
     #![allow(clippy::unwrap_used)]
 
-    use std::{
-        path::{Path, PathBuf},
-        sync::Arc,
-    };
+    use std::path::{Path, PathBuf};
 
     use insta::assert_debug_snapshot;
     use tower_lsp_server::{
         LanguageServer,
         ls_types::{
-            ClientCapabilities, CodeActionContext, CodeActionParams, CompletionParams,
-            CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions,
-            HoverParams, InlayHintParams, PartialResultParams, Position, Range, ReferenceContext,
+            CodeActionContext, CodeActionParams, CompletionParams, CompletionResponse,
+            DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions, HoverParams,
+            InlayHintParams, PartialResultParams, Position, Range, ReferenceContext,
             ReferenceParams, RenameParams, SemanticTokensParams, TextDocumentIdentifier,
             TextDocumentPositionParams, Uri, WorkDoneProgressParams, WorkspaceSymbolParams,
         },
@@ -3264,7 +3258,6 @@ const z = x;
         ";
 
         db.add_file(uri.clone(), source);
-        db.0.capabilities = Arc::new(ClientCapabilities::default());
 
         let server = serve(db);
 

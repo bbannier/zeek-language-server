@@ -1185,19 +1185,17 @@ pub(crate) fn decls(db: &dyn Db, source_file: SourceFile) -> Arc<[Decl]> {
 }
 
 #[salsa::tracked(no_eq)]
-pub(crate) fn loads(db: &dyn Db, source_file: SourceFile) -> Arc<[InternedStr]> {
+pub(crate) fn loads(db: &dyn Db, source_file: SourceFile) -> Vec<InternedStr> {
     let source = source_file.text(db);
 
     let Some(tree) = crate::parse::parse(db, source_file) else {
-        return Arc::default();
+        return Vec::new();
     };
 
-    Arc::from(
-        loads_raw(tree.root_node(), &source)
-            .iter()
-            .map(|x| InternedStr::from(x))
-            .collect::<Vec<_>>(),
-    )
+    loads_raw(tree.root_node(), &source)
+        .iter()
+        .map(|x| InternedStr::from(x))
+        .collect()
 }
 
 #[salsa::tracked(no_eq)]

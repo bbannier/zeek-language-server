@@ -266,7 +266,7 @@ impl Database {
         crate::ast::implicit_decls(self)
     }
 
-    pub(crate) fn possible_loads(&self, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
+    pub(crate) fn possible_loads(&self, uri: &Arc<Uri>) -> Vec<InternedStr> {
         crate::ast::possible_loads(self, uri)
     }
 

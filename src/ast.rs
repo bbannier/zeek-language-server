@@ -685,13 +685,13 @@ pub(crate) fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
 }
 
 #[instrument(skip(db))]
-pub(crate) fn possible_loads(db: &dyn Db, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
+pub(crate) fn possible_loads(db: &dyn Db, uri: &Arc<Uri>) -> Vec<InternedStr> {
     let Some(path) = uri.to_file_path() else {
-        return Arc::default();
+        return Vec::new();
     };
 
     let Some(path) = path.parent() else {
-        return Arc::default();
+        return Vec::new();
     };
 
     let prefixes = db.prefixes();
@@ -722,7 +722,7 @@ pub(crate) fn possible_loads(db: &dyn Db, uri: &Arc<Uri>) -> Arc<[InternedStr]> 
         })
         .collect();
 
-    Arc::from(loads)
+    loads
 }
 
 #[must_use]

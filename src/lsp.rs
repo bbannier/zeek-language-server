@@ -84,7 +84,6 @@ impl Database {
                         }
                         self.versions.insert(uri.clone(), *ver);
                     }
-                    self.sources.insert(uri.clone(), source.clone());
                     self.files.insert(uri.clone());
                 }
                 SourceUpdate::Remove(uri) => {

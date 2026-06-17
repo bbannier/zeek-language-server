@@ -125,7 +125,6 @@ impl Default for Database {
         let mut db = Self {
             storage: salsa::Storage::default(),
             sources: HashMap::default(),
-            source_files: HashMap::default(),
             files: FxHashSet::default(),
             prefixes: Vec::default(),
             config_revision: None,
@@ -144,7 +143,6 @@ impl Clone for Database {
         Self {
             storage: self.storage.clone(),
             sources: self.sources.clone(),
-            source_files: self.source_files.clone(),
             files: self.files.clone(),
             prefixes: self.prefixes.clone(),
             config_revision: self.config_revision,

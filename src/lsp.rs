@@ -1662,7 +1662,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
 
-        let Some(source) = self.state.lock().await.source(&uri.into()) else {
+        let Some(source) = self.state.lock().await.source(&uri) else {
             return Ok(None);
         };
 

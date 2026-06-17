@@ -72,7 +72,7 @@ impl Database {
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
         for u in updates {
             match u {
-                SourceUpdate::Update(uri, source, version) => {
+                SourceUpdate::Update(uri, _, version) => {
                     if let Some(ver) = version {
                         if let Some(&stored) = self.versions.get(uri)
                             && *ver <= stored

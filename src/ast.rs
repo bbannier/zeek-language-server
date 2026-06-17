@@ -15,8 +15,8 @@ use crate::{
 
 #[allow(clippy::too_many_lines)]
 #[instrument(skip(db))]
-pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
-    let uri = scope.uri;
+pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: &NodeLocation) -> Option<Arc<Decl>> {
+    let uri = Arc::clone(&scope.uri);
     let sf = db.source_file(&uri)?;
     let source = sf.text(db);
     let tree = crate::parse::parse(db, sf)?;
@@ -148,7 +148,7 @@ pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> O
 pub(crate) fn resolve_type(
     db: &dyn Db,
     typ: Type,
-    scope: Option<NodeLocation>,
+    scope: Option<&NodeLocation>,
 ) -> Option<Arc<Decl>> {
     fn builtin_type(id: InternedStr, typ: Type) -> Arc<Decl> {
         Arc::new(Decl {
@@ -254,12 +254,9 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         .named_descendant_for_point_range(loc.range)?;
 
     if let DeclKind::Index(i, from) = &decl.kind {
-        let from = crate::ast::resolve_id(
-            db,
-            from.as_str().into(),
-            NodeLocation::from_node(Arc::clone(uri), node),
-        )
-        .and_then(|r| crate::ast::typ(db, r))?;
+        let loc = NodeLocation::from_node(Arc::clone(uri), node);
+        let from = crate::ast::resolve_id(db, from.as_str().into(), &loc)
+            .and_then(|r| crate::ast::typ(db, r))?;
 
         let DeclKind::Builtin(typ) = &from.kind else {
             return None;
@@ -278,8 +275,8 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         #[allow(clippy::match_same_arms)]
         return match typ {
             Type::Vector(id) => match idx? {
-                0 => crate::ast::resolve_type(db, Type::Count, loc),
-                1 => crate::ast::resolve_type(db, (**id).clone(), loc),
+                0 => crate::ast::resolve_type(db, Type::Count, loc.as_ref()),
+                1 => crate::ast::resolve_type(db, (**id).clone(), loc.as_ref()),
                 _ => None,
             },
             Type::Set(xs) => {
@@ -287,7 +284,8 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                     Index::Key(i) => Some(*i),
                     _ => None,
                 })?;
-                xs.get(idx).and_then(|x| crate::ast::resolve_type(db, x.clone(), loc))
+                xs.get(idx)
+                    .and_then(|x| crate::ast::resolve_type(db, x.clone(), loc.as_ref()))
             }
             Type::List(_) => None, // Not implemented in Zeek.
             Type::Table(ks, v) => {
@@ -301,17 +299,17 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                         Index::Loop(_) => return None, // Should not reach here.
                     },
                 };
-                crate::ast::resolve_type(db, typ.clone(), loc)
+                crate::ast::resolve_type(db, typ.clone(), loc.as_ref())
             }
             _ => None,
         };
     }
 
     let make_typ = |typ| {
-        let sf = db.source_file(uri)?;
+        let sf = db.source_file(&uri)?;
         let source = sf.text(db);
-        query::typ(typ, source.as_bytes())
-            .and_then(|t| crate::ast::resolve_type(db, t, Some(NodeLocation::from_node(Arc::clone(uri), typ))))
+        let loc = NodeLocation::from_node(Arc::clone(uri), typ);
+        query::typ(typ, source.as_bytes()).and_then(|t| crate::ast::resolve_type(db, t, Some(&loc)))
     };
 
     let d = match node.kind() {
@@ -320,9 +318,10 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
             match typ.kind() {
                 "type" => make_typ(typ),
-                "initializer" => typ
-                    .named_child("expr")
-                    .and_then(|n| crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), n))),
+                "initializer" => typ.named_child("expr").and_then(|n| {
+                    let loc = NodeLocation::from_node(Arc::clone(uri), n);
+                    crate::ast::resolve(db, &loc)
+                }),
                 _ => None,
             }
         }
@@ -335,11 +334,10 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
         match &d.kind {
             // For function declarations produce the function's return type.
-            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => crate::ast::resolve_type(
-                db,
-                sig.result.clone()?,
-                Some(NodeLocation::from_node(Arc::clone(&loc.uri), node)),
-            ),
+            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => {
+                let fn_loc = NodeLocation::from_node(Arc::clone(&loc.uri), node);
+                crate::ast::resolve_type(db, sig.result.clone()?, Some(&fn_loc))
+            }
 
             // For enum members return the enum.
             DeclKind::EnumMember => {
@@ -356,13 +354,8 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                     }
                 }
 
-                crate::ast::resolve(
-                    db,
-                    NodeLocation::from_node(
-                        Arc::clone(&loc.uri),
-                        n.named_child("id")?,
-                    ),
-                )
+                let r_loc = NodeLocation::from_node(Arc::clone(&loc.uri), n.named_child("id")?);
+                crate::ast::resolve(db, &r_loc)
             }
 
             // Return the actual type for variable declarations.
@@ -381,9 +374,8 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 #[allow(clippy::too_many_lines)]
 #[instrument(skip(db))]
 
-pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> {
-    let uri = &location.uri;
-    let sf = db.source_file(uri)?;
+pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>> {
+    let sf = db.source_file(&location.uri)?;
     let source = sf.text(db);
     let tree = crate::parse::parse(db, sf)?;
     let node = tree
@@ -435,9 +427,9 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
                 return crate::ast::resolve_type(db, typ, Some(location));
             }
 
-            return node
-                .named_child_not("nl")
-                .and_then(|c| crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), c)));
+            return node.named_child_not("nl").and_then(|c| {
+                crate::ast::resolve(db, &NodeLocation::from_node(Arc::clone(&location.uri), c))
+            });
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
@@ -447,7 +439,8 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
 
             let id = rhs.utf8_text(source.as_bytes()).ok()?;
 
-            let var_decl = crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), lhs))?;
+            let var_decl =
+                crate::ast::resolve(db, &NodeLocation::from_node(Arc::clone(&location.uri), lhs))?;
             let type_decl = crate::ast::typ(db, var_decl)?;
 
             match &type_decl.kind {
@@ -475,7 +468,12 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
                 // If the expr has an ID we are in code like `X($abc=123)`.
                 let type_ = expr
                     .named_child("id")
-                    .and_then(|id| crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), id)))
+                    .and_then(|id| {
+                        crate::ast::resolve(
+                            db,
+                            &NodeLocation::from_node(Arc::clone(&location.uri), id),
+                        )
+                    })
                     // Otherwise check the RHS for expressions like `local a: A = [$abc=123]`.
                     .or_else(|| {
                         let parent = expr.parent()?;
@@ -483,11 +481,17 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
                         let type_id = parent.named_child("expr").and_then(|c| c.named_child("id"));
 
                         if let Some(id) = type_id {
-                            crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), id))
-                                .and_then(|decl| crate::ast::typ(db, decl))
+                            crate::ast::resolve(
+                                db,
+                                &NodeLocation::from_node(Arc::clone(&location.uri), id),
+                            )
+                            .and_then(|decl| crate::ast::typ(db, decl))
                         } else if parent.kind() == "initializer" {
                             parent.prev_sibling().and_then(|t| {
-                                crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), t))
+                                crate::ast::resolve(
+                                    db,
+                                    &NodeLocation::from_node(Arc::clone(&location.uri), t),
+                                )
                             })
                         } else {
                             None
@@ -511,18 +515,17 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
     if let Some(p) = node.parent()
         && matches!(p.kind(), "field_access" | "field_check")
     {
-        return crate::ast::resolve(db, NodeLocation::from_node(Arc::clone(uri), p));
+        return crate::ast::resolve(db, &NodeLocation::from_node(Arc::clone(&location.uri), p));
     }
 
     // Try to find a decl with name of the given node up the tree.
-    if let Some(r) = crate::ast::resolve_id(db, id, location.clone()) {
+    if let Some(r) = crate::ast::resolve_id(db, id, location) {
         // If we have found something which can have separate declaration and definition
         // return the declaration if possible. At this point this must be in another file.
         match r.kind {
             DeclKind::FuncDef(_) | DeclKind::EventDef(_) | DeclKind::HookDef(_) => {
-                if let Some(decl) =
-                    crate::ast::resolve_id(db, id, NodeLocation::from_node(Arc::clone(uri), tree.root_node()))
-                {
+                let root_loc = NodeLocation::from_node(Arc::clone(&location.uri), tree.root_node());
+                if let Some(decl) = crate::ast::resolve_id(db, id, &root_loc) {
                     return Some(decl);
                 }
             }
@@ -541,11 +544,8 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
             .named_child("module_decl")
             .and_then(|d| d.named_child("id"))
             .and_then(|id| id.utf8_text(source.as_bytes()).ok())
-        && let Some(r) = crate::ast::resolve_id(
-            db,
-            format!("{module}::{id}").as_str().into(),
-            location,
-        )
+        && let Some(r) =
+            crate::ast::resolve_id(db, format!("{module}::{id}").as_str().into(), location)
     {
         return Some(r);
     }
@@ -789,21 +789,21 @@ pub(crate) fn load_to_file(
             .collect();
 
         // File known w/ extension.
-        if let Some((uri, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(load)) {
-            return Some(Arc::clone(uri));
+        if let Some((u, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(load)) {
+            return Some(Arc::clone(u));
         }
 
         // File known w/o extension.
-        if let Some((uri, _)) = files
+        if let Some((u, _)) = files
             .par_iter()
             .find_any(|(_, p)| p.ends_with(&load_with_extension))
         {
-            return Some(Arc::clone(uri));
+            return Some(Arc::clone(u));
         }
 
         // Load is directory with `__load__.zeek`.
-        if let Some((uri, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(&load_file)) {
-            return Some(Arc::clone(uri));
+        if let Some((u, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(&load_file)) {
+            return Some(Arc::clone(u));
         }
 
         None
@@ -854,7 +854,10 @@ mod test {
         let d = Uri::from_file_path("/tmp/d.zeek").unwrap();
         db.add_file(d, "");
 
-        assert_debug_snapshot!(ast::loaded_files_recursive(&db.0, db.0.source_file(&a).unwrap()));
+        assert_debug_snapshot!(ast::loaded_files_recursive(
+            &db.0,
+            db.0.source_file(&a).unwrap()
+        ));
     }
 
     #[test]
@@ -929,7 +932,7 @@ y$yx$f1;
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("c"));
         assert_debug_snapshot!(ast::resolve(
             &db.0,
-            NodeLocation::from_node(Arc::clone(&uri), node)
+            &NodeLocation::from_node(Arc::clone(&uri), node)
         ));
 
         let node = root
@@ -938,7 +941,7 @@ y$yx$f1;
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(ast::resolve(
             &db.0,
-            NodeLocation::from_node(Arc::clone(&uri), node)
+            &NodeLocation::from_node(Arc::clone(&uri), node)
         ));
 
         let node = root
@@ -946,7 +949,7 @@ y$yx$f1;
             .unwrap();
         assert_debug_snapshot!(ast::resolve(
             &db.0,
-            NodeLocation::from_node(Arc::clone(&uri), node)
+            &NodeLocation::from_node(Arc::clone(&uri), node)
         ));
 
         let node = root
@@ -955,7 +958,7 @@ y$yx$f1;
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(ast::resolve(
             &db.0,
-            NodeLocation::from_node(Arc::clone(&uri), node)
+            &NodeLocation::from_node(Arc::clone(&uri), node)
         ));
 
         let node = root
@@ -964,7 +967,7 @@ y$yx$f1;
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(ast::resolve(
             &db.0,
-            NodeLocation::from_node(Arc::clone(&uri), node)
+            &NodeLocation::from_node(Arc::clone(&uri), node)
         ));
 
         let node = root
@@ -973,14 +976,17 @@ y$yx$f1;
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
         assert_debug_snapshot!(ast::resolve(
             &db.0,
-            NodeLocation::from_node(Arc::clone(&uri), node)
+            &NodeLocation::from_node(Arc::clone(&uri), node)
         ));
 
         let node = root
             .named_descendant_for_position(Position::new(24, 5))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f1"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), node)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), node)
+        ));
     }
 
     #[test]
@@ -1006,7 +1012,10 @@ x$f;",
             .named_descendant_for_position(Position::new(4, 2))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("f"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), node)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), node)
+        ));
     }
 
     #[test]
@@ -1031,7 +1040,10 @@ x$f;",
             .named_descendant_for_position(Position::new(2, 33))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), node)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), node)
+        ));
     }
 
     #[test]
@@ -1064,7 +1076,10 @@ x::x;",
             .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), node)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), node)
+        ));
     }
 
     #[test]
@@ -1097,7 +1112,10 @@ y;",
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("y"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), node)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), node)
+        ));
     }
 
     #[test]
@@ -1131,7 +1149,7 @@ x$x2;",
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()), Ok("x"));
         assert_eq!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x))
                 .unwrap()
                 .kind,
             super::DeclKind::Global
@@ -1142,7 +1160,7 @@ x$x2;",
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert!(matches!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x1))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x1))
                 .unwrap()
                 .kind,
             super::DeclKind::Field(_)
@@ -1152,7 +1170,10 @@ x$x2;",
             .named_descendant_for_position(Position::new(6, 3))
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x2)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), x2)
+        ));
     }
 
     #[test]
@@ -1194,7 +1215,7 @@ global e_foo: E = eC;
             .unwrap();
         assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eB"));
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), type_)).unwrap()
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), type_)).unwrap()
         );
 
         let type_ = tree
@@ -1202,7 +1223,9 @@ global e_foo: E = eC;
             .named_descendant_for_position(Position::new(14, 18))
             .unwrap();
         assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eC"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), type_)).unwrap());
+        assert_debug_snapshot!(
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), type_)).unwrap()
+        );
     }
 
     #[test]
@@ -1232,7 +1255,7 @@ global c: connection;",
             .named_descendant_for_position(Position::new(3, 7))
             .unwrap();
         assert_eq!(c.utf8_text(source.as_bytes()), Ok("c"));
-        let c_res = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), c)).unwrap();
+        let c_res = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), c)).unwrap();
         assert_eq!(c_res.kind, super::DeclKind::Global);
         let c_type = typ(&db.0, c_res).unwrap();
         assert_debug_snapshot!(c_type);
@@ -1264,7 +1287,7 @@ function f(a: A) {
         assert_eq!(g.utf8_text(source.as_bytes()), Ok("g"));
         assert_debug_snapshot!(typ(
             &db.0,
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), g)).unwrap()
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), g)).unwrap()
         ));
 
         let f_a = tree
@@ -1274,7 +1297,7 @@ function f(a: A) {
         assert_eq!(f_a.utf8_text(source.as_bytes()), Ok("a"));
         assert_debug_snapshot!(typ(
             &db.0,
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), f_a)).unwrap()
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), f_a)).unwrap()
         ));
 
         let a = tree
@@ -1284,7 +1307,7 @@ function f(a: A) {
         assert_eq!(a.utf8_text(source.as_bytes()), Ok("a"));
         assert_debug_snapshot!(typ(
             &db.0,
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), a)).unwrap()
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), a)).unwrap()
         ));
 
         let a_c = tree
@@ -1292,7 +1315,10 @@ function f(a: A) {
             .named_descendant_for_position(Position::new(5, 6))
             .unwrap();
         assert_eq!(a_c.utf8_text(source.as_bytes()), Ok("c"));
-        assert_debug_snapshot!(ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), a_c)));
+        assert_debug_snapshot!(ast::resolve(
+            &db.0,
+            &NodeLocation::from_node(Arc::clone(&uri), a_c)
+        ));
     }
 
     #[test]
@@ -1323,7 +1349,7 @@ global x2 = f2();
         assert_eq!(
             &*typ(
                 &db.0,
-                ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x1)).unwrap()
+                ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x1)).unwrap()
             )
             .unwrap()
             .id,
@@ -1337,7 +1363,7 @@ global x2 = f2();
         assert_eq!(
             &*typ(
                 &db.0,
-                ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x2)).unwrap()
+                ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x2)).unwrap()
             )
             .unwrap()
             .id,
@@ -1378,7 +1404,7 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(b0.utf8_text(source.as_bytes()).unwrap(), "b0");
 
-            let decl = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), b0)).unwrap();
+            let decl = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), b0)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(typ(&db.0, decl));
@@ -1390,7 +1416,7 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(b1.utf8_text(source.as_bytes()).unwrap(), "b1");
 
-            let decl = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), b1)).unwrap();
+            let decl = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), b1)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(typ(&db.0, decl));
@@ -1402,7 +1428,7 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(i1.utf8_text(source.as_bytes()).unwrap(), "i1");
 
-            let decl = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), i1)).unwrap();
+            let decl = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), i1)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(typ(&db.0, decl));
@@ -1414,7 +1440,7 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(i2.utf8_text(source.as_bytes()).unwrap(), "i2");
 
-            let decl = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), i2)).unwrap();
+            let decl = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), i2)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(typ(&db.0, decl));
@@ -1443,7 +1469,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), a))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| typ(&db.0, d))
         );
     }
@@ -1470,7 +1496,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), a))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| typ(&db.0, d))
         );
 
@@ -1479,7 +1505,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(b.utf8_text(source.as_bytes()).unwrap(), "b");
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), b))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), b))
                 .and_then(|d| typ(&db.0, d))
         );
     }
@@ -1522,7 +1548,7 @@ global x2 = f2();
                 line,
                 ast::resolve(
                     &db.0,
-                    NodeLocation::from_range(Arc::clone(&uri), Range::new(pos, pos))
+                    &NodeLocation::from_range(Arc::clone(&uri), Range::new(pos, pos))
                 )
                 .and_then(|d| typ(&db.0, d))
             ));
@@ -1533,13 +1559,13 @@ global x2 = f2();
             .named_descendant_for_position(Position::new(1, 19))
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
-        let x_typ = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x))
+        let x_typ = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x))
             .and_then(|d| typ(&db.0, d));
         let y = root
             .named_descendant_for_position(Position::new(2, 19))
             .unwrap();
         assert_eq!(y.utf8_text(source.as_bytes()).unwrap(), "y");
-        let y_typ = ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), y))
+        let y_typ = ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), y))
             .and_then(|d| typ(&db.0, d));
         assert_eq!(x_typ, y_typ);
     }
@@ -1568,7 +1594,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(a.utf8_text(source.as_bytes()).unwrap(), "a");
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), a))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), a))
                 .and_then(|d| typ(&db.0, d))
         );
 
@@ -1577,7 +1603,8 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x)).and_then(|d| typ(&db.0, d))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x))
+                .and_then(|d| typ(&db.0, d))
         );
     }
 
@@ -1603,7 +1630,8 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
         assert_debug_snapshot!(
-            ast::resolve(&db.0, NodeLocation::from_node(Arc::clone(&uri), x)).and_then(|d| typ(&db.0, d))
+            ast::resolve(&db.0, &NodeLocation::from_node(Arc::clone(&uri), x))
+                .and_then(|d| typ(&db.0, d))
         );
     }
 }

@@ -79,7 +79,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
             || node.parent().is_some_and(|p| {
                 matches!(p.kind() , "field_access" | "field_check")
             }) {
-            complete_field(state, node, Arc::clone(&uri), is_partial)
+            complete_field(state, node, &uri, is_partial)
         } else {
             None
         }
@@ -107,7 +107,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         } else {
             None
         }
-    ).or_else(|| complete_record_initializer(state, node, Arc::clone(&uri))
+    ).or_else(|| complete_record_initializer(state, node, &uri)
     ).or_else(||
         // If we are completing a function/event/hook definition complete from declarations.
         if node.kind() == "id" {
@@ -200,7 +200,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 fn complete_field(
     state: &Database,
     mut node: Node,
-    uri: Arc<Uri>,
+    uri: &Arc<Uri>,
     is_partial: bool,
 ) -> Option<Vec<CompletionItem>> {
     // If we are completing with something after the `$` (e.g., `foo$a`), instead
@@ -215,7 +215,7 @@ fn complete_field(
         node = stem.unwrap_or(node);
     }
 
-    if let Some(r) = state.resolve(NodeLocation::from_node(uri, node)) {
+    if let Some(r) = state.resolve(&NodeLocation::from_node(Arc::clone(uri), node)) {
         let decl = state.typ(r).and_then(|d| match &d.kind {
             // If the decl refers to a field get the decl for underlying its type instead.
             DeclKind::Field(_) => state.typ(d),
@@ -413,9 +413,9 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
 fn complete_record_initializer(
     state: &Database,
     node: Node,
-    uri: Arc<Uri>,
+    uri: &Arc<Uri>,
 ) -> Option<Vec<CompletionItem>> {
-    let source = state.source(&uri)?;
+    let source = state.source(uri)?;
 
     // The member always needs to be an id.
     let id = match node.kind() {
@@ -445,7 +445,8 @@ fn complete_record_initializer(
         None
     };
 
-    let type_ = state.resolve_id(type_?.into(), NodeLocation::from_node(uri, node))?;
+    let type_loc = NodeLocation::from_node(Arc::clone(uri), node);
+    let type_ = state.resolve_id(type_?.into(), &type_loc)?;
 
     let DeclKind::Type(fields) = &type_.kind else {
         return None;

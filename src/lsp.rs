@@ -270,7 +270,7 @@ impl Database {
         crate::ast::possible_loads(self, uri)
     }
 
-    pub(crate) fn resolve(&self, node: query::NodeLocation) -> Option<Arc<Decl>> {
+    pub(crate) fn resolve(&self, node: &query::NodeLocation) -> Option<Arc<Decl>> {
         crate::ast::resolve(self, node)
     }
 
@@ -281,11 +281,10 @@ impl Database {
     pub(crate) fn resolve_id(
         &self,
         id: InternedStr,
-        scope: query::NodeLocation,
+        scope: &query::NodeLocation,
     ) -> Option<Arc<Decl>> {
         crate::ast::resolve_id(self, id, scope)
     }
-
 }
 
 #[derive(Debug, Default)]
@@ -811,7 +810,8 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = &state.resolve(NodeLocation::from_node(uri, node)) {
+                if let Some(decl) = &state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node))
+                {
                     let kind = match decl.kind {
                         DeclKind::Global => "global",
                         DeclKind::Option => "option",
@@ -1053,7 +1053,7 @@ impl LanguageServer for Backend {
         let location = {
             match node.kind() {
                 "id" => state
-                    .resolve(NodeLocation::from_node(uri, node))
+                    .resolve(&NodeLocation::from_node(Arc::clone(&uri), node))
                     .and_then(|d| {
                         let loc = &d.loc.as_ref()?;
                         Some(Location::new((*loc.uri).clone(), loc.range))
@@ -1142,7 +1142,8 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(f) = state.resolve_id(id.into(), NodeLocation::from_node(uri, node)) else {
+        let loc = NodeLocation::from_node(Arc::clone(&uri), node);
+        let Some(f) = state.resolve_id(id.into(), &loc) else {
             return Ok(None);
         };
 
@@ -1315,7 +1316,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(decl) = state.resolve(NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
             return Ok(None);
         };
 
@@ -1372,7 +1373,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(decl) = state.resolve(NodeLocation::from_node(uri, node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
             return Ok(None);
         };
 
@@ -1473,7 +1474,7 @@ impl LanguageServer for Backend {
                     let snap = snapshot(&state);
 
                     tokio::spawn(async move {
-                        match &snap.resolve(c.f.clone())?.kind {
+                        match &snap.resolve(&c.f)?.kind {
                             DeclKind::FuncDef(s)
                             | DeclKind::FuncDecl(s)
                             | DeclKind::HookDef(s)
@@ -1486,12 +1487,11 @@ impl LanguageServer for Backend {
                                     .filter_map(|(p, a)| {
                                         // If the argument has the same name as the parameter do
                                         // not set an inlay hint.
-                                        let uri = p.uri;
-                                        let tree = snap.parse(&uri)?;
+                                        let tree = snap.parse(&p.uri)?;
                                         let node = tree
                                             .root_node()
                                             .named_descendant_for_point_range(p.range)?;
-                                        let source = snap.source(&uri)?;
+                                        let source = snap.source(&p.uri)?;
                                         let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
                                         if maybe_id == a.id {
                                             return None;
@@ -1599,12 +1599,11 @@ impl LanguageServer for Backend {
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(NodeLocation::from_node(uri, node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references_impl(&state, decl).await;
+        let references = references_impl(&state, &decl);
 
         Ok(Some(
             references
@@ -1628,18 +1627,17 @@ impl LanguageServer for Backend {
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references_impl(&state, decl).await;
+        let references = references_impl(&state, &decl);
 
         let new_name = params.new_name;
 
         let changes = references
             .into_iter()
-            .chunk_by(|r| (*r.uri).clone())
+            .chunk_by(|r| r.uri.as_ref().clone())
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g
@@ -1812,7 +1810,7 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     })
 }
 
-async fn references_impl(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
     fn all_sources(f: &Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
         let mut loads = FxHashSet::default();
@@ -1833,57 +1831,35 @@ async fn references_impl(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocati
     };
     let decl_uri = &decl_loc.uri;
 
-    let locs: Vec<_> = {
-        let locs: Vec<_> = db
-            .files()
-            .iter()
-            .filter(|f| {
-                // If the file we look at does not load the file with the decl, no references to it
-                // can exist.
-                f == &decl_uri || all_sources(f, db).contains(decl_uri)
-            })
-            .map(|f| {
-                let snap = snapshot(db);
-                let decl = Arc::clone(&decl);
-                let f = Arc::clone(f);
-                tokio::spawn(async move {
-                    Some(
-                        snap.ids(&f)
-                            .iter()
-                            .filter_map(|loc| {
-                                // Prefilter ids so that they at least somewhere contain the text
-                                // of the decl.
-                                let tree = snap.parse(&loc.uri)?;
-                                let source = snap.source(&loc.uri)?;
-                                let txt = tree
-                                    .root_node()
-                                    .named_descendant_for_point_range(loc.range)?
-                                    .utf8_text(source.as_bytes())
-                                    .ok()?;
-                                if !txt.contains(decl.id.as_str()) {
-                                    return None;
-                                }
+    db.files()
+        .iter()
+        .filter(|f| f == &decl_uri || all_sources(f, db).contains(decl_uri))
+        .flat_map(|f| {
+            let uris = db
+                .ids(f)
+                .iter()
+                .filter_map(|loc| {
+                    let tree = db.parse(&loc.uri)?;
+                    let source = db.source(&loc.uri)?;
+                    let txt = tree
+                        .root_node()
+                        .named_descendant_for_point_range(loc.range)?
+                        .utf8_text(source.as_bytes())
+                        .ok()?;
+                    if !txt.contains(decl.id.as_str()) {
+                        return None;
+                    }
 
-                                snap.resolve(loc.clone()).and_then(|resolved| {
-                                    if resolved != decl {
-                                        return None;
-                                    }
-
-                                    Some(loc.clone())
-                                })
-                            })
-                            .collect::<Vec<_>>(),
-                    )
+                    db.resolve(loc).and_then(|resolved| {
+                        if resolved.as_ref() != decl {
+                            return None;
+                        }
+                        Some(loc.clone())
+                    })
                 })
-            })
-            .collect();
-        futures::future::join_all(locs).await
-    };
-
-    locs.into_iter()
-        .filter_map(std::result::Result::ok)
-        .flatten()
-        .flatten()
+                .collect::<Vec<_>>();
+            uris
+        })
         .collect()
 }
 

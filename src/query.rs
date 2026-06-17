@@ -105,8 +105,16 @@ impl Ord for Location {
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Location {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        NodeLocation::from_range(Arc::clone(&self.uri), self.range).hash(state);
-        NodeLocation::from_range(Arc::clone(&self.uri), self.selection_range).hash(state);
+        self.range.start.line.hash(state);
+        self.range.start.character.hash(state);
+        self.range.end.line.hash(state);
+        self.range.end.character.hash(state);
+        self.uri.hash(state);
+        self.selection_range.start.line.hash(state);
+        self.selection_range.start.character.hash(state);
+        self.selection_range.end.line.hash(state);
+        self.selection_range.end.character.hash(state);
+        self.uri.hash(state);
         self.uri.hash(state);
     }
 }
@@ -1217,6 +1225,8 @@ pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[Funct
         .capture_index_for_name("fn")
         .expect("call should be captured");
 
+    let iuri = Arc::clone(&uri);
+
     Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source.as_bytes())
@@ -1227,9 +1237,9 @@ pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[Funct
                         .named_child("expr_list")?
                         .named_children("expr")
                         .into_iter()
-                        .map(|a| NodeLocation::from_node(Arc::clone(&uri), a))
+                        .map(|a| NodeLocation::from_node(Arc::clone(&iuri), a))
                         .collect::<Vec<_>>();
-                    Some((NodeLocation::from_node(Arc::clone(&uri), n), args))
+                    Some((NodeLocation::from_node(Arc::clone(&iuri), n), args))
                 })?;
 
                 Some(FunctionCall { f, args })
@@ -1323,12 +1333,14 @@ pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[NodeLocation]> {
         .capture_index_for_name("id")
         .expect("id should be captured");
 
+    let iuri = Arc::clone(&uri);
+
     Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m = m.nodes_for_capture_index(c_id).next()?;
-                Some(NodeLocation::from_node(Arc::clone(&uri), m.into()))
+                Some(NodeLocation::from_node(Arc::clone(&iuri), m.into()))
             })
             .cloned()
             .collect::<Vec<_>>(),

@@ -9,6 +9,7 @@ pub(crate) use crate::{
 };
 use itertools::Itertools;
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 use salsa::Setter;
 use serde::Deserialize;
@@ -53,8 +54,7 @@ pub(crate) use test::TestDatabase;
 #[salsa::db]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    pub(crate) sources: HashMap<Uri, SourceFile>,
-    pub(crate) files: FxHashSet<Uri>,
+    pub(crate) sources: FxHashMap<Uri, SourceFile>,
     pub(crate) prefixes: Vec<PathBuf>,
     pub(crate) config_revision: Option<ConfigRevision>,
     pub(crate) workspace_folders: Arc<[Uri]>,
@@ -84,10 +84,8 @@ impl Database {
                         }
                         self.versions.insert(uri.clone(), *ver);
                     }
-                    self.files.insert(uri.clone());
                 }
                 SourceUpdate::Remove(uri) => {
-                    self.files.remove(uri);
                     self.versions.remove(uri);
                     self.sources.remove(uri);
                 }
@@ -126,7 +124,6 @@ impl Default for Database {
         let mut db = Self {
             storage: salsa::Storage::default(),
             sources: HashMap::default(),
-            files: FxHashSet::default(),
             prefixes: Vec::default(),
             config_revision: None,
             workspace_folders: Arc::default(),
@@ -144,7 +141,6 @@ impl Clone for Database {
         Self {
             storage: self.storage.clone(),
             sources: self.sources.clone(),
-            files: self.files.clone(),
             prefixes: self.prefixes.clone(),
             config_revision: self.config_revision,
             workspace_folders: Arc::clone(&self.workspace_folders),
@@ -176,7 +172,7 @@ impl crate::Db for Database {
     }
 
     fn files(&self) -> Arc<[Uri]> {
-        Arc::from(self.files.iter().cloned().collect::<Vec<_>>())
+        self.sources.keys().cloned().collect()
     }
 
     fn prefixes(&self) -> Vec<PathBuf> {

@@ -216,13 +216,6 @@ impl Database {
         crate::query::decls(self, sf)
     }
 
-    pub(crate) fn loads(&self, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
-        let Some(sf) = self.source_file(uri) else {
-            return Arc::default();
-        };
-        crate::query::loads(self, sf)
-    }
-
     pub(crate) fn function_calls(&self, uri: &Arc<Uri>) -> Arc<[query::FunctionCall]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
@@ -293,13 +286,6 @@ impl Database {
         crate::ast::resolve_id(self, id, scope)
     }
 
-    pub(crate) fn resolve_type(
-        &self,
-        typ: query::Type,
-        scope: Option<query::NodeLocation>,
-    ) -> Option<Arc<Decl>> {
-        crate::ast::resolve_type(self, typ, scope)
-    }
 }
 
 #[derive(Debug, Default)]

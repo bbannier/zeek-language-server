@@ -215,7 +215,7 @@ fn complete_field(
         node = stem.unwrap_or(node);
     }
 
-    if let Some(r) = state.resolve(&NodeLocation::from_node(Arc::clone(uri), node)) {
+    if let Some(r) = state.resolve(&NodeLocation::from_node(uri, node)) {
         let decl = state.typ(r).and_then(|d| match &d.kind {
             // If the decl refers to a field get the decl for underlying its type instead.
             DeclKind::Field(_) => state.typ(d),
@@ -445,7 +445,7 @@ fn complete_record_initializer(
         None
     };
 
-    let type_loc = NodeLocation::from_node(Arc::clone(uri), node);
+    let type_loc = NodeLocation::from_node(uri, node);
     let type_ = state.resolve_id(type_?.into(), &type_loc)?;
 
     let DeclKind::Type(fields) = &type_.kind else {

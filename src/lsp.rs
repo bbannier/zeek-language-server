@@ -4,7 +4,7 @@ pub(crate) use crate::{
     ConfigRevision, InternedStr, SourceFile,
     ast::load_to_file,
     complete::complete,
-    query::{self, Decl, DeclKind, ModuleId, NodeLocation},
+    query::{self, Decl, DeclKind, ModuleId, NodeLocation, OwnedLocation},
     zeek,
 };
 use itertools::Itertools;
@@ -216,7 +216,7 @@ impl Database {
         crate::query::decls(self, sf)
     }
 
-    pub(crate) fn function_calls(&self, uri: &Arc<Uri>) -> Arc<[query::FunctionCall]> {
+    pub(crate) fn function_calls(&self, uri: &Arc<Uri>) -> Arc<[query::OwnedFunctionCall]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
         };
@@ -230,7 +230,7 @@ impl Database {
         crate::query::untyped_var_decls(self, sf)
     }
 
-    pub(crate) fn ids(&self, uri: &Arc<Uri>) -> Arc<[query::NodeLocation]> {
+    pub(crate) fn ids(&self, uri: &Arc<Uri>) -> Arc<[query::OwnedLocation]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
         };
@@ -270,7 +270,7 @@ impl Database {
         crate::ast::possible_loads(self, uri)
     }
 
-    pub(crate) fn resolve(&self, node: &query::NodeLocation) -> Option<Arc<Decl>> {
+    pub(crate) fn resolve(&self, node: &query::NodeLocation<'_>) -> Option<Arc<Decl>> {
         crate::ast::resolve(self, node)
     }
 
@@ -281,7 +281,7 @@ impl Database {
     pub(crate) fn resolve_id(
         &self,
         id: InternedStr,
-        scope: &query::NodeLocation,
+        scope: &query::NodeLocation<'_>,
     ) -> Option<Arc<Decl>> {
         crate::ast::resolve_id(self, id, scope)
     }
@@ -810,8 +810,7 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = &state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node))
-                {
+                if let Some(decl) = &state.resolve(&NodeLocation::from_node(&uri, node)) {
                     let kind = match decl.kind {
                         DeclKind::Global => "global",
                         DeclKind::Option => "option",
@@ -1053,7 +1052,7 @@ impl LanguageServer for Backend {
         let location = {
             match node.kind() {
                 "id" => state
-                    .resolve(&NodeLocation::from_node(Arc::clone(&uri), node))
+                    .resolve(&NodeLocation::from_node(&uri, node))
                     .and_then(|d| {
                         let loc = &d.loc.as_ref()?;
                         Some(Location::new((*loc.uri).clone(), loc.range))
@@ -1142,7 +1141,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let loc = NodeLocation::from_node(Arc::clone(&uri), node);
+        let loc = NodeLocation::from_node(&uri, node);
         let Some(f) = state.resolve_id(id.into(), &loc) else {
             return Ok(None);
         };
@@ -1316,7 +1315,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(&uri, node)) else {
             return Ok(None);
         };
 
@@ -1373,7 +1372,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(&uri, node)) else {
             return Ok(None);
         };
 
@@ -1474,7 +1473,13 @@ impl LanguageServer for Backend {
                     let snap = snapshot(&state);
 
                     tokio::spawn(async move {
-                        match &snap.resolve(&c.f)?.kind {
+                        match &snap
+                            .resolve(&NodeLocation {
+                                range: c.f.range,
+                                uri: &c.f.uri,
+                            })?
+                            .kind
+                        {
                             DeclKind::FuncDef(s)
                             | DeclKind::FuncDecl(s)
                             | DeclKind::HookDef(s)
@@ -1599,7 +1604,7 @@ impl LanguageServer for Backend {
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(&uri, node)) else {
             return Ok(None);
         };
 
@@ -1627,7 +1632,7 @@ impl LanguageServer for Backend {
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(&NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = state.resolve(&NodeLocation::from_node(&uri, node)) else {
             return Ok(None);
         };
 
@@ -1810,7 +1815,7 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     })
 }
 
-fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<NodeLocation> {
+fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<OwnedLocation> {
     /// Helper to compute all sources reachable from a given file.
     fn all_sources(f: &Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
         let mut loads = FxHashSet::default();
@@ -1850,7 +1855,11 @@ fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<NodeLocation> {
                         return None;
                     }
 
-                    db.resolve(loc).and_then(|resolved| {
+                    db.resolve(&NodeLocation {
+                        range: loc.range,
+                        uri: &loc.uri,
+                    })
+                    .and_then(|resolved| {
                         if resolved.as_ref() != decl {
                             return None;
                         }

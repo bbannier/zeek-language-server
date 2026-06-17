@@ -175,10 +175,43 @@ impl Hash for Decl {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionCall {
-    pub f: NodeLocation,
-    pub args: Vec<NodeLocation>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct OwnedLocation {
+    pub range: Range,
+    pub uri: Arc<Uri>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NodeLocation<'a> {
+    pub range: Range,
+    pub uri: &'a Arc<Uri>,
+}
+
+impl<'a> NodeLocation<'a> {
+    #[must_use]
+    pub fn from_node(uri: &'a Arc<Uri>, node: Node) -> Self {
+        Self {
+            range: node.range(),
+            uri,
+        }
+    }
+
+    #[must_use]
+    pub fn from_range(uri: &'a Arc<Uri>, range: Range) -> Self {
+        Self { range, uri }
+    }
+}
+
+#[allow(clippy::derived_hash_with_manual_eq)]
+impl Hash for NodeLocation<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.range.start.line.hash(state);
+        self.range.start.character.hash(state);
+        self.range.end.line.hash(state);
+        self.range.end.character.hash(state);
+
+        self.uri.hash(state);
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -199,36 +232,9 @@ impl Ord for OrderedRange {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NodeLocation {
-    pub range: Range,
-    pub uri: Arc<Uri>,
-}
-
-impl NodeLocation {
-    #[must_use]
-    pub fn from_node(uri: Arc<Uri>, node: Node) -> Self {
-        Self {
-            range: node.range(),
-            uri,
-        }
-    }
-
-    #[must_use]
-    pub fn from_range(uri: Arc<Uri>, range: Range) -> Self {
-        Self { range, uri }
-    }
-}
-
-#[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for NodeLocation {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.range.start.line.hash(state);
-        self.range.start.character.hash(state);
-        self.range.end.line.hash(state);
-        self.range.end.character.hash(state);
-
-        self.uri.hash(state);
-    }
+pub(crate) struct OwnedFunctionCall {
+    pub f: OwnedLocation,
+    pub args: Vec<OwnedLocation>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -1207,7 +1213,7 @@ pub(crate) fn loads(db: &dyn Db, source_file: SourceFile) -> Vec<InternedStr> {
 }
 
 #[salsa::tracked(no_eq)]
-pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[FunctionCall]> {
+pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[OwnedFunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
@@ -1237,12 +1243,21 @@ pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[Funct
                         .named_child("expr_list")?
                         .named_children("expr")
                         .into_iter()
-                        .map(|a| NodeLocation::from_node(Arc::clone(&iuri), a))
+                        .map(|a| OwnedLocation {
+                            range: a.range(),
+                            uri: Arc::clone(&iuri),
+                        })
                         .collect::<Vec<_>>();
-                    Some((NodeLocation::from_node(Arc::clone(&iuri), n), args))
+                    Some((
+                        OwnedLocation {
+                            range: n.range(),
+                            uri: Arc::clone(&iuri),
+                        },
+                        args,
+                    ))
                 })?;
 
-                Some(FunctionCall { f, args })
+                Some(OwnedFunctionCall { f, args })
             })
             .cloned()
             .collect::<Vec<_>>(),
@@ -1315,7 +1330,7 @@ pub(crate) fn untyped_var_decls(db: &dyn Db, source_file: SourceFile) -> Arc<[De
 }
 
 #[salsa::tracked(no_eq)]
-pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[NodeLocation]> {
+pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[OwnedLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
@@ -1340,7 +1355,11 @@ pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[NodeLocation]> {
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m = m.nodes_for_capture_index(c_id).next()?;
-                Some(NodeLocation::from_node(Arc::clone(&iuri), m.into()))
+                let n: Node = m.into();
+                Some(OwnedLocation {
+                    range: n.range(),
+                    uri: Arc::clone(&iuri),
+                })
             })
             .cloned()
             .collect::<Vec<_>>(),

@@ -53,8 +53,7 @@ pub(crate) use test::TestDatabase;
 #[salsa::db]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    pub(crate) sources: HashMap<Uri, Str>,
-    pub(crate) source_files: HashMap<Uri, SourceFile>,
+    pub(crate) sources: HashMap<Uri, SourceFile>,
     pub(crate) files: FxHashSet<Uri>,
     pub(crate) prefixes: Vec<PathBuf>,
     pub(crate) config_revision: Option<ConfigRevision>,

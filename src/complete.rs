@@ -539,7 +539,7 @@ fn complete_any(state: &Database, root: Node, mut node: Node, uri: &Uri) -> Vec<
     let text_at_completion = completion_text(node, &source, true);
 
     loop {
-        for d in query::decls_(node, &uri, source.as_bytes()) {
+        for d in query::decls_(node, uri, source.as_bytes()) {
             // Slightly fudge the ID we use for local declarations by removing the current
             // module from the FQID.
             let fqid = match current_module {

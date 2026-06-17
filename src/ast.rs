@@ -55,7 +55,7 @@ pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: &NodeLocation) -> 
     let mut scope = scope_node;
     loop {
         decls.extend(
-            query::decls_(scope, &uri, source.as_bytes())
+            query::decls_(scope, uri, source.as_bytes())
                 .into_iter()
                 .filter(|d| d.id == id || d.fqid == id)
                 .filter(|d| {

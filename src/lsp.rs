@@ -593,7 +593,7 @@ impl LanguageServer for Backend {
                 name: env!("CARGO_PKG_NAME").to_string(),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
-        ..InitializeResult::default()
+            ..InitializeResult::default()
         })
     }
 

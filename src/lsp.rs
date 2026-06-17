@@ -477,7 +477,7 @@ impl LanguageServer for Backend {
             }
         }
 
-        let initialization_options = self.state.lock().await.initialization_options.clone();
+        let initialization_options = self.state.lock().await.initialization_options;
         let has_zeek_format = zeek::has_format().await;
 
         Ok(InitializeResult {

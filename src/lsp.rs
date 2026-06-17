@@ -107,7 +107,7 @@ impl Database {
                     sf.set_text(&mut *self).to(source.clone());
                 } else {
                     let sf = SourceFile::new(&*self, uri.clone(), source.clone());
-                    self.source_files.insert(uri.clone(), sf);
+                    self.sources.insert(uri.clone(), sf);
                 }
             }
         }

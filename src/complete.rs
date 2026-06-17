@@ -20,9 +20,9 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let source = state.source(Arc::clone(&uri))?;
+    let source = state.source(&uri)?;
 
-    let tree = state.parse(Arc::clone(&uri))?;
+    let tree = state.parse(&uri)?;
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
@@ -96,7 +96,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
             Some(state
-                .possible_loads(Arc::clone(&uri))
+                .possible_loads(&uri)
                 .iter()
                 .map(|load| CompletionItem {
                     label: load.to_string(),
@@ -117,13 +117,13 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 .and_then(|line| {
                     static RE: LazyLock<regex::Regex> = LazyLock::new(|| { regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp") });
                     Some(RE.captures(line)?.get(1)?.as_str())
-                }).map(|kind| complete_from_decls(state, Arc::clone(&uri), kind))
+                }).map(|kind| complete_from_decls(state, &uri, kind))
         } else {
             None
         }
     ).or_else(||
         // We are just completing some arbitrary identifier at this point.
-        Some(complete_any(state, root, node, uri))
+        Some(complete_any(state, root, node, &uri))
     );
 
     // Snippet completions are always added.
@@ -245,9 +245,9 @@ fn complete_field(
     None
 }
 
-fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
+fn complete_from_decls(state: &Database, uri: &Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
     let implicit_decls = state.implicit_decls();
-    let explicit_decls_recursive = state.explicit_decls_recursive(Arc::clone(&uri));
+    let explicit_decls_recursive = state.explicit_decls_recursive(uri);
 
     state
         .decls(uri)
@@ -269,8 +269,8 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
                         .iter()
                         .filter_map(|d| {
                             let loc = &d.loc.as_ref()?;
-                            let tree = state.parse(Arc::clone(&loc.uri))?;
-                            let source = state.source(Arc::clone(&loc.uri))?;
+                            let tree = state.parse(&loc.uri)?;
+                            let source = state.source(&loc.uri)?;
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -415,7 +415,7 @@ fn complete_record_initializer(
     node: Node,
     uri: Arc<Uri>,
 ) -> Option<Vec<CompletionItem>> {
-    let source = state.source(Arc::clone(&uri))?;
+    let source = state.source(&uri)?;
 
     // The member always needs to be an id.
     let id = match node.kind() {
@@ -527,9 +527,9 @@ fn complete_any(
     state: &Database,
     root: Node,
     mut node: Node,
-    uri: Arc<Uri>,
+    uri: &Arc<Uri>,
 ) -> Vec<CompletionItem> {
-    let Some(source) = state.source(Arc::clone(&uri)) else {
+    let Some(source) = state.source(&uri) else {
         return Vec::new();
     };
 
@@ -563,7 +563,7 @@ fn complete_any(
         };
     }
 
-    let loaded_decls = state.explicit_decls_recursive(uri);
+    let loaded_decls = state.explicit_decls_recursive(&uri);
     let implicit_decls = state.implicit_decls();
 
     let other_decls = loaded_decls

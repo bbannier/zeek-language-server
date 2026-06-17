@@ -30,7 +30,7 @@ impl From<tree_sitter::Tree> for Tree {
 impl Eq for Tree {}
 
 #[instrument(skip(db))]
-pub(crate) fn parse(db: &Database, file: Arc<Uri>) -> Option<Arc<Tree>> {
+pub(crate) fn parse(db: &Database, file: &Arc<Uri>) -> Option<Arc<Tree>> {
     let mut parser = Parser::new();
     parser
         .set_language(&language_zeek())
@@ -63,7 +63,7 @@ mod test {
 
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = parse(&db.0, uri);
+        let tree = parse(&db.0, &uri);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
     }

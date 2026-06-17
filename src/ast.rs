@@ -14,16 +14,15 @@ use crate::{
     zeek,
 };
 
-#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)]
 #[instrument(skip(db))]
-
 pub(crate) fn resolve_id(db: &Database, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
-    let tree = db.parse(Arc::clone(&uri))?;
+    let tree = db.parse(&uri)?;
     let scope = tree
         .root_node()
         .named_descendant_for_point_range(scope.range)?;
-    let source = db.source(Arc::clone(&uri))?;
+    let source = db.source(&uri)?;
 
     let node = scope;
 
@@ -88,9 +87,9 @@ pub(crate) fn resolve_id(db: &Database, id: InternedStr, scope: NodeLocation) ->
         return Some(Arc::new(r.clone()));
     }
 
-    let decls = db.decls(Arc::clone(&uri));
+    let decls = db.decls(&uri);
     let implicit_decls = db.implicit_decls();
-    let explicit_decls_recursive = db.explicit_decls_recursive(Arc::clone(&uri));
+    let explicit_decls_recursive = db.explicit_decls_recursive(&uri);
     let last_decl = if let Some(redef) = &result {
         redef
     } else {
@@ -117,7 +116,7 @@ pub(crate) fn resolve_id(db: &Database, id: InternedStr, scope: NodeLocation) ->
 
     if is_redef(last_decl) {
         let redef = last_decl;
-        let decls = resolve_redef(db, redef, uri);
+        let decls = resolve_redef(db, redef, &uri);
 
         let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
         let redefs = decls
@@ -150,7 +149,6 @@ pub(crate) fn resolve_type(
     typ: Type,
     scope: Option<NodeLocation>,
 ) -> Option<Arc<Decl>> {
-    #[allow(clippy::needless_pass_by_value)]
     fn builtin_type(id: InternedStr, typ: Type) -> Arc<Decl> {
         Arc::new(Decl {
             module: query::ModuleId::Global,
@@ -232,7 +230,7 @@ pub(crate) fn resolve_type(
     })
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)]
 #[instrument(skip(db))]
 
 pub(crate) fn typ(db: &Database, decl: Arc<Decl>) -> Option<Arc<Decl>> {
@@ -247,7 +245,7 @@ pub(crate) fn typ(db: &Database, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     };
     let uri = &loc.uri;
 
-    let tree = db.parse(Arc::clone(uri))?;
+    let tree = db.parse(uri)?;
 
     let node = tree
         .root_node()
@@ -308,7 +306,7 @@ pub(crate) fn typ(db: &Database, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     }
 
     let make_typ = |typ| {
-        let source = db.source(Arc::clone(uri))?;
+        let source = db.source(uri)?;
         query::typ(typ, source.as_bytes())
             .and_then(|t| db.resolve_type(t, Some(NodeLocation::from_node(Arc::clone(uri), typ))))
     };
@@ -378,11 +376,11 @@ pub(crate) fn typ(db: &Database, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
 pub(crate) fn resolve(db: &Database, location: NodeLocation) -> Option<Arc<Decl>> {
     let uri = Arc::clone(&location.uri);
-    let tree = db.parse(Arc::clone(&uri))?;
+    let tree = db.parse(&uri)?;
     let node = tree
         .root_node()
         .named_descendant_for_point_range(location.range)?;
-    let source = db.source(Arc::clone(&uri))?;
+    let source = db.source(&uri)?;
 
     let id: InternedStr = node.utf8_text(source.as_bytes()).ok()?.into();
 
@@ -541,16 +539,14 @@ pub(crate) fn resolve(db: &Database, location: NodeLocation) -> Option<Arc<Decl>
     None
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-
-pub(crate) fn loaded_files(db: &Database, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+pub(crate) fn loaded_files(db: &Database, uri: &Arc<Uri>) -> Arc<[Arc<Uri>]> {
     let files = db.files();
 
     let prefixes = db.prefixes();
 
     let loads: Vec<_> = db
-        .loads(Arc::clone(&uri))
+        .loads(uri)
         .iter()
         .map(|load| PathBuf::from(load.as_str()))
         .collect();
@@ -568,14 +564,14 @@ pub(crate) fn loaded_files(db: &Database, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
 
 #[instrument(skip(db))]
 
-pub(crate) fn loaded_files_recursive(db: &Database, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+pub(crate) fn loaded_files_recursive(db: &Database, url: &Arc<Uri>) -> Arc<[Arc<Uri>]> {
     let mut files: Vec<_> = db.loaded_files(url).iter().cloned().collect();
 
     loop {
         let mut new_files = Vec::new();
 
         for f in &files {
-            for load in db.loaded_files(Arc::clone(f)).as_ref() {
+            for load in db.loaded_files(f).as_ref() {
                 if !files.iter().any(|f| f.as_ref() == load.as_ref()) {
                     new_files.push(Arc::clone(load));
                 }
@@ -596,13 +592,13 @@ pub(crate) fn loaded_files_recursive(db: &Database, url: Arc<Uri>) -> Arc<[Arc<U
 
 #[instrument(skip(db))]
 
-pub(crate) fn explicit_decls_recursive(db: &Database, uri: Arc<Uri>) -> Arc<[Decl]> {
-    let d = db.decls(Arc::clone(&uri));
+pub(crate) fn explicit_decls_recursive(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
+    let d = db.decls(uri);
     let decls1 = d.iter().cloned();
 
     let d = db.loaded_files_recursive(uri);
     let decls2 = d.iter().flat_map(|load| {
-        let decls: Vec<_> = db.decls(Arc::clone(load)).iter().cloned().collect();
+        let decls: Vec<_> = db.decls(load).iter().cloned().collect();
         decls
     });
 
@@ -657,7 +653,7 @@ pub(crate) fn implicit_decls(db: &Database) -> Arc<[Decl]> {
         .cloned()
         .flat_map(|load| {
             let xs: Vec<_> = db
-                .explicit_decls_recursive(Arc::clone(&load))
+                .explicit_decls_recursive(&load)
                 .iter()
                 .cloned()
                 .collect();
@@ -667,10 +663,8 @@ pub(crate) fn implicit_decls(db: &Database) -> Arc<[Decl]> {
         .collect()
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-
-pub(crate) fn possible_loads(db: &Database, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+pub(crate) fn possible_loads(db: &Database, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(path) = uri.to_file_path() else {
         return Arc::default();
     };
@@ -719,13 +713,13 @@ pub fn is_redef(d: &Decl) -> bool {
 }
 
 #[instrument(skip(db))]
-fn resolve_redef(db: &Database, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
+fn resolve_redef(db: &Database, redef: &Decl, scope: &Arc<Uri>) -> Arc<[Decl]> {
     if !is_redef(redef) {
         return Arc::default();
     }
 
     let implicit_decls = db.implicit_decls();
-    let loaded_decls = db.explicit_decls_recursive(Arc::clone(&scope));
+    let loaded_decls = db.explicit_decls_recursive(scope);
     let decls = db.decls(scope);
 
     implicit_decls
@@ -838,7 +832,7 @@ mod test {
         let d = Uri::from_file_path("/tmp/d.zeek").unwrap();
         db.add_file(d, "");
 
-        assert_debug_snapshot!(ast::loaded_files_recursive(&db.0, a));
+        assert_debug_snapshot!(ast::loaded_files_recursive(&db.0, &a));
     }
 
     #[test]
@@ -864,7 +858,7 @@ mod test {
              @load p2/p2",
         );
 
-        assert_debug_snapshot!(ast::loaded_files(&db.0, foo));
+        assert_debug_snapshot!(ast::loaded_files(&db.0, &foo));
     }
 
     #[test]
@@ -902,8 +896,8 @@ y$yx$f1;
 ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let node = root
@@ -980,8 +974,8 @@ global x = fun();
 x$f;",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1004,8 +998,8 @@ x$f;",
             ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1036,8 +1030,8 @@ x$f;",
 x::x;",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1068,8 +1062,8 @@ x::x;",
 y;",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1100,8 +1094,8 @@ x$x1;
 x$x2;",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let x = root
@@ -1162,8 +1156,8 @@ global e_foo: E = eC;
 ",
         );
 
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
+        let source = db.0.source(&uri).unwrap();
 
         let type_ = tree
             .root_node()
@@ -1200,8 +1194,8 @@ redef record connection += { name: string; };
 global c: connection;",
         );
 
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
+        let source = db.0.source(&uri).unwrap();
 
         let c = tree
             .root_node()
@@ -1229,8 +1223,8 @@ function f(a: A) {
 }",
         );
 
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
+        let source = db.0.source(&uri).unwrap();
 
         let g = tree
             .root_node()
@@ -1286,8 +1280,8 @@ global x2 = f2();
 ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let x1 = root
@@ -1341,8 +1335,8 @@ global x2 = f2();
             ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         {
@@ -1406,8 +1400,8 @@ global x2 = f2();
              }",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1432,8 +1426,8 @@ global x2 = f2();
              }",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1478,8 +1472,8 @@ global x2 = f2();
             ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         for (i, line) in source
@@ -1528,8 +1522,8 @@ global x2 = f2();
             ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1562,8 +1556,8 @@ global x2 = f2();
             ",
         );
 
-        let source = db.0.source(Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).unwrap();
+        let source = db.0.source(&uri).unwrap();
+        let tree = crate::parse::parse(&db.0, &uri).unwrap();
         let root = tree.root_node();
 
         let x = root

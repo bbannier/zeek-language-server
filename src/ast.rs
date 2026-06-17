@@ -87,7 +87,7 @@ pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: &NodeLocation) -> 
         return Some(Arc::new(r.clone()));
     }
 
-    let sf = db.source_file(&uri)?;
+    let sf = db.source_file(uri)?;
     let decls = crate::query::decls(db, sf);
     let implicit_decls = crate::ast::implicit_decls(db);
     let explicit_decls_recursive = crate::ast::explicit_decls_recursive(db, sf);
@@ -180,7 +180,7 @@ pub(crate) fn resolve_type(
         Type::Table(ks, v) => {
             let ks: Vec<_> = ks
                 .iter()
-                .map(|k| crate::ast::resolve_type(db, k.clone(), scope.clone()).map(|d| d.fqid))
+                .map(|k| crate::ast::resolve_type(db, k.clone(), scope).map(|d| d.fqid))
                 .collect::<Option<_>>()?;
             let ks = ks.into_iter().join(", ");
             let v = crate::ast::resolve_type(db, (**v).clone(), scope).map(|d| d.fqid)?;
@@ -189,7 +189,7 @@ pub(crate) fn resolve_type(
         Type::Set(xs) => {
             let xs = xs
                 .iter()
-                .map(|x| crate::ast::resolve_type(db, x.clone(), scope.clone()).map(|d| d.fqid))
+                .map(|x| crate::ast::resolve_type(db, x.clone(), scope).map(|d| d.fqid))
                 .collect::<Option<Vec<_>>>()?;
             let xs = xs.into_iter().join(", ");
             builtin_type(format!("set[{xs}]").into(), typ)

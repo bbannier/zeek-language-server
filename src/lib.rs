@@ -27,11 +27,6 @@ pub(crate) struct DeclFqid {
     pub(crate) scope: SourceFile,
 }
 
-#[salsa::input(singleton)]
-pub(crate) struct ConfigRevision {
-    pub(crate) revision: u64,
-}
-
 #[salsa::db]
 pub(crate) trait Db: salsa::Database {
     fn source_file(&self, uri: &Uri) -> Option<SourceFile>;

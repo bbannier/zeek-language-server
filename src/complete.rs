@@ -544,7 +544,7 @@ fn complete_any(state: &Database, root: Node, mut node: Node, uri: &Uri) -> Vec<
             // module from the FQID.
             let fqid = match current_module {
                 Some(mid) => {
-                    let id = &*d.fqid;
+                    let id = d.fqid.as_str();
                     id.strip_prefix(&format!("{mid}::")).unwrap_or(id)
                 }
                 None => &d.fqid,

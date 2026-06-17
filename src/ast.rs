@@ -444,7 +444,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
 
             match &type_decl.kind {
                 DeclKind::Type(fields) => {
-                    return fields.iter().find(|f| &*f.id == id).cloned().map(Arc::new);
+                    return fields.iter().find(|f| f.id == id).cloned().map(Arc::new);
                 }
                 DeclKind::Field(_) => return crate::ast::typ(db, type_decl),
                 _ => return None,
@@ -578,7 +578,7 @@ pub(crate) fn loaded_files_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Uri]> 
                 continue;
             };
             let loads = loaded_files(db, sf);
-            for load in &*loads {
+            for load in loads.iter() {
                 if !files.contains(load) {
                     new_files.push(load.clone());
                 }
@@ -625,7 +625,7 @@ pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Uri]> {
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
         let files = db.files();
-        for f in &*files {
+        for f in files.iter() {
             let Some(path) = f.to_file_path() else {
                 continue;
             };
@@ -1294,7 +1294,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
         assert_eq!(
-            &*typ(
+            typ(
                 &db.0,
                 ast::resolve(&db.0, &NodeLocation::from_node(&uri, x1)).unwrap()
             )
@@ -1308,7 +1308,7 @@ global x2 = f2();
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
         assert_eq!(
-            &*typ(
+            typ(
                 &db.0,
                 ast::resolve(&db.0, &NodeLocation::from_node(&uri, x2)).unwrap()
             )

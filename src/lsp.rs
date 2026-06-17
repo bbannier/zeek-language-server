@@ -1,7 +1,7 @@
 use crate::Db;
 use crate::Str;
 pub(crate) use crate::{
-    ConfigRevision, InternedStr, SourceFile,
+    InternedStr, SourceFile,
     ast::load_to_file,
     complete::complete,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation, OwnedLocation},
@@ -52,11 +52,11 @@ use walkdir::WalkDir;
 pub(crate) use test::TestDatabase;
 
 #[salsa::db]
+// FIXME(bbannier): can this derive Default?
 pub struct Database {
     storage: salsa::Storage<Self>,
     pub(crate) sources: FxHashMap<Uri, SourceFile>,
     pub(crate) prefixes: Vec<PathBuf>,
-    pub(crate) config_revision: Option<ConfigRevision>,
     pub(crate) workspace_folders: Arc<[Uri]>,
     pub(crate) capabilities: Arc<ClientCapabilities>,
     pub(crate) initialization_options: Arc<InitializationOptions>,
@@ -78,34 +78,25 @@ impl Database {
                     if let Some(sf) = self.sources.get(uri).copied() {
                         sf.set_text(&mut *self).to(source.clone());
                     } else {
-                        let sf = SourceFile::new(&*self, uri.clone(), source.clone());
+                        let sf = SourceFile::new(self, uri.clone(), source.clone());
                         self.sources.insert(uri.clone(), sf);
                     }
                 }
             }
-        }
-
-        // Bump config revision when files change.
-        if let Some(cr) = &self.config_revision {
-            let new_revision = cr.revision(&*self) + 1;
-            cr.set_revision(&mut *self).to(new_revision);
         }
     }
 }
 
 impl Default for Database {
     fn default() -> Self {
-        let mut db = Self {
+        Self {
             storage: salsa::Storage::default(),
             sources: HashMap::default(),
             prefixes: Vec::default(),
-            config_revision: None,
             workspace_folders: Arc::default(),
             capabilities: Arc::default(),
             initialization_options: Arc::new(InitializationOptions::new()),
-        };
-        db.config_revision = Some(ConfigRevision::new(&db, 0));
-        db
+        }
     }
 }
 
@@ -115,7 +106,6 @@ impl Clone for Database {
             storage: self.storage.clone(),
             sources: self.sources.clone(),
             prefixes: self.prefixes.clone(),
-            config_revision: self.config_revision,
             workspace_folders: Arc::clone(&self.workspace_folders),
             capabilities: Arc::clone(&self.capabilities),
             initialization_options: Arc::clone(&self.initialization_options),

@@ -429,7 +429,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
 
             return node
                 .named_child_not("nl")
-                .and_then(|c| crate::ast::resolve(db, &NodeLocation::from_node(&location.uri, c)));
+                .and_then(|c| crate::ast::resolve(db, &NodeLocation::from_node(location.uri, c)));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
@@ -439,7 +439,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
 
             let id = rhs.utf8_text(source.as_bytes()).ok()?;
 
-            let var_decl = crate::ast::resolve(db, &NodeLocation::from_node(&location.uri, lhs))?;
+            let var_decl = crate::ast::resolve(db, &NodeLocation::from_node(location.uri, lhs))?;
             let type_decl = crate::ast::typ(db, var_decl)?;
 
             match &type_decl.kind {
@@ -468,7 +468,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
                 let type_ = expr
                     .named_child("id")
                     .and_then(|id| {
-                        crate::ast::resolve(db, &NodeLocation::from_node(&location.uri, id))
+                        crate::ast::resolve(db, &NodeLocation::from_node(location.uri, id))
                     })
                     // Otherwise check the RHS for expressions like `local a: A = [$abc=123]`.
                     .or_else(|| {
@@ -477,11 +477,11 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
                         let type_id = parent.named_child("expr").and_then(|c| c.named_child("id"));
 
                         if let Some(id) = type_id {
-                            crate::ast::resolve(db, &NodeLocation::from_node(&location.uri, id))
+                            crate::ast::resolve(db, &NodeLocation::from_node(location.uri, id))
                                 .and_then(|decl| crate::ast::typ(db, decl))
                         } else if parent.kind() == "initializer" {
                             parent.prev_sibling().and_then(|t| {
-                                crate::ast::resolve(db, &NodeLocation::from_node(&location.uri, t))
+                                crate::ast::resolve(db, &NodeLocation::from_node(location.uri, t))
                             })
                         } else {
                             None
@@ -505,7 +505,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
     if let Some(p) = node.parent()
         && matches!(p.kind(), "field_access" | "field_check")
     {
-        return crate::ast::resolve(db, &NodeLocation::from_node(&location.uri, p));
+        return crate::ast::resolve(db, &NodeLocation::from_node(location.uri, p));
     }
 
     // Try to find a decl with name of the given node up the tree.
@@ -514,7 +514,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
         // return the declaration if possible. At this point this must be in another file.
         match r.kind {
             DeclKind::FuncDef(_) | DeclKind::EventDef(_) | DeclKind::HookDef(_) => {
-                let root_loc = NodeLocation::from_node(&location.uri, tree.root_node());
+                let root_loc = NodeLocation::from_node(location.uri, tree.root_node());
                 if let Some(decl) = crate::ast::resolve_id(db, id, &root_loc) {
                     return Some(decl);
                 }

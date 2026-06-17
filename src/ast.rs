@@ -17,7 +17,7 @@ use crate::{
 #[instrument(skip(db))]
 pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: &NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
-    let sf = db.source_file(&uri)?;
+    let sf = db.source_file(uri)?;
     let source = sf.text(db);
     let tree = crate::parse::parse(db, sf)?;
     let scope_node = tree

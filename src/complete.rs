@@ -524,13 +524,8 @@ fn complete_record_initializer(
     }
 }
 
-fn complete_any(
-    state: &Database,
-    root: Node,
-    mut node: Node,
-    uri: &Uri,
-) -> Vec<CompletionItem> {
-    let Some(source) = state.source(&uri) else {
+fn complete_any(state: &Database, root: Node, mut node: Node, uri: &Uri) -> Vec<CompletionItem> {
+    let Some(source) = state.source(uri) else {
         return Vec::new();
     };
 

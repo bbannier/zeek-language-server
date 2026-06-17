@@ -2239,11 +2239,8 @@ pub(crate) mod test {
 
     impl TestDatabase {
         pub(crate) fn add_file(&mut self, uri: Uri, source: impl AsRef<str>) {
-            self.0.update_sources(&[SourceUpdate::Update(
-                uri,
-                source.as_ref().into(),
-                None,
-            )]);
+            self.0
+                .update_sources(&[SourceUpdate::Update(uri, source.as_ref().into(), None)]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)

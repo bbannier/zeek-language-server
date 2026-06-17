@@ -846,9 +846,7 @@ pub fn decls_(node: Node, uri: &Uri, source: &[u8]) -> FxHashSet<Decl> {
             )
         })
         .flatten()
-        .chain(convert(
-            fn_param_decls(node, &uri, source).into_iter(),
-        ))
+        .chain(convert(fn_param_decls(node, uri, source).into_iter()))
         .chain(convert(loop_param_decls(node, uri, source).into_iter()))
         .cloned()
         .collect()

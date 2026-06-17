@@ -306,7 +306,7 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     }
 
     let make_typ = |typ| {
-        let sf = db.source_file(&uri)?;
+        let sf = db.source_file(uri)?;
         let source = sf.text(db);
         let loc = NodeLocation::from_node(uri, typ);
         query::typ(typ, source.as_bytes()).and_then(|t| crate::ast::resolve_type(db, t, Some(&loc)))
@@ -375,7 +375,7 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 #[instrument(skip(db))]
 
 pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>> {
-    let sf = db.source_file(&location.uri)?;
+    let sf = db.source_file(location.uri)?;
     let source = sf.text(db);
     let tree = crate::parse::parse(db, sf)?;
     let node = tree

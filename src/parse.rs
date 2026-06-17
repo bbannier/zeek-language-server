@@ -1,4 +1,4 @@
-use crate::Db;
+use crate::lsp::Database;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 use tracing::instrument;
@@ -30,7 +30,7 @@ impl From<tree_sitter::Tree> for Tree {
 impl Eq for Tree {}
 
 #[instrument(skip(db))]
-pub(crate) fn parse(db: &dyn Db, file: Arc<Uri>) -> Option<Arc<Tree>> {
+pub(crate) fn parse(db: &Database, file: Arc<Uri>) -> Option<Arc<Tree>> {
     let mut parser = Parser::new();
     parser
         .set_language(&language_zeek())

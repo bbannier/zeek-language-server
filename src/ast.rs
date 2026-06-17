@@ -8,7 +8,8 @@ use tower_lsp_server::ls_types::Uri;
 use tracing::{instrument, warn};
 
 use crate::{
-    Db, InternedStr,
+    InternedStr,
+    lsp::Database,
     query::{self, Decl, DeclKind, Index, NodeLocation, Type},
     zeek,
 };
@@ -16,7 +17,7 @@ use crate::{
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 #[instrument(skip(db))]
 
-pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
+pub(crate) fn resolve_id(db: &Database, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
     let tree = db.parse(Arc::clone(&uri))?;
     let scope = tree
@@ -145,7 +146,7 @@ pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> O
 #[instrument(skip(db))]
 
 pub(crate) fn resolve_type(
-    db: &dyn Db,
+    db: &Database,
     typ: Type,
     scope: Option<NodeLocation>,
 ) -> Option<Arc<Decl>> {
@@ -234,7 +235,7 @@ pub(crate) fn resolve_type(
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 #[instrument(skip(db))]
 
-pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+pub(crate) fn typ(db: &Database, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     if let DeclKind::Type(_) = &decl.kind
         && decl.loc.is_none()
     {
@@ -375,7 +376,7 @@ pub(crate) fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 #[allow(clippy::too_many_lines)]
 #[instrument(skip(db))]
 
-pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> {
+pub(crate) fn resolve(db: &Database, location: NodeLocation) -> Option<Arc<Decl>> {
     let uri = Arc::clone(&location.uri);
     let tree = db.parse(Arc::clone(&uri))?;
     let node = tree
@@ -543,7 +544,7 @@ pub(crate) fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> 
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 
-pub(crate) fn loaded_files(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+pub(crate) fn loaded_files(db: &Database, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
     let files = db.files();
 
     let prefixes = db.prefixes();
@@ -567,7 +568,7 @@ pub(crate) fn loaded_files(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
 
 #[instrument(skip(db))]
 
-pub(crate) fn loaded_files_recursive(db: &dyn Db, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+pub(crate) fn loaded_files_recursive(db: &Database, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
     let mut files: Vec<_> = db.loaded_files(url).iter().cloned().collect();
 
     loop {
@@ -595,7 +596,7 @@ pub(crate) fn loaded_files_recursive(db: &dyn Db, url: Arc<Uri>) -> Arc<[Arc<Uri
 
 #[instrument(skip(db))]
 
-pub(crate) fn explicit_decls_recursive(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
+pub(crate) fn explicit_decls_recursive(db: &Database, uri: Arc<Uri>) -> Arc<[Decl]> {
     let d = db.decls(Arc::clone(&uri));
     let decls1 = d.iter().cloned();
 
@@ -612,7 +613,7 @@ pub(crate) fn explicit_decls_recursive(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]
 
 #[instrument(skip(db))]
 
-pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
+pub(crate) fn implicit_loads(db: &Database) -> Arc<[Arc<Uri>]> {
     let mut loads = Vec::new();
 
     // These loops looks horrible, but is okay since this function will be cached most of the time
@@ -648,7 +649,7 @@ pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
 
 #[instrument(skip(db))]
 
-pub(crate) fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
+pub(crate) fn implicit_decls(db: &Database) -> Arc<[Decl]> {
     let loads = db.implicit_loads();
 
     loads
@@ -669,7 +670,7 @@ pub(crate) fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 
-pub(crate) fn possible_loads(db: &dyn Db, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+pub(crate) fn possible_loads(db: &Database, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(path) = uri.to_file_path() else {
         return Arc::default();
     };
@@ -718,7 +719,7 @@ pub fn is_redef(d: &Decl) -> bool {
 }
 
 #[instrument(skip(db))]
-fn resolve_redef(db: &dyn Db, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
+fn resolve_redef(db: &Database, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
     if !is_redef(redef) {
         return Arc::default();
     }
@@ -812,7 +813,6 @@ mod test {
     use tower_lsp_server::ls_types::{Position, Range, Uri};
 
     use crate::{
-        Db,
         ast::{self, typ},
         lsp::TestDatabase,
         query::{DeclKind, NodeLocation},

@@ -12,7 +12,7 @@ use tower_lsp_server::ls_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{Db, InternedStr};
+use crate::{InternedStr, lsp::Database};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -1166,7 +1166,7 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 
-pub(crate) fn decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
+pub(crate) fn decls(db: &Database, uri: Arc<Uri>) -> Arc<[Decl]> {
     let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1189,7 +1189,7 @@ pub(crate) fn decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
 
 #[instrument(skip(db))]
 
-pub(crate) fn loads(db: &dyn Db, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+pub(crate) fn loads(db: &Database, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1209,7 +1209,7 @@ pub(crate) fn loads(db: &dyn Db, uri: Arc<Uri>) -> Arc<[InternedStr]> {
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 
-pub(crate) fn function_calls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
+pub(crate) fn function_calls(db: &Database, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
@@ -1253,7 +1253,7 @@ pub(crate) fn function_calls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[FunctionCall]> 
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
 
-pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
+pub(crate) fn untyped_var_decls(db: &Database, uri: Arc<Uri>) -> Arc<[Decl]> {
     // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
@@ -1320,7 +1320,7 @@ pub(crate) fn untyped_var_decls(db: &dyn Db, uri: Arc<Uri>) -> Arc<[Decl]> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub(crate) fn ids(db: &dyn Db, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
+pub(crate) fn ids(db: &Database, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
@@ -1403,7 +1403,7 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::{Db, lsp::TestDatabase, query::Node};
+    use crate::{lsp::TestDatabase, query::Node};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use tower_lsp_server::ls_types::{Position, Uri};

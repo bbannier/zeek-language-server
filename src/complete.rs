@@ -2,7 +2,7 @@ use rustc_hash::FxHashSet;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
-    Db, InternedStr,
+    InternedStr,
     ast::{self},
     lsp::Database,
     query::{self, Decl, DeclKind, Node, NodeLocation},

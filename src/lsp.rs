@@ -1,6 +1,6 @@
 use crate::Str;
 pub(crate) use crate::{
-    Db, InternedStr,
+    InternedStr,
     ast::load_to_file,
     complete::complete,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation},
@@ -118,88 +118,93 @@ impl Debug for Database {
     }
 }
 
-impl Db for Database {
-    fn source(&self, uri: Arc<Uri>) -> Option<Str> {
+impl Database {
+    #[allow(clippy::needless_pass_by_value)]
+    pub(crate) fn source(&self, uri: Arc<Uri>) -> Option<Str> {
         self.sources.get(&uri).cloned()
     }
 
-    fn files(&self) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn files(&self) -> Arc<[Arc<Uri>]> {
         Arc::from(self.files.iter().cloned().collect::<Vec<_>>())
     }
 
-    fn prefixes(&self) -> Arc<[PathBuf]> {
+    pub(crate) fn prefixes(&self) -> Arc<[PathBuf]> {
         Arc::from(self.prefixes.clone())
     }
 
-    fn capabilities(&self) -> Arc<ClientCapabilities> {
+    pub(crate) fn capabilities(&self) -> Arc<ClientCapabilities> {
         Arc::clone(&self.capabilities)
     }
 
-    fn initialization_options(&self) -> Arc<InitializationOptions> {
+    pub(crate) fn initialization_options(&self) -> Arc<InitializationOptions> {
         Arc::clone(&self.initialization_options)
     }
 
-    fn parse(&self, file: Arc<Uri>) -> Option<Arc<crate::parse::Tree>> {
+    pub(crate) fn parse(&self, file: Arc<Uri>) -> Option<Arc<crate::parse::Tree>> {
         crate::parse::parse(self, file)
     }
 
-    fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]> {
+    pub(crate) fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]> {
         crate::query::decls(self, uri)
     }
 
-    fn loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+    pub(crate) fn loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]> {
         crate::query::loads(self, uri)
     }
 
-    fn function_calls(&self, uri: Arc<Uri>) -> Arc<[query::FunctionCall]> {
+    pub(crate) fn function_calls(&self, uri: Arc<Uri>) -> Arc<[query::FunctionCall]> {
         crate::query::function_calls(self, uri)
     }
 
-    fn untyped_var_decls(&self, uri: Arc<Uri>) -> Arc<[Decl]> {
+    pub(crate) fn untyped_var_decls(&self, uri: Arc<Uri>) -> Arc<[Decl]> {
         crate::query::untyped_var_decls(self, uri)
     }
 
-    fn ids(&self, uri: Arc<Uri>) -> Arc<[query::NodeLocation]> {
+    pub(crate) fn ids(&self, uri: Arc<Uri>) -> Arc<[query::NodeLocation]> {
         crate::query::ids(self, uri)
     }
 
-    fn loaded_files(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn loaded_files(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
         crate::ast::loaded_files(self, url)
     }
 
-    fn loaded_files_recursive(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn loaded_files_recursive(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
         crate::ast::loaded_files_recursive(self, url)
     }
 
-    fn explicit_decls_recursive(&self, url: Arc<Uri>) -> Arc<[Decl]> {
+    pub(crate) fn explicit_decls_recursive(&self, url: Arc<Uri>) -> Arc<[Decl]> {
         crate::ast::explicit_decls_recursive(self, url)
     }
 
-    fn implicit_loads(&self) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn implicit_loads(&self) -> Arc<[Arc<Uri>]> {
         crate::ast::implicit_loads(self)
     }
 
-    fn implicit_decls(&self) -> Arc<[Decl]> {
+    pub(crate) fn implicit_decls(&self) -> Arc<[Decl]> {
         crate::ast::implicit_decls(self)
     }
 
-    fn possible_loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+    pub(crate) fn possible_loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]> {
         crate::ast::possible_loads(self, uri)
     }
 
-    fn resolve(&self, node: query::NodeLocation) -> Option<Arc<Decl>> {
+    pub(crate) fn resolve(&self, node: query::NodeLocation) -> Option<Arc<Decl>> {
         crate::ast::resolve(self, node)
     }
 
-    fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+    pub(crate) fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         crate::ast::typ(self, decl)
     }
 
-    fn resolve_id(&self, id: InternedStr, scope: query::NodeLocation) -> Option<Arc<Decl>> {
+    pub(crate) fn resolve_id(
+        &self,
+        id: InternedStr,
+        scope: query::NodeLocation,
+    ) -> Option<Arc<Decl>> {
         crate::ast::resolve_id(self, id, scope)
     }
 
-    fn resolve_type(
+    pub(crate) fn resolve_type(
         &self,
         typ: query::Type,
         scope: Option<query::NodeLocation>,
@@ -2173,7 +2178,6 @@ pub(crate) mod test {
     };
 
     use crate::{
-        Db,
         lsp::{self, Database, tree_diagnostics},
         zeek,
     };

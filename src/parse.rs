@@ -1,7 +1,5 @@
-use crate::lsp::Database;
+use crate::{Db, SourceFile};
 use std::sync::Arc;
-use tower_lsp_server::ls_types::Uri;
-use tracing::instrument;
 use tree_sitter::Parser;
 use tree_sitter_zeek::language_zeek;
 
@@ -29,14 +27,14 @@ impl From<tree_sitter::Tree> for Tree {
 
 impl Eq for Tree {}
 
-#[instrument(skip(db))]
-pub(crate) fn parse(db: &Database, file: &Arc<Uri>) -> Option<Arc<Tree>> {
+#[salsa::tracked(no_eq)]
+pub(crate) fn parse(db: &dyn Db, source_file: SourceFile) -> Option<Arc<Tree>> {
+    let source = source_file.text(db);
     let mut parser = Parser::new();
     parser
         .set_language(&language_zeek())
         .expect("cannot set parser language");
 
-    let source = db.source(file)?;
     parser
         .parse(source.as_bytes(), None)
         .map(Tree)
@@ -48,7 +46,7 @@ mod test {
     #![allow(clippy::unwrap_used)]
 
     use {
-        crate::{lsp::TestDatabase, parse::parse},
+        crate::{Db, lsp::TestDatabase, parse::parse},
         insta::assert_debug_snapshot,
         std::sync::Arc,
         tower_lsp_server::ls_types::Uri,
@@ -63,7 +61,8 @@ mod test {
 
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = parse(&db.0, &uri);
+        let sf = db.0.source_file(&uri).unwrap();
+        let tree = parse(&db.0, sf);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
     }

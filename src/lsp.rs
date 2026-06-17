@@ -1,6 +1,7 @@
+use crate::Db;
 use crate::Str;
 pub(crate) use crate::{
-    InternedStr,
+    ConfigRevision, InternedStr, SourceFile,
     ast::load_to_file,
     complete::complete,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation},
@@ -9,6 +10,7 @@ pub(crate) use crate::{
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
+use salsa::Setter;
 use serde::Deserialize;
 use std::{collections::HashMap, fmt::Debug, path::PathBuf, sync::Arc};
 use tower_lsp_server::{
@@ -48,11 +50,14 @@ use walkdir::WalkDir;
 #[cfg(test)]
 pub(crate) use test::TestDatabase;
 
-#[derive(Clone)]
+#[salsa::db]
 pub struct Database {
+    storage: salsa::Storage<Self>,
     pub(crate) sources: HashMap<Arc<Uri>, Str>,
+    pub(crate) source_files: HashMap<Arc<Uri>, SourceFile>,
     pub(crate) files: FxHashSet<Arc<Uri>>,
     pub(crate) prefixes: Vec<PathBuf>,
+    pub(crate) config_revision: Option<ConfigRevision>,
     pub(crate) workspace_folders: Arc<[Uri]>,
     pub(crate) capabilities: Arc<ClientCapabilities>,
     pub(crate) initialization_options: Arc<InitializationOptions>,
@@ -90,24 +95,69 @@ impl Database {
                 }
             }
         }
-    }
 
-    fn file_changed(&self, uri: &Arc<Uri>) {
-        // Precompute decls in this file.
-        let _d = query::decls(self, uri);
+        // Update SourceFile inputs and removals.
+        let removals: Vec<_> = updates
+            .iter()
+            .filter_map(|u| match u {
+                SourceUpdate::Remove(uri) => Some(Arc::clone(uri)),
+                SourceUpdate::Update(..) => None,
+            })
+            .collect();
+        for uri in &removals {
+            self.source_files.remove(uri);
+        }
+        for u in updates {
+            if let SourceUpdate::Update(uri, source, _) = u {
+                if let Some(sf) = self.source_files.get(uri).copied() {
+                    sf.set_text(&mut *self).to(source.clone());
+                } else {
+                    let sf = SourceFile::new(&*self, Arc::clone(uri), source.clone());
+                    self.source_files.insert(Arc::clone(uri), sf);
+                }
+            }
+        }
+
+        // Bump config revision when files change.
+        if let Some(cr) = &self.config_revision {
+            let new_revision = cr.revision(&*self) + 1;
+            cr.set_revision(&mut *self).to(new_revision);
+        }
     }
 }
 
 impl Default for Database {
     fn default() -> Self {
-        Self {
+        let mut db = Self {
+            storage: salsa::Storage::default(),
             sources: HashMap::default(),
+            source_files: HashMap::default(),
             files: FxHashSet::default(),
             prefixes: Vec::default(),
+            config_revision: None,
             workspace_folders: Arc::default(),
             capabilities: Arc::default(),
             initialization_options: Arc::new(InitializationOptions::new()),
             versions: HashMap::default(),
+        };
+        db.config_revision = Some(ConfigRevision::new(&db, 0));
+        db
+    }
+}
+
+impl Clone for Database {
+    fn clone(&self) -> Self {
+        Self {
+            storage: self.storage.clone(),
+            sources: self.sources.clone(),
+            source_files: self.source_files.clone(),
+            files: self.files.clone(),
+            prefixes: self.prefixes.clone(),
+            config_revision: self.config_revision,
+            workspace_folders: Arc::clone(&self.workspace_folders),
+            capabilities: Arc::clone(&self.capabilities),
+            initialization_options: Arc::clone(&self.initialization_options),
+            versions: self.versions.clone(),
         }
     }
 }
@@ -118,17 +168,32 @@ impl Debug for Database {
     }
 }
 
-impl Database {
-    pub(crate) fn source(&self, uri: &Arc<Uri>) -> Option<Str> {
-        self.sources.get(uri).cloned()
+#[salsa::db]
+impl salsa::Database for Database {}
+
+// SAFETY: Database is always accessed through a single-threaded `Mutex<Database>`
+// in the `Backend` struct. The `salsa::Storage` contains `RefCell`s internally
+// which are not `Sync`, but exclusive access via the mutex prevents data races.
+unsafe impl Sync for Database {}
+
+#[salsa::db]
+impl crate::Db for Database {
+    fn source_file(&self, uri: &Arc<Uri>) -> Option<SourceFile> {
+        self.source_files.get(uri).copied()
     }
 
-    pub(crate) fn files(&self) -> Arc<[Arc<Uri>]> {
+    fn files(&self) -> Arc<[Arc<Uri>]> {
         Arc::from(self.files.iter().cloned().collect::<Vec<_>>())
     }
 
-    pub(crate) fn prefixes(&self) -> Arc<[PathBuf]> {
-        Arc::from(self.prefixes.clone())
+    fn prefixes(&self) -> Vec<PathBuf> {
+        self.prefixes.clone()
+    }
+}
+
+impl Database {
+    pub(crate) fn source(&self, uri: &Arc<Uri>) -> Option<Str> {
+        self.sources.get(uri).cloned()
     }
 
     pub(crate) fn capabilities(&self) -> Arc<ClientCapabilities> {
@@ -140,39 +205,64 @@ impl Database {
     }
 
     pub(crate) fn parse(&self, file: &Arc<Uri>) -> Option<Arc<crate::parse::Tree>> {
-        crate::parse::parse(self, file)
+        let sf = self.source_file(file)?;
+        crate::parse::parse(self, sf)
     }
 
     pub(crate) fn decls(&self, uri: &Arc<Uri>) -> Arc<[Decl]> {
-        crate::query::decls(self, uri)
+        let Some(sf) = self.source_file(uri) else {
+            return Arc::default();
+        };
+        crate::query::decls(self, sf)
     }
 
     pub(crate) fn loads(&self, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
-        crate::query::loads(self, uri)
+        let Some(sf) = self.source_file(uri) else {
+            return Arc::default();
+        };
+        crate::query::loads(self, sf)
     }
 
     pub(crate) fn function_calls(&self, uri: &Arc<Uri>) -> Arc<[query::FunctionCall]> {
-        crate::query::function_calls(self, uri)
+        let Some(sf) = self.source_file(uri) else {
+            return Arc::default();
+        };
+        crate::query::function_calls(self, sf)
     }
 
     pub(crate) fn untyped_var_decls(&self, uri: &Arc<Uri>) -> Arc<[Decl]> {
-        crate::query::untyped_var_decls(self, uri)
+        let Some(sf) = self.source_file(uri) else {
+            return Arc::default();
+        };
+        crate::query::untyped_var_decls(self, sf)
     }
 
     pub(crate) fn ids(&self, uri: &Arc<Uri>) -> Arc<[query::NodeLocation]> {
-        crate::query::ids(self, uri)
+        let Some(sf) = self.source_file(uri) else {
+            return Arc::default();
+        };
+        crate::query::ids(self, sf)
     }
 
     pub(crate) fn loaded_files(&self, url: &Arc<Uri>) -> Arc<[Arc<Uri>]> {
-        crate::ast::loaded_files(self, url)
+        let Some(sf) = self.source_file(url) else {
+            return Arc::default();
+        };
+        crate::ast::loaded_files(self, sf)
     }
 
     pub(crate) fn loaded_files_recursive(&self, url: &Arc<Uri>) -> Arc<[Arc<Uri>]> {
-        crate::ast::loaded_files_recursive(self, url)
+        let Some(sf) = self.source_file(url) else {
+            return Arc::default();
+        };
+        crate::ast::loaded_files_recursive(self, sf)
     }
 
     pub(crate) fn explicit_decls_recursive(&self, url: &Arc<Uri>) -> Arc<[Decl]> {
-        crate::ast::explicit_decls_recursive(self, url)
+        let Some(sf) = self.source_file(url) else {
+            return Arc::default();
+        };
+        crate::ast::explicit_decls_recursive(self, sf)
     }
 
     pub(crate) fn implicit_loads(&self) -> Arc<[Arc<Uri>]> {
@@ -215,7 +305,7 @@ impl Database {
 #[derive(Debug, Default)]
 pub struct Backend {
     pub client: Option<tower_lsp_server::Client>,
-    state: tokio::sync::RwLock<Database>,
+    state: tokio::sync::Mutex<Database>,
 }
 
 enum ParseResult {
@@ -246,7 +336,7 @@ impl Backend {
         // Short circuit progress report if client doesn't support it.
         if !self
             .state
-            .read()
+            .lock()
             .await
             .capabilities()
             .window
@@ -321,10 +411,8 @@ impl Backend {
 
     async fn file_changed(&self, uri: Arc<Uri>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let diags = {
-                state.file_changed(&uri);
-
                 match state.parse(&uri) {
                     Some(tree) => tree_diagnostics(&tree.root_node()).collect(),
                     _ => Vec::new(),
@@ -358,7 +446,7 @@ impl Backend {
             })?
             .filter_map(|f| Uri::from_file_path(f.path));
 
-        let workspace_folders = Arc::clone(&self.state.read().await.workspace_folders);
+        let workspace_folders = Arc::clone(&self.state.lock().await.workspace_folders);
 
         let workspace_files = workspace_folders
             .iter()
@@ -395,7 +483,7 @@ impl Backend {
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
-        let workspace_folders = Arc::clone(&self.state.read().await.workspace_folders);
+        let workspace_folders = Arc::clone(&self.state.lock().await.workspace_folders);
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
         let checks = if let Some(folder) = workspace_folder {
@@ -454,7 +542,7 @@ impl LanguageServer for Backend {
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
         {
-            let mut state = self.state.write().await;
+            let mut state = self.state.lock().await;
             state.workspace_folders = Arc::from(workspace_folders);
             state.capabilities = Arc::new(params.capabilities);
             state.initialization_options = Arc::new(
@@ -467,7 +555,7 @@ impl LanguageServer for Backend {
 
         // Check prerequisites and set system prefixes.
         match zeek::prefixes(None).await {
-            Ok(prefixes) => self.state.write().await.prefixes = prefixes.collect(),
+            Ok(prefixes) => self.state.lock().await.prefixes = prefixes.collect(),
             Err(e) => {
                 self.warn_message(format!(
                     "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
@@ -476,7 +564,7 @@ impl LanguageServer for Backend {
             }
         }
 
-        let initialization_options = self.state.read().await.initialization_options();
+        let initialization_options = self.state.lock().await.initialization_options();
         let has_zeek_format = zeek::has_format().await;
 
         Ok(InitializeResult {
@@ -589,7 +677,7 @@ impl LanguageServer for Backend {
 
             let changes = removals.chain(updates).collect::<Vec<_>>();
 
-            self.state.write().await.update_sources(&changes);
+            self.state.lock().await.update_sources(&changes);
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -600,13 +688,13 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files: Vec<Arc<Uri>> = self.state.read().await.files().iter().cloned().collect();
+        let files: Vec<Arc<Uri>> = self.state.lock().await.files().iter().cloned().collect();
 
         let preloaded_decls = {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let snap = snapshot(&state);
 
             files
@@ -615,8 +703,10 @@ impl LanguageServer for Backend {
                     let f = Arc::clone(f);
                     let db = snap.clone();
                     tokio::spawn(async move {
-                        let _x = query::decls(&db, &f);
-                        let _x = crate::ast::loaded_files(&db, &f);
+                        if let Some(sf) = db.source_file(&f) {
+                            let _x = query::decls(&db, sf);
+                            let _x = crate::ast::loaded_files(&db, sf);
+                        }
                     })
                 })
                 .collect::<Vec<_>>()
@@ -626,7 +716,7 @@ impl LanguageServer for Backend {
         // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
-        let _implicit = self.state.read().await.implicit_decls();
+        let _implicit = self.state.lock().await.implicit_decls();
 
         self.progress_end(progress_token).await;
     }
@@ -636,17 +726,17 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri.clone());
 
         self.state
-            .write()
+            .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
-                params.text_document.text.into(),
+                params.text_document.text.as_str().into(),
                 Some(params.text_document.version),
             )]);
 
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
-        let _implicit = self.state.read().await.implicit_decls();
+        let _implicit = self.state.lock().await.implicit_decls();
 
         let file_changed = self.file_changed(uri).await;
 
@@ -676,12 +766,12 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         self.state
-            .write()
+            .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
                 changes.text.as_str().into(),
-                Some(params.text_document.version),
+                None,
             )]);
 
         // Diagnostics are already triggered from `file_changed`.
@@ -709,7 +799,7 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let Some(source) = state.source(&uri) else {
             return Ok(None);
@@ -804,7 +894,7 @@ impl LanguageServer for Backend {
         #[cfg(not(all(debug_assertions, not(test))))]
         let debug_ast_nodes = self
             .state
-            .read()
+            .lock()
             .await
             .initialization_options()
             .debug_ast_nodes;
@@ -871,7 +961,7 @@ impl LanguageServer for Backend {
         };
 
         let modules = {
-            let db = self.state.read().await;
+            let db = self.state.lock().await;
 
             // Even though a valid source file can only contain a single module, one can still make
             // declarations in other modules. Sort declarations by module so users get a clean view.
@@ -923,7 +1013,7 @@ impl LanguageServer for Backend {
         let query = params.query.to_lowercase();
 
         let symbols = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             fuzzy_search_symbol(&state, &query)
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
@@ -948,7 +1038,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         Ok(complete(&state, params))
     }
 
@@ -961,7 +1051,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let tree = state.parse(&uri);
         let Some(tree) = tree.as_ref() else {
@@ -1020,7 +1110,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position_params.text_document.uri);
         let position = params.text_document_position_params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let Some(source) = state.source(&uri) else {
             return Ok(None);
@@ -1151,7 +1241,7 @@ impl LanguageServer for Backend {
             folds
         }
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         let tree = state.parse(&Arc::new(params.text_document.uri));
 
         Ok(tree.map(|t| compute_folds(t.root_node(), false)))
@@ -1161,7 +1251,7 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let source = state.source(&uri);
 
@@ -1191,7 +1281,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.state.read().await.source(&uri);
+        let source = self.state.lock().await.source(&uri);
 
         let Some(source) = source else {
             return Ok(None);
@@ -1228,7 +1318,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let tree = state.parse(&uri);
         let Some(tree) = tree.as_ref() else {
@@ -1285,7 +1375,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let tree = state.parse(&uri);
         let Some(tree) = tree.as_ref() else {
@@ -1310,13 +1400,7 @@ impl LanguageServer for Backend {
         let response = state
             .files()
             .iter()
-            .flat_map(|f| {
-                state
-                    .decls(f)
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
+            .flat_map(|f| state.decls(f).iter().cloned().collect::<Vec<_>>())
             .filter(|d| {
                 matches!(
                     &d.kind,
@@ -1349,7 +1433,7 @@ impl LanguageServer for Backend {
         };
 
         let uri = Arc::new(params.text_document.uri);
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         let Some(missing) = state.parse(&uri).and_then(|t| {
             t.root_node().errors().find_map(|err| {
                 if err.is_missing() && err.range() == diag.range {
@@ -1391,7 +1475,7 @@ impl LanguageServer for Backend {
 
         let mut hints = Vec::new();
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let params = if state.initialization_options().inlay_hints_parameters {
             state
@@ -1520,7 +1604,7 @@ impl LanguageServer for Backend {
 
         // TODO(bbannier): respect `params.context.include_declaration`.
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let tree = state.parse(&uri);
         let Some(tree) = tree.as_ref() else {
@@ -1549,7 +1633,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let tree = state.parse(&uri);
         let Some(tree) = tree.as_ref() else {
@@ -1591,7 +1675,7 @@ impl LanguageServer for Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
 
-        let Some(source) = self.state.read().await.source(&uri.into()) else {
+        let Some(source) = self.state.lock().await.source(&uri.into()) else {
             return Ok(None);
         };
 
@@ -2205,7 +2289,7 @@ pub(crate) mod test {
 
     pub(crate) fn serve(database: TestDatabase) -> Backend {
         Backend {
-            state: tokio::sync::RwLock::new(database.0),
+            state: tokio::sync::Mutex::new(database.0),
             ..Backend::default()
         }
     }

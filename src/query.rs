@@ -12,7 +12,7 @@ use tower_lsp_server::ls_types::{Position, Range, Uri};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{InternedStr, lsp::Database};
+use crate::{Db, InternedStr, SourceFile};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -1163,18 +1163,17 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
-#[instrument(skip(db))]
-pub(crate) fn decls(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
-    let Some(source) = db.source(uri) else {
+#[salsa::tracked(no_eq)]
+pub(crate) fn decls(db: &dyn Db, source_file: SourceFile) -> Arc<[Decl]> {
+    let source = source_file.text(db);
+    let uri = source_file.uri(db);
+
+    let Some(tree) = crate::parse::parse(db, source_file) else {
         return Arc::default();
     };
 
-    let Some(tree) = db.parse(uri) else {
-        return Arc::default();
-    };
-
-    let decls = decls_(tree.root_node(), uri, source.as_bytes());
-    let modules = modules(tree.root_node(), uri, source.as_bytes());
+    let decls = decls_(tree.root_node(), &uri, source.as_bytes());
+    let modules = modules(tree.root_node(), &uri, source.as_bytes());
 
     Arc::from(
         decls
@@ -1185,14 +1184,11 @@ pub(crate) fn decls(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
     )
 }
 
-#[instrument(skip(db))]
+#[salsa::tracked(no_eq)]
+pub(crate) fn loads(db: &dyn Db, source_file: SourceFile) -> Arc<[InternedStr]> {
+    let source = source_file.text(db);
 
-pub(crate) fn loads(db: &Database, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
-    let Some(tree) = db.parse(uri) else {
-        return Arc::default();
-    };
-
-    let Some(source) = db.source(uri) else {
+    let Some(tree) = crate::parse::parse(db, source_file) else {
         return Arc::default();
     };
 
@@ -1204,19 +1200,18 @@ pub(crate) fn loads(db: &Database, uri: &Arc<Uri>) -> Arc<[InternedStr]> {
     )
 }
 
-#[instrument(skip(db))]
-pub(crate) fn function_calls(db: &Database, uri: &Arc<Uri>) -> Arc<[FunctionCall]> {
+#[salsa::tracked(no_eq)]
+pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
             .expect("invalid query")
     });
 
-    let Some(tree) = db.parse(uri) else {
-        return Arc::default();
-    };
+    let source = source_file.text(db);
+    let uri = source_file.uri(db);
 
-    let Some(source) = db.source(uri) else {
+    let Some(tree) = crate::parse::parse(db, source_file) else {
         return Arc::default();
     };
 
@@ -1234,9 +1229,9 @@ pub(crate) fn function_calls(db: &Database, uri: &Arc<Uri>) -> Arc<[FunctionCall
                         .named_child("expr_list")?
                         .named_children("expr")
                         .into_iter()
-                        .map(|a| NodeLocation::from_node(Arc::clone(uri), a))
+                        .map(|a| NodeLocation::from_node(Arc::clone(&uri), a))
                         .collect::<Vec<_>>();
-                    Some((NodeLocation::from_node(Arc::clone(uri), n), args))
+                    Some((NodeLocation::from_node(Arc::clone(&uri), n), args))
                 })?;
 
                 Some(FunctionCall { f, args })
@@ -1246,8 +1241,8 @@ pub(crate) fn function_calls(db: &Database, uri: &Arc<Uri>) -> Arc<[FunctionCall
     )
 }
 
-#[instrument(skip(db))]
-pub(crate) fn untyped_var_decls(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
+#[salsa::tracked(no_eq)]
+pub(crate) fn untyped_var_decls(db: &dyn Db, source_file: SourceFile) -> Arc<[Decl]> {
     // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
@@ -1257,15 +1252,13 @@ pub(crate) fn untyped_var_decls(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
         .expect("invalid query")
     });
 
-    let Some(tree) = db.parse(uri) else {
-        return Arc::default();
-    };
-
-    let Some(source) = db.source(uri) else {
-        return Arc::default();
-    };
-
+    let source = source_file.text(db);
     let source = source.as_bytes();
+    let uri = source_file.uri(db);
+
+    let Some(tree) = crate::parse::parse(db, source_file) else {
+        return Arc::default();
+    };
 
     let c_var = QUERY
         .capture_index_for_name("var")
@@ -1303,7 +1296,7 @@ pub(crate) fn untyped_var_decls(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
                     loc: Some(Location {
                         range: m.range(),
                         selection_range: m.named_child("id")?.range(),
-                        uri: Arc::clone(uri),
+                        uri: Arc::clone(&uri),
                     }),
                     documentation: empty,
                 })
@@ -1313,21 +1306,20 @@ pub(crate) fn untyped_var_decls(db: &Database, uri: &Arc<Uri>) -> Arc<[Decl]> {
     )
 }
 
-pub(crate) fn ids(db: &Database, uri: &Arc<Uri>) -> Arc<[NodeLocation]> {
+#[salsa::tracked(no_eq)]
+pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[NodeLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
     });
 
-    let Some(tree) = db.parse(uri) else {
-        return Arc::default();
-    };
-
-    let Some(source) = db.source(uri) else {
-        return Arc::default();
-    };
-
+    let source = source_file.text(db);
+    let uri = source_file.uri(db);
     let source = source.as_bytes();
+
+    let Some(tree) = crate::parse::parse(db, source_file) else {
+        return Arc::default();
+    };
 
     let c_id = QUERY
         .capture_index_for_name("id")
@@ -1338,7 +1330,7 @@ pub(crate) fn ids(db: &Database, uri: &Arc<Uri>) -> Arc<[NodeLocation]> {
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m = m.nodes_for_capture_index(c_id).next()?;
-                Some(NodeLocation::from_node(Arc::clone(uri), m.into()))
+                Some(NodeLocation::from_node(Arc::clone(&uri), m.into()))
             })
             .cloned()
             .collect::<Vec<_>>(),
@@ -1396,7 +1388,7 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::{lsp::TestDatabase, query::Node};
+    use crate::{Db, lsp::TestDatabase, query::Node};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use tower_lsp_server::ls_types::{Position, Uri};
@@ -1436,7 +1428,7 @@ mod test {
             let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
 
             db.add_file((*uri).clone(), source);
-            crate::parse::parse(&db.0, &uri)
+            crate::parse::parse(&db.0, db.0.source_file(&uri).unwrap())
         };
 
         let loads = |source: &'static str| {
@@ -1457,7 +1449,8 @@ mod test {
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = crate::parse::parse(&db.0, &uri).expect("cannot parse");
+        let tree =
+            crate::parse::parse(&db.0, db.0.source_file(&uri).unwrap()).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, &uri, SOURCE.as_bytes());
 
@@ -1491,7 +1484,7 @@ global GLOBAL::f3: function();
 }",
         );
 
-        let decls = crate::query::decls(&db.0, &uri);
+        let decls = crate::query::decls(&db.0, db.0.source_file(&uri).unwrap());
         let mut decls = decls.iter().collect::<Vec<_>>();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
 
@@ -1503,7 +1496,7 @@ global GLOBAL::f3: function();
         let mut db = TestDatabase::default();
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
-        let tree = crate::parse::parse(&db.0, &uri).unwrap();
+        let tree = crate::parse::parse(&db.0, db.0.source_file(&uri).unwrap()).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
 
@@ -1531,7 +1524,7 @@ function f1(x: count, y: string) {
 }",
         );
 
-        let tree = crate::parse::parse(&db.0, &uri).unwrap();
+        let tree = crate::parse::parse(&db.0, db.0.source_file(&uri).unwrap()).unwrap();
         let root = tree.root_node();
         let source = db.0.source(&uri).unwrap();
 

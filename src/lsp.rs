@@ -60,53 +60,27 @@ pub struct Database {
     pub(crate) workspace_folders: Arc<[Uri]>,
     pub(crate) capabilities: Arc<ClientCapabilities>,
     pub(crate) initialization_options: Arc<InitializationOptions>,
-    pub(crate) versions: HashMap<Uri, i32>,
 }
 
 pub enum SourceUpdate {
     Remove(Uri),
-    Update(Uri, Str, Option<i32>),
+    Update(Uri, Str),
 }
 
 impl Database {
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
         for u in updates {
             match u {
-                SourceUpdate::Update(uri, _, version) => {
-                    if let Some(ver) = version {
-                        if let Some(&stored) = self.versions.get(uri)
-                            && *ver <= stored
-                        {
-                            warn!(
-                                "version {ver} is not larger than stored version {stored} for {uri:?}, skipping"
-                            );
-                            continue;
-                        }
-                        self.versions.insert(uri.clone(), *ver);
-                    }
-                }
                 SourceUpdate::Remove(uri) => {
-                    self.versions.remove(uri);
                     self.sources.remove(uri);
                 }
-            }
-        }
-
-        // Update SourceFile inputs and removals.
-        for uri in updates.iter().filter_map(|u| match u {
-            SourceUpdate::Remove(uri) => Some(uri),
-            SourceUpdate::Update(..) => None,
-        }) {
-            self.sources.remove(uri);
-        }
-
-        for u in updates {
-            if let SourceUpdate::Update(uri, source, _) = u {
-                if let Some(sf) = self.sources.get(uri).copied() {
-                    sf.set_text(&mut *self).to(source.clone());
-                } else {
-                    let sf = SourceFile::new(&*self, uri.clone(), source.clone());
-                    self.sources.insert(uri.clone(), sf);
+                SourceUpdate::Update(uri, source) => {
+                    if let Some(sf) = self.sources.get(uri).copied() {
+                        sf.set_text(&mut *self).to(source.clone());
+                    } else {
+                        let sf = SourceFile::new(&*self, uri.clone(), source.clone());
+                        self.sources.insert(uri.clone(), sf);
+                    }
                 }
             }
         }
@@ -129,7 +103,6 @@ impl Default for Database {
             workspace_folders: Arc::default(),
             capabilities: Arc::default(),
             initialization_options: Arc::new(InitializationOptions::new()),
-            versions: HashMap::default(),
         };
         db.config_revision = Some(ConfigRevision::new(&db, 0));
         db
@@ -146,7 +119,6 @@ impl Clone for Database {
             workspace_folders: Arc::clone(&self.workspace_folders),
             capabilities: Arc::clone(&self.capabilities),
             initialization_options: Arc::clone(&self.initialization_options),
-            versions: self.versions.clone(),
         }
     }
 }
@@ -639,7 +611,7 @@ impl LanguageServer for Backend {
                         }
                     };
 
-                    Some(SourceUpdate::Update(c.uri, source.into(), None))
+                    Some(SourceUpdate::Update(c.uri, source.into()))
                 })
             });
             let updates = futures::future::join_all(updates).await;
@@ -704,7 +676,6 @@ impl LanguageServer for Backend {
             .update_sources(&[SourceUpdate::Update(
                 uri.clone(),
                 params.text_document.text.as_str().into(),
-                Some(params.text_document.version),
             )]);
 
         // Reload implicit declarations since their result depends on the list of known files and
@@ -743,7 +714,6 @@ impl LanguageServer for Backend {
             .update_sources(&[SourceUpdate::Update(
                 uri.clone(),
                 changes.text.as_str().into(),
-                None,
             )]);
 
         // Diagnostics are already triggered from `file_changed`.
@@ -2229,7 +2199,7 @@ pub(crate) mod test {
     impl TestDatabase {
         pub(crate) fn add_file(&mut self, uri: Uri, source: impl AsRef<str>) {
             self.0
-                .update_sources(&[SourceUpdate::Update(uri, source.as_ref().into(), None)]);
+                .update_sources(&[SourceUpdate::Update(uri, source.as_ref().into())]);
         }
 
         pub(crate) fn add_prefix<P>(&mut self, prefix: P)

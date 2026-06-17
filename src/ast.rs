@@ -16,7 +16,7 @@ use crate::{
 #[allow(clippy::too_many_lines)]
 #[instrument(skip(db))]
 pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: &NodeLocation) -> Option<Arc<Decl>> {
-    let uri = Arc::clone(&scope.uri);
+    let uri = scope.uri;
     let sf = db.source_file(&uri)?;
     let source = sf.text(db);
     let tree = crate::parse::parse(db, sf)?;
@@ -544,7 +544,7 @@ pub(crate) fn resolve(db: &dyn Db, location: &NodeLocation) -> Option<Arc<Decl>>
 
 #[instrument(skip(db))]
 #[salsa::tracked(no_eq)]
-pub(crate) fn loaded_files(db: &dyn Db, sf: SourceFile) -> Arc<[Arc<Uri>]> {
+pub(crate) fn loaded_files(db: &dyn Db, sf: SourceFile) -> Arc<[Uri]> {
     let uri = sf.uri(db);
     let files = db.files();
     let prefixes = db.prefixes();
@@ -557,7 +557,7 @@ pub(crate) fn loaded_files(db: &dyn Db, sf: SourceFile) -> Arc<[Arc<Uri>]> {
     let mut loaded_files = Vec::new();
 
     for load in &loads {
-        if let Some(f) = load_to_file(load, uri.as_ref(), &files, &prefixes) {
+        if let Some(f) = load_to_file(load, &uri, &files, &prefixes) {
             loaded_files.push(f);
         }
     }
@@ -567,7 +567,7 @@ pub(crate) fn loaded_files(db: &dyn Db, sf: SourceFile) -> Arc<[Arc<Uri>]> {
 
 #[instrument(skip(db))]
 #[salsa::tracked(no_eq)]
-pub(crate) fn loaded_files_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Arc<Uri>]> {
+pub(crate) fn loaded_files_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Uri]> {
     let mut files: Vec<_> = loaded_files(db, sf).iter().cloned().collect();
 
     loop {
@@ -577,9 +577,10 @@ pub(crate) fn loaded_files_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Arc<Ur
             let Some(sf) = db.source_file(f) else {
                 continue;
             };
-            for load in loaded_files(db, sf).as_ref() {
-                if !files.iter().any(|f| f.as_ref() == load.as_ref()) {
-                    new_files.push(Arc::clone(load));
+            let loads = loaded_files(db, sf);
+            for load in &*loads {
+                if !files.contains(load) {
+                    new_files.push(load.clone());
                 }
             }
         }
@@ -588,9 +589,7 @@ pub(crate) fn loaded_files_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Arc<Ur
             break;
         }
 
-        for n in new_files {
-            files.push(n);
-        }
+        files.extend(new_files);
     }
 
     Arc::from(files)
@@ -618,14 +617,15 @@ pub(crate) fn explicit_decls_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Decl
 
 #[instrument(skip(db))]
 #[salsa::tracked(no_eq)]
-pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
+pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Uri]> {
     let mut loads = Vec::new();
 
     // These loops looks horrible, but is okay since this function will be cached most of the time
     // (unless global state changes).
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
-        for f in &*db.files() {
+        let files = db.files();
+        for f in &*files {
             let Some(path) = f.to_file_path() else {
                 continue;
             };
@@ -636,7 +636,7 @@ pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
 
             for p in &db.prefixes() {
                 if path.strip_prefix(p).is_ok() {
-                    implicit_file = Some(Arc::clone(f));
+                    implicit_file = Some(f);
                     break;
                 }
             }
@@ -645,7 +645,7 @@ pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
         // Not being able to resolve the load is potentially not an
         // error since this might race with prefixes being loaded.
         if let Some(implicit_load) = implicit_file {
-            loads.push(implicit_load);
+            loads.push(implicit_load.clone());
         }
     }
 
@@ -675,7 +675,7 @@ pub(crate) fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
 }
 
 #[instrument(skip(db))]
-pub(crate) fn possible_loads(db: &dyn Db, uri: &Arc<Uri>) -> Vec<InternedStr> {
+pub(crate) fn possible_loads(db: &dyn Db, uri: &Uri) -> Vec<InternedStr> {
     let Some(path) = uri.to_file_path() else {
         return Vec::new();
     };
@@ -746,9 +746,9 @@ fn resolve_redef(db: &dyn Db, key: DeclFqid<'_>) -> Arc<[Decl]> {
 pub(crate) fn load_to_file(
     load: &Path,
     base: &Uri,
-    files: &[Arc<Uri>],
+    files: &[Uri],
     prefixes: &[PathBuf],
-) -> Option<Arc<Uri>> {
+) -> Option<Uri> {
     let file_dir = base
         .to_file_path()
         .and_then(|f| f.parent().map(Path::to_path_buf));
@@ -780,7 +780,7 @@ pub(crate) fn load_to_file(
 
         // File known w/ extension.
         if let Some((u, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(load)) {
-            return Some(Arc::clone(u));
+            return Some((*u).clone());
         }
 
         // File known w/o extension.
@@ -788,12 +788,12 @@ pub(crate) fn load_to_file(
             .par_iter()
             .find_any(|(_, p)| p.ends_with(&load_with_extension))
         {
-            return Some(Arc::clone(u));
+            return Some((*u).clone());
         }
 
         // Load is directory with `__load__.zeek`.
         if let Some((u, _)) = files.par_iter().find_any(|(_, p)| p.ends_with(&load_file)) {
-            return Some(Arc::clone(u));
+            return Some((*u).clone());
         }
 
         None

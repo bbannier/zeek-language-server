@@ -200,7 +200,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 fn complete_field(
     state: &Database,
     mut node: Node,
-    uri: &Arc<Uri>,
+    uri: &Uri,
     is_partial: bool,
 ) -> Option<Vec<CompletionItem>> {
     // If we are completing with something after the `$` (e.g., `foo$a`), instead
@@ -245,7 +245,7 @@ fn complete_field(
     None
 }
 
-fn complete_from_decls(state: &Database, uri: &Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
+fn complete_from_decls(state: &Database, uri: &Uri, kind: &str) -> Vec<CompletionItem> {
     let implicit_decls = state.implicit_decls();
     let explicit_decls_recursive = state.explicit_decls_recursive(uri);
 
@@ -413,7 +413,7 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
 fn complete_record_initializer(
     state: &Database,
     node: Node,
-    uri: &Arc<Uri>,
+    uri: &Uri,
 ) -> Option<Vec<CompletionItem>> {
     let source = state.source(uri)?;
 
@@ -528,7 +528,7 @@ fn complete_any(
     state: &Database,
     root: Node,
     mut node: Node,
-    uri: &Arc<Uri>,
+    uri: &Uri,
 ) -> Vec<CompletionItem> {
     let Some(source) = state.source(&uri) else {
         return Vec::new();

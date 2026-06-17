@@ -79,7 +79,7 @@ pub struct Signature {
 pub struct Location {
     pub range: Range,
     pub selection_range: Range,
-    pub uri: Arc<Uri>,
+    pub uri: Uri,
 }
 
 impl PartialOrd for Location {
@@ -178,18 +178,18 @@ impl Hash for Decl {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct OwnedLocation {
     pub range: Range,
-    pub uri: Arc<Uri>,
+    pub uri: Uri,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NodeLocation<'a> {
     pub range: Range,
-    pub uri: &'a Arc<Uri>,
+    pub uri: &'a Uri,
 }
 
 impl<'a> NodeLocation<'a> {
     #[must_use]
-    pub fn from_node(uri: &'a Arc<Uri>, node: Node) -> Self {
+    pub fn from_node(uri: &'a Uri, node: Node) -> Self {
         Self {
             range: node.range(),
             uri,
@@ -197,7 +197,7 @@ impl<'a> NodeLocation<'a> {
     }
 
     #[must_use]
-    pub fn from_range(uri: &'a Arc<Uri>, range: Range) -> Self {
+    pub fn from_range(uri: &'a Uri, range: Range) -> Self {
         Self { range, uri }
     }
 }
@@ -458,7 +458,7 @@ fn in_export(mut node: Node) -> bool {
 #[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 #[instrument]
 #[must_use]
-pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn decls_(node: Node, uri: &Uri, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         let signature = "((formal_args)? (type)?@fn_result)@signature";
         let signature = format!("[{signature} (func_params ({signature}))]");
@@ -594,7 +594,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: arg_id_.range(),
                                 selection_range: arg.range(),
-                                uri: Arc::clone(uri),
+                                uri: uri.clone(),
                             }),
                             documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                                 .as_str()
@@ -660,7 +660,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: id_.range(),
                                 selection_range: id_.range(),
-                                uri: Arc::clone(uri),
+                                uri: uri.clone(),
                             }),
                             documentation,
 
@@ -701,7 +701,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range,
                                     selection_range,
-                                    uri: Arc::clone(uri),
+                                    uri: uri.clone(),
                                 }),
                                 documentation,
                                 // An enum value is exported if its wrapping decl is exported.
@@ -788,7 +788,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range: id_.range(),
                                     selection_range: id_.range(),
-                                    uri: Arc::clone(uri),
+                                    uri: uri.clone(),
                                 }),
                                 documentation,
 
@@ -838,7 +838,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                     loc: Some(Location {
                         range,
                         selection_range,
-                        uri: Arc::clone(uri),
+                        uri: uri.clone(),
                     }),
                     documentation,
                 })
@@ -847,7 +847,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
         })
         .flatten()
         .chain(convert(
-            fn_param_decls(node, &Arc::clone(uri), source).into_iter(),
+            fn_param_decls(node, &uri, source).into_iter(),
         ))
         .chain(convert(loop_param_decls(node, uri, source).into_iter()))
         .cloned()
@@ -949,7 +949,7 @@ fn typ_from_text(text: &str) -> Option<Type> {
 
 #[instrument]
 #[must_use]
-fn modules(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+fn modules(node: Node, uri: &Uri, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)").expect("invalid query")
     });
@@ -1018,7 +1018,7 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
 
 /// Extract declarations for function parameters on the given node.
 #[instrument]
-pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn fn_param_decls(node: Node, uri: &Uri, source: &[u8]) -> FxHashSet<Decl> {
     match node.kind() {
         "func_decl" | "hook_decl" | "event_decl" => {}
         _ => return FxHashSet::default(),
@@ -1050,7 +1050,7 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
                 loc: Some(Location {
                     range: arg_id_.range(),
                     selection_range: arg.range(),
-                    uri: Arc::clone(uri),
+                    uri: uri.clone(),
                 }),
                 documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                     .as_str()
@@ -1062,7 +1062,7 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
 
 /// Extract for loop parameters on the given node.
 #[instrument]
-fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+fn loop_param_decls(node: Node, uri: &Uri, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
             &language_zeek(),
@@ -1146,7 +1146,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl
                             loc: Some(Location {
                                 range: n.range(),
                                 selection_range: n.range(),
-                                uri: Arc::clone(uri),
+                                uri: uri.clone(),
                             }),
                             documentation,
                         })
@@ -1231,8 +1231,6 @@ pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[Owned
         .capture_index_for_name("fn")
         .expect("call should be captured");
 
-    let iuri = Arc::clone(&uri);
-
     Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source.as_bytes())
@@ -1245,13 +1243,13 @@ pub(crate) fn function_calls(db: &dyn Db, source_file: SourceFile) -> Arc<[Owned
                         .into_iter()
                         .map(|a| OwnedLocation {
                             range: a.range(),
-                            uri: Arc::clone(&iuri),
+                            uri: uri.clone(),
                         })
                         .collect::<Vec<_>>();
                     Some((
                         OwnedLocation {
                             range: n.range(),
-                            uri: Arc::clone(&iuri),
+                            uri: uri.clone(),
                         },
                         args,
                     ))
@@ -1319,7 +1317,7 @@ pub(crate) fn untyped_var_decls(db: &dyn Db, source_file: SourceFile) -> Arc<[De
                     loc: Some(Location {
                         range: m.range(),
                         selection_range: m.named_child("id")?.range(),
-                        uri: Arc::clone(&uri),
+                        uri: uri.clone(),
                     }),
                     documentation: empty,
                 })
@@ -1348,8 +1346,6 @@ pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[OwnedLocation]> 
         .capture_index_for_name("id")
         .expect("id should be captured");
 
-    let iuri = Arc::clone(&uri);
-
     Arc::from(
         tree_sitter::QueryCursor::new()
             .matches(&QUERY, tree.root_node().0, source)
@@ -1358,7 +1354,7 @@ pub(crate) fn ids(db: &dyn Db, source_file: SourceFile) -> Arc<[OwnedLocation]> 
                 let n: Node = m.into();
                 Some(OwnedLocation {
                     range: n.range(),
-                    uri: Arc::clone(&iuri),
+                    uri: uri.clone(),
                 })
             })
             .cloned()

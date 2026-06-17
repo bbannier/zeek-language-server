@@ -16,7 +16,7 @@ use tower_lsp_server::ls_types::Uri;
 #[salsa::input]
 #[derive(Debug)]
 pub(crate) struct SourceFile {
-    pub(crate) uri: Arc<Uri>,
+    pub(crate) uri: Uri,
     pub(crate) text: Str,
 }
 
@@ -34,7 +34,7 @@ pub(crate) struct ConfigRevision {
 
 #[salsa::db]
 pub(crate) trait Db: salsa::Database {
-    fn source_file(&self, uri: &Arc<Uri>) -> Option<SourceFile>;
-    fn files(&self) -> Arc<[Arc<Uri>]>;
+    fn source_file(&self, uri: &Uri) -> Option<SourceFile>;
+    fn files(&self) -> Arc<[Uri]>;
     fn prefixes(&self) -> Vec<PathBuf>;
 }

@@ -53,20 +53,20 @@ pub(crate) use test::TestDatabase;
 #[salsa::db]
 pub struct Database {
     storage: salsa::Storage<Self>,
-    pub(crate) sources: HashMap<Arc<Uri>, Str>,
-    pub(crate) source_files: HashMap<Arc<Uri>, SourceFile>,
-    pub(crate) files: FxHashSet<Arc<Uri>>,
+    pub(crate) sources: HashMap<Uri, Str>,
+    pub(crate) source_files: HashMap<Uri, SourceFile>,
+    pub(crate) files: FxHashSet<Uri>,
     pub(crate) prefixes: Vec<PathBuf>,
     pub(crate) config_revision: Option<ConfigRevision>,
     pub(crate) workspace_folders: Arc<[Uri]>,
     pub(crate) capabilities: Arc<ClientCapabilities>,
     pub(crate) initialization_options: Arc<InitializationOptions>,
-    pub(crate) versions: HashMap<Arc<Uri>, i32>,
+    pub(crate) versions: HashMap<Uri, i32>,
 }
 
 pub enum SourceUpdate {
-    Remove(Arc<Uri>),
-    Update(Arc<Uri>, Str, Option<i32>),
+    Remove(Uri),
+    Update(Uri, Str, Option<i32>),
 }
 
 impl Database {
@@ -83,10 +83,10 @@ impl Database {
                             );
                             continue;
                         }
-                        self.versions.insert(Arc::clone(uri), *ver);
+                        self.versions.insert(uri.clone(), *ver);
                     }
-                    self.sources.insert(Arc::clone(uri), source.clone());
-                    self.files.insert(Arc::clone(uri));
+                    self.sources.insert(uri.clone(), source.clone());
+                    self.files.insert(uri.clone());
                 }
                 SourceUpdate::Remove(uri) => {
                     self.sources.remove(uri);
@@ -100,7 +100,7 @@ impl Database {
         let removals: Vec<_> = updates
             .iter()
             .filter_map(|u| match u {
-                SourceUpdate::Remove(uri) => Some(Arc::clone(uri)),
+                SourceUpdate::Remove(uri) => Some(uri.clone()),
                 SourceUpdate::Update(..) => None,
             })
             .collect();
@@ -112,8 +112,8 @@ impl Database {
                 if let Some(sf) = self.source_files.get(uri).copied() {
                     sf.set_text(&mut *self).to(source.clone());
                 } else {
-                    let sf = SourceFile::new(&*self, Arc::clone(uri), source.clone());
-                    self.source_files.insert(Arc::clone(uri), sf);
+                    let sf = SourceFile::new(&*self, uri.clone(), source.clone());
+                    self.source_files.insert(uri.clone(), sf);
                 }
             }
         }
@@ -178,11 +178,11 @@ unsafe impl Sync for Database {}
 
 #[salsa::db]
 impl crate::Db for Database {
-    fn source_file(&self, uri: &Arc<Uri>) -> Option<SourceFile> {
+    fn source_file(&self, uri: &Uri) -> Option<SourceFile> {
         self.source_files.get(uri).copied()
     }
 
-    fn files(&self) -> Arc<[Arc<Uri>]> {
+    fn files(&self) -> Arc<[Uri]> {
         Arc::from(self.files.iter().cloned().collect::<Vec<_>>())
     }
 
@@ -192,7 +192,7 @@ impl crate::Db for Database {
 }
 
 impl Database {
-    pub(crate) fn source(&self, uri: &Arc<Uri>) -> Option<Str> {
+    pub(crate) fn source(&self, uri: &Uri) -> Option<Str> {
         self.sources.get(uri).cloned()
     }
 
@@ -204,61 +204,61 @@ impl Database {
         Arc::clone(&self.initialization_options)
     }
 
-    pub(crate) fn parse(&self, file: &Arc<Uri>) -> Option<Arc<crate::parse::Tree>> {
+    pub(crate) fn parse(&self, file: &Uri) -> Option<Arc<crate::parse::Tree>> {
         let sf = self.source_file(file)?;
         crate::parse::parse(self, sf)
     }
 
-    pub(crate) fn decls(&self, uri: &Arc<Uri>) -> Arc<[Decl]> {
+    pub(crate) fn decls(&self, uri: &Uri) -> Arc<[Decl]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
         };
         crate::query::decls(self, sf)
     }
 
-    pub(crate) fn function_calls(&self, uri: &Arc<Uri>) -> Arc<[query::OwnedFunctionCall]> {
+    pub(crate) fn function_calls(&self, uri: &Uri) -> Arc<[query::OwnedFunctionCall]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
         };
         crate::query::function_calls(self, sf)
     }
 
-    pub(crate) fn untyped_var_decls(&self, uri: &Arc<Uri>) -> Arc<[Decl]> {
+    pub(crate) fn untyped_var_decls(&self, uri: &Uri) -> Arc<[Decl]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
         };
         crate::query::untyped_var_decls(self, sf)
     }
 
-    pub(crate) fn ids(&self, uri: &Arc<Uri>) -> Arc<[query::OwnedLocation]> {
+    pub(crate) fn ids(&self, uri: &Uri) -> Arc<[query::OwnedLocation]> {
         let Some(sf) = self.source_file(uri) else {
             return Arc::default();
         };
         crate::query::ids(self, sf)
     }
 
-    pub(crate) fn loaded_files(&self, url: &Arc<Uri>) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn loaded_files(&self, url: &Uri) -> Arc<[Uri]> {
         let Some(sf) = self.source_file(url) else {
             return Arc::default();
         };
         crate::ast::loaded_files(self, sf)
     }
 
-    pub(crate) fn loaded_files_recursive(&self, url: &Arc<Uri>) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn loaded_files_recursive(&self, url: &Uri) -> Arc<[Uri]> {
         let Some(sf) = self.source_file(url) else {
             return Arc::default();
         };
         crate::ast::loaded_files_recursive(self, sf)
     }
 
-    pub(crate) fn explicit_decls_recursive(&self, url: &Arc<Uri>) -> Arc<[Decl]> {
+    pub(crate) fn explicit_decls_recursive(&self, url: &Uri) -> Arc<[Decl]> {
         let Some(sf) = self.source_file(url) else {
             return Arc::default();
         };
         crate::ast::explicit_decls_recursive(self, sf)
     }
 
-    pub(crate) fn implicit_loads(&self) -> Arc<[Arc<Uri>]> {
+    pub(crate) fn implicit_loads(&self) -> Arc<[Uri]> {
         crate::ast::implicit_loads(self)
     }
 
@@ -266,7 +266,7 @@ impl Database {
         crate::ast::implicit_decls(self)
     }
 
-    pub(crate) fn possible_loads(&self, uri: &Arc<Uri>) -> Vec<InternedStr> {
+    pub(crate) fn possible_loads(&self, uri: &Uri) -> Vec<InternedStr> {
         crate::ast::possible_loads(self, uri)
     }
 
@@ -394,11 +394,11 @@ impl Backend {
         }
     }
 
-    async fn file_changed(&self, uri: Arc<Uri>) -> Result<ParseResult> {
+    async fn file_changed(&self, uri: &Uri) -> Result<ParseResult> {
         if let Some(client) = &self.client {
             let state = self.state.lock().await;
             let diags = {
-                match state.parse(&uri) {
+                match state.parse(uri) {
                     Some(tree) => tree_diagnostics(&tree.root_node()).collect(),
                     _ => Vec::new(),
                 }
@@ -413,7 +413,7 @@ impl Backend {
             };
 
             client
-                .publish_diagnostics((*uri).clone(), diags, None)
+                .publish_diagnostics(uri.clone(), diags, None)
                 .await;
 
             return Ok(parse_result);
@@ -638,7 +638,7 @@ impl LanguageServer for Backend {
 
             let removals = removals
                 .into_par_iter()
-                .map(|c| SourceUpdate::Remove(Arc::new(c.uri)));
+                .map(|c| SourceUpdate::Remove(c.uri));
 
             let updates = updates.into_iter().map(|c| {
                 tokio::spawn(async move {
@@ -651,7 +651,7 @@ impl LanguageServer for Backend {
                         }
                     };
 
-                    Some(SourceUpdate::Update(Arc::new(c.uri), source.into(), None))
+                    Some(SourceUpdate::Update(c.uri, source.into(), None))
                 })
             });
             let updates = futures::future::join_all(updates).await;
@@ -673,7 +673,7 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files: Vec<Arc<Uri>> = self.state.lock().await.files().iter().cloned().collect();
+        let files: Vec<Uri> = self.state.lock().await.files().iter().cloned().collect();
 
         let preloaded_decls = {
             let span = trace_span!("preloading");
@@ -685,7 +685,7 @@ impl LanguageServer for Backend {
             files
                 .iter()
                 .map(|f| {
-                    let f = Arc::clone(f);
+                    let f = f.clone();
                     let db = snap.clone();
                     tokio::spawn(async move {
                         if let Some(sf) = db.source_file(&f) {
@@ -708,13 +708,13 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let uri = Arc::new(params.text_document.uri.clone());
+        let uri = params.text_document.uri;
 
         self.state
             .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
-                Arc::clone(&uri),
+                uri.clone(),
                 params.text_document.text.as_str().into(),
                 Some(params.text_document.version),
             )]);
@@ -723,14 +723,14 @@ impl LanguageServer for Backend {
         // is on the critical path for e.g., completion.
         let _implicit = self.state.lock().await.implicit_decls();
 
-        let file_changed = self.file_changed(uri).await;
+        let file_changed = self.file_changed(&uri).await;
 
         match file_changed {
             Err(e) => {
                 error!("could not apply file change: {e}");
             }
             Ok(ParseResult::Ok) => {
-                self.check(params.text_document.uri, Some(params.text_document.version))
+                self.check(uri, Some(params.text_document.version))
                     .await;
             }
             Ok(ParseResult::HasDiagnostics) => {
@@ -748,19 +748,19 @@ impl LanguageServer for Backend {
 
         assert!(changes.range.is_none(), "unexpected diff mode");
 
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
 
         self.state
             .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
-                Arc::clone(&uri),
+                uri.clone(),
                 changes.text.as_str().into(),
                 None,
             )]);
 
         // Diagnostics are already triggered from `file_changed`.
-        if let Err(e) = self.file_changed(uri).await {
+        if let Err(e) = self.file_changed(&uri).await {
             error!("could not apply file change: {e}");
         }
     }
@@ -782,7 +782,7 @@ impl LanguageServer for Backend {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let params = params.text_document_position_params;
 
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
 
         let state = self.state.lock().await;
 
@@ -845,7 +845,7 @@ impl LanguageServer for Backend {
             }
             "file" => {
                 let file = PathBuf::from(text);
-                let uri = load_to_file(&file, uri.as_ref(), &state.files(), &state.prefixes());
+                let uri = load_to_file(&file, &uri, &state.files(), &state.prefixes());
                 if let Some(uri) = uri {
                     contents.push(MarkedString::String(format!("`{}`", uri.path())));
                 }
@@ -904,7 +904,7 @@ impl LanguageServer for Backend {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
 
         let symbol = |d: &Decl| -> Option<DocumentSymbol> {
             let loc = d.loc.as_ref()?;
@@ -1008,7 +1008,7 @@ impl LanguageServer for Backend {
                         name: d.fqid.to_string(),
                         kind: to_symbol_kind(&d.kind),
 
-                        location: Location::new(loc.uri.as_ref().clone(), loc.range),
+                        location: Location::new(loc.uri.clone(), loc.range),
                         container_name: Some(format!("{}", d.module)),
 
                         tags: None,
@@ -1033,7 +1033,7 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
         let params = params.text_document_position_params;
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
         let position = params.position;
 
         let state = self.state.lock().await;
@@ -1055,7 +1055,7 @@ impl LanguageServer for Backend {
                     .resolve(&NodeLocation::from_node(&uri, node))
                     .and_then(|d| {
                         let loc = &d.loc.as_ref()?;
-                        Some(Location::new((*loc.uri).clone(), loc.range))
+                        Some(Location::new(loc.uri.clone(), loc.range))
                     }),
                 "file" => {
                     let Ok(text) = node.utf8_text(source.as_bytes()).map_err(|e| {
@@ -1066,8 +1066,8 @@ impl LanguageServer for Backend {
                     };
 
                     let file = PathBuf::from(text);
-                    load_to_file(&file, uri.as_ref(), &state.files(), &state.prefixes())
-                        .map(|uri| Location::new((*uri).clone(), Range::default()))
+                    load_to_file(&file, &uri, &state.files(), &state.prefixes())
+                        .map(|uri| Location::new(uri.clone(), Range::default()))
                 }
                 "comment_body" => {
                     // If we are in a zeekygen comment try to recover an
@@ -1081,7 +1081,7 @@ impl LanguageServer for Backend {
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
                         .and_then(|(_, d)| d.loc)
-                        .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
+                        .map(|l| Location::new(l.uri.clone(), l.range))
                 }
                 _ => None,
             }
@@ -1092,7 +1092,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
-        let uri = Arc::new(params.text_document_position_params.text_document.uri);
+        let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
         let state = self.state.lock().await;
@@ -1228,14 +1228,14 @@ impl LanguageServer for Backend {
         }
 
         let state = self.state.lock().await;
-        let tree = state.parse(&Arc::new(params.text_document.uri));
+        let tree = state.parse(&params.text_document.uri);
 
         Ok(tree.map(|t| compute_folds(t.root_node(), false)))
     }
 
     #[instrument]
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
 
         let state = self.state.lock().await;
 
@@ -1265,7 +1265,7 @@ impl LanguageServer for Backend {
         &self,
         params: DocumentRangeFormattingParams,
     ) -> Result<Option<Vec<TextEdit>>> {
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
 
         let source = self.state.lock().await.source(&uri);
 
@@ -1301,7 +1301,7 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDeclarationResponse>> {
         let params = params.text_document_position_params;
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
         let position = params.position;
 
         let state = self.state.lock().await;
@@ -1346,7 +1346,7 @@ impl LanguageServer for Backend {
         Ok(decl.and_then(|d| {
             let loc = &d.loc.as_ref()?;
             Some(GotoDeclarationResponse::Scalar(Location::new(
-                (*loc.uri).clone(),
+                loc.uri.clone(),
                 loc.range,
             )))
         }))
@@ -1358,7 +1358,7 @@ impl LanguageServer for Backend {
         params: GotoImplementationParams,
     ) -> Result<Option<GotoImplementationResponse>> {
         let params = params.text_document_position_params;
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
         let position = params.position;
 
         let state = self.state.lock().await;
@@ -1396,7 +1396,7 @@ impl LanguageServer for Backend {
             .filter_map(|d| {
                 let loc = &d.loc.as_ref()?;
                 if d.id == decl.id {
-                    Some(Location::new((*loc.uri).clone(), loc.range))
+                    Some(Location::new(loc.uri.clone(), loc.range))
                 } else {
                     None
                 }
@@ -1418,7 +1418,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
         let state = self.state.lock().await;
         let Some(missing) = state.parse(&uri).and_then(|t| {
             t.root_node().errors().find_map(|err| {
@@ -1435,7 +1435,7 @@ impl LanguageServer for Backend {
 
         let edit = Some(WorkspaceEdit::new(
             [(
-                (*uri).clone(),
+                uri.clone(),
                 vec![{ TextEdit::new(diag.range, missing.clone()) }],
             )]
             .into_iter()
@@ -1456,7 +1456,7 @@ impl LanguageServer for Backend {
     #[allow(clippy::too_many_lines)]
     #[instrument]
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
-        let uri = Arc::new(params.text_document.uri);
+        let uri = params.text_document.uri;
         let range = params.range;
 
         let mut hints = Vec::new();
@@ -1590,7 +1590,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        let uri = Arc::new(params.text_document_position.text_document.uri);
+        let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
         // TODO(bbannier): respect `params.context.include_declaration`.
@@ -1613,14 +1613,14 @@ impl LanguageServer for Backend {
         Ok(Some(
             references
                 .into_iter()
-                .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
+                .map(|l| Location::new(l.uri.clone(), l.range))
                 .collect::<Vec<_>>(),
         ))
     }
 
     #[instrument]
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
-        let uri = Arc::new(params.text_document_position.text_document.uri);
+        let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
         let state = self.state.lock().await;
@@ -1642,7 +1642,7 @@ impl LanguageServer for Backend {
 
         let changes = references
             .into_iter()
-            .chunk_by(|r| r.uri.as_ref().clone())
+            .chunk_by(|r| r.uri.clone())
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g
@@ -1817,7 +1817,7 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
 
 fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<OwnedLocation> {
     /// Helper to compute all sources reachable from a given file.
-    fn all_sources(f: &Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
+    fn all_sources(f: &Uri, db: &Database) -> FxHashSet<Uri> {
         let mut loads = FxHashSet::default();
         loads.extend(db.implicit_loads().iter().cloned());
         loads.extend(db.loaded_files(f).iter().cloned());
@@ -1838,7 +1838,7 @@ fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<OwnedLocation> {
 
     db.files()
         .iter()
-        .filter(|f| f == &decl_uri || all_sources(f, db).contains(decl_uri))
+        .filter(|f| **f == *decl_uri || all_sources(f, db).contains(decl_uri))
         .flat_map(|f| {
             let uris = db
                 .ids(f)
@@ -2244,7 +2244,7 @@ pub(crate) mod test {
     impl TestDatabase {
         pub(crate) fn add_file(&mut self, uri: Uri, source: impl AsRef<str>) {
             self.0.update_sources(&[SourceUpdate::Update(
-                Arc::new(uri),
+                uri,
                 source.as_ref().into(),
                 None,
             )]);
@@ -2320,9 +2320,9 @@ pub(crate) mod test {
             "module mod_b; global B = 2;",
         );
 
-        let uri = Arc::new(Uri::from_file_path("/x/x.zeek").unwrap());
+        let uri = Uri::from_file_path("/x/x.zeek").unwrap();
         db.add_file(
-            (*uri).clone(),
+            uri.clone(),
             "module mod_x;
 @load a
 @load b
@@ -2337,7 +2337,7 @@ global GLOBAL::Y = 3;
         let result = server
             .completion(CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new((*uri).clone()),
+                    TextDocumentIdentifier::new(uri.clone()),
                     Position::new(6, 0),
                 ),
                 partial_result_params: PartialResultParams::default(),
@@ -2997,10 +2997,10 @@ event x::foo() {}",
     #[tokio::test]
     async fn code_action() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         let source = "global x = 42";
-        db.add_file((*uri).clone(), source);
+        db.add_file(uri.clone(), source);
 
         let context =
             db.0.parse(&uri)
@@ -3015,7 +3015,7 @@ event x::foo() {}",
         assert_debug_snapshot!(
             server
                 .code_action(CodeActionParams {
-                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     range: Range::new(Position::new(0, 1), Position::new(0, 2)),
                     context,
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -3028,7 +3028,7 @@ event x::foo() {}",
     #[tokio::test]
     async fn inlay_hint_function_params() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         let source = r#"
         function f(x: count, y: string) {}
@@ -3041,14 +3041,14 @@ event x::foo() {}",
         g(x + 1); # Hint here.
         "#;
 
-        db.add_file((*uri).clone(), source);
+        db.add_file(uri.clone(), source);
 
         let server = serve(db);
 
         assert_debug_snapshot!(
             server
                 .inlay_hint(InlayHintParams {
-                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     range: Range::new(Position::new(0, 0), Position::new(u32::MAX, 0)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
@@ -3059,7 +3059,7 @@ event x::foo() {}",
     #[tokio::test]
     async fn inlay_hint_decls() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         let source = r"
 const x: count = 0;
@@ -3071,14 +3071,14 @@ global x = 0;
 option x = T;
         ";
 
-        db.add_file((*uri).clone(), source);
+        db.add_file(uri.clone(), source);
 
         let server = serve(db);
 
         assert_debug_snapshot!(
             server
                 .inlay_hint(InlayHintParams {
-                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    text_document: TextDocumentIdentifier::new(uri),
                     range: Range::new(Position::new(5, 0), Position::new(7, 0)),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })
@@ -3114,7 +3114,7 @@ option x = T;
 
         for options in opts {
             let mut db = TestDatabase::default();
-            let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+            let uri = Uri::from_file_path("/x.zeek").unwrap();
             db.0.initialization_options = Arc::new(options);
 
             let source = "
@@ -3123,14 +3123,14 @@ f(1);
 const x = 1;
         ";
 
-            db.add_file((*uri).clone(), source);
+            db.add_file(uri.clone(), source);
 
             let server = serve(db);
 
             assert_debug_snapshot!(
                 server
                     .inlay_hint(InlayHintParams {
-                        text_document: TextDocumentIdentifier::new((*uri).clone()),
+                        text_document: TextDocumentIdentifier::new(uri),
                         range: Range::new(Position::new(0, 0), Position::new(5, 0)),
                         work_done_progress_params: WorkDoneProgressParams::default(),
                     })
@@ -3221,7 +3221,7 @@ const x = 1;
     #[tokio::test]
     async fn references() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         let source = r#"
 @load ./strings
@@ -3234,7 +3234,7 @@ const z = x;
 levenshtein_distance("", "");
             "#;
 
-        db.add_file((*uri).clone(), source);
+        db.add_file(uri.clone(), source);
         db.add_file(
             Uri::from_file_path("/strings.zeek").unwrap(),
             "function levenshtein_distance(a: string, b: string): count { return 0; }",
@@ -3246,7 +3246,7 @@ levenshtein_distance("", "");
             server
                 .references(ReferenceParams {
                     text_document_position: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new((*uri).clone()),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(8, 1),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -3262,7 +3262,7 @@ levenshtein_distance("", "");
             server
                 .references(ReferenceParams {
                     text_document_position: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new((*uri).clone()),
+                        TextDocumentIdentifier::new(uri.clone()),
                         Position::new(7, 6),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -3278,7 +3278,7 @@ levenshtein_distance("", "");
             server
                 .references(ReferenceParams {
                     text_document_position: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new((*uri).clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(4, 6),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -3294,7 +3294,7 @@ levenshtein_distance("", "");
     #[tokio::test]
     async fn rename() {
         let mut db = TestDatabase::default();
-        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
 
         let source = r"
 @load ./strings
@@ -3306,7 +3306,7 @@ const y = x;
 const z = x;
             ";
 
-        db.add_file((*uri).clone(), source);
+        db.add_file(uri.clone(), source);
         db.add_file(
             Uri::from_file_path("/strings.zeek").unwrap(),
             "function levenshtein_distance(a: string, b: string): count { return 0; }",
@@ -3318,7 +3318,7 @@ const z = x;
             server
                 .rename(RenameParams {
                     text_document_position: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier::new((*uri).clone()),
+                        TextDocumentIdentifier::new(uri),
                         Position::new(7, 10),
                     ),
                     new_name: "ABC".into(),

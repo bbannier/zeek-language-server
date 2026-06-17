@@ -116,8 +116,22 @@ pub(crate) fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> O
     };
 
     if is_redef(last_decl) {
-        let redef = last_decl;
-        let decls = resolve_redef(db, redef, &uri);
+        // Collect all decls matching this fqid across the three sources,
+        // then fold redef-record fields into the original type declaration.
+        let decls: Vec<Decl> = {
+            let implicit_decls = crate::ast::implicit_decls(db);
+            let loaded_decls = crate::ast::explicit_decls_recursive(db, sf);
+            let decls = crate::query::decls(db, sf);
+
+            implicit_decls
+                .iter()
+                .chain(loaded_decls.iter())
+                .chain(decls.iter())
+                .unique()
+                .filter(|x| x.fqid == last_decl.fqid)
+                .cloned()
+                .collect()
+        };
 
         let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
         let redefs = decls
@@ -627,6 +641,7 @@ pub(crate) fn explicit_decls_recursive(db: &dyn Db, sf: SourceFile) -> Arc<[Decl
 }
 
 #[instrument(skip(db))]
+#[salsa::tracked(no_eq)]
 pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
     let mut loads = Vec::new();
 
@@ -662,6 +677,7 @@ pub(crate) fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
 }
 
 #[instrument(skip(db))]
+#[salsa::tracked(no_eq)]
 pub(crate) fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
     let loads = crate::ast::implicit_loads(db);
 
@@ -729,34 +745,6 @@ pub fn is_redef(d: &Decl) -> bool {
         &d.kind,
         DeclKind::Redef | DeclKind::RedefEnum(_) | DeclKind::RedefRecord(_)
     )
-}
-
-#[instrument(skip(db))]
-fn resolve_redef(db: &dyn Db, redef: &Decl, scope: &Arc<Uri>) -> Arc<[Decl]> {
-    if !is_redef(redef) {
-        return Arc::default();
-    }
-
-    let implicit_decls = crate::ast::implicit_decls(db);
-
-    let loaded_decls = db
-        .source_file(scope)
-        .map(|sf| crate::ast::explicit_decls_recursive(db, sf))
-        .unwrap_or_default();
-
-    let decls = db
-        .source_file(scope)
-        .map(|sf| crate::query::decls(db, sf))
-        .unwrap_or_default();
-
-    implicit_decls
-        .iter()
-        .chain(loaded_decls.iter())
-        .chain(decls.iter())
-        .unique()
-        .filter(|x| x.fqid == redef.fqid)
-        .cloned()
-        .collect()
 }
 
 pub(crate) fn load_to_file(

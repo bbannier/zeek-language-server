@@ -100,9 +100,10 @@ impl Database {
         }) {
             self.sources.remove(uri);
         }
+
         for u in updates {
             if let SourceUpdate::Update(uri, source, _) = u {
-                if let Some(sf) = self.source_files.get(uri).copied() {
+                if let Some(sf) = self.sources.get(uri).copied() {
                     sf.set_text(&mut *self).to(source.clone());
                 } else {
                     let sf = SourceFile::new(&*self, uri.clone(), source.clone());

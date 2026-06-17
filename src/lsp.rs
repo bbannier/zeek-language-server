@@ -729,8 +729,7 @@ impl LanguageServer for Backend {
                 error!("could not apply file change: {e}");
             }
             Ok(ParseResult::Ok) => {
-                self.check(uri, Some(params.text_document.version))
-                    .await;
+                self.check(uri, Some(params.text_document.version)).await;
             }
             Ok(ParseResult::HasDiagnostics) => {
                 // Do not bother checking the file with zeek if it has parse errors.
@@ -1066,7 +1065,7 @@ impl LanguageServer for Backend {
 
                     let file = PathBuf::from(text);
                     load_to_file(&file, &uri, &state.files(), &state.prefixes())
-                        .map(|uri| Location::new(uri.clone(), Range::default()))
+                        .map(|uri| Location::new(uri, Range::default()))
                 }
                 "comment_body" => {
                     // If we are in a zeekygen comment try to recover an

@@ -9,9 +9,9 @@ rust-version = "1.89"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dev-dependencies]
-criterion = { version = "4.5.0", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
-insta = "1.46.1"
-tempfile = "3.24.0"
+criterion = { version = "4.7.0", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
+insta = "1.48.0"
+tempfile = "3.27.0"
 version-sync = "0.9.5"
 
 [features]
@@ -60,7 +60,7 @@ walkdir = { workspace = true }
 members = [".", "crates/tree-sitter-zeek"]
 
 [workspace.dependencies]
-cc = "1.2.62"
+cc = "1.2.64"
 clap = { version = "4.6.1", features = ["std", "derive", "help"], default-features = false }
 conv = { version = "0.3.3", default-features = false }
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
@@ -73,12 +73,12 @@ opentelemetry-semantic-conventions = { version = "0.32.0", default-features = fa
 opentelemetry_sdk = { version = "0.26.0", features = ["rt-tokio", "trace"], default-features = false }
 path-clean = "1.0.1"
 rayon = "1.12.0"
-regex = { default-features = false, version = "1.12.3" }
+regex = { default-features = false, version = "1.12.4" }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.1.2"
 salsa = "0.27.0"
 serde = { version = "1.0.228", default-features = false }
-serde_json = { default-features = false, version = "1.0.149" }
+serde_json = { default-features = false, version = "1.0.150" }
 smol_str = { version = "0.3.6", default-features = false, features = ["std"] }
 streaming-iterator = { version = "0.1.9", default-features = false }
 tokio = { version = "1.52.3", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
@@ -91,7 +91,7 @@ tree-sitter = "0.26.9"
 tree-sitter-bash = "0.25.1"
 tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", version = "0.1.0" }
 tree-sitter-generate = "0.26.9"
-tree-sitter-highlight = { version = "0.26.8", default-features = false }
+tree-sitter-highlight = { version = "0.26.9", default-features = false }
 tree-sitter-printf = "0.5.1"
 tree-sitter-regex = "0.25.0"
 tree-sitter-rst = "0.2.0"

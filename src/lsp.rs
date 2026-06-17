@@ -51,6 +51,7 @@ use walkdir::WalkDir;
 #[cfg(test)]
 pub(crate) use test::TestDatabase;
 
+#[derive(Clone)]
 #[salsa::db]
 // FIXME(bbannier): can this derive Default?
 pub struct Database {
@@ -59,7 +60,7 @@ pub struct Database {
     pub(crate) prefixes: Vec<PathBuf>,
     pub(crate) workspace_folders: Arc<[Uri]>,
     pub(crate) capabilities: Arc<ClientCapabilities>,
-    pub(crate) initialization_options: Arc<InitializationOptions>,
+    pub(crate) initialization_options: InitializationOptions,
 }
 
 pub enum SourceUpdate {
@@ -95,20 +96,7 @@ impl Default for Database {
             prefixes: Vec::default(),
             workspace_folders: Arc::default(),
             capabilities: Arc::default(),
-            initialization_options: Arc::new(InitializationOptions::new()),
-        }
-    }
-}
-
-impl Clone for Database {
-    fn clone(&self) -> Self {
-        Self {
-            storage: self.storage.clone(),
-            sources: self.sources.clone(),
-            prefixes: self.prefixes.clone(),
-            workspace_folders: Arc::clone(&self.workspace_folders),
-            capabilities: Arc::clone(&self.capabilities),
-            initialization_options: Arc::clone(&self.initialization_options),
+            initialization_options: InitializationOptions::new(),
         }
     }
 }
@@ -149,10 +137,6 @@ impl Database {
 
     pub(crate) fn capabilities(&self) -> Arc<ClientCapabilities> {
         Arc::clone(&self.capabilities)
-    }
-
-    pub(crate) fn initialization_options(&self) -> Arc<InitializationOptions> {
-        Arc::clone(&self.initialization_options)
     }
 
     pub(crate) fn parse(&self, file: &Uri) -> Option<Arc<crate::parse::Tree>> {
@@ -479,12 +463,10 @@ impl LanguageServer for Backend {
             let mut state = self.state.lock().await;
             state.workspace_folders = Arc::from(workspace_folders);
             state.capabilities = Arc::new(params.capabilities);
-            state.initialization_options = Arc::new(
-                params
-                    .initialization_options
-                    .and_then(|options| serde_json::from_value(options).ok())
-                    .unwrap_or_else(InitializationOptions::new),
-            );
+            state.initialization_options = params
+                .initialization_options
+                .and_then(|options| serde_json::from_value(options).ok())
+                .unwrap_or_else(InitializationOptions::new);
         }
 
         // Check prerequisites and set system prefixes.
@@ -498,7 +480,7 @@ impl LanguageServer for Backend {
             }
         }
 
-        let initialization_options = self.state.lock().await.initialization_options();
+        let initialization_options = self.state.lock().await.initialization_options.clone();
         let has_zeek_format = zeek::has_format().await;
 
         Ok(InitializeResult {
@@ -828,7 +810,7 @@ impl LanguageServer for Backend {
             .state
             .lock()
             .await
-            .initialization_options()
+            .initialization_options
             .debug_ast_nodes;
 
         if debug_ast_nodes {
@@ -1410,7 +1392,7 @@ impl LanguageServer for Backend {
 
         let state = self.state.lock().await;
 
-        let params = if state.initialization_options().inlay_hints_parameters {
+        let params = if state.initialization_options.inlay_hints_parameters {
             state
                 .function_calls(&uri)
                 .iter()
@@ -1476,7 +1458,7 @@ impl LanguageServer for Backend {
             Vec::default()
         };
 
-        let vars = if state.initialization_options().inlay_hints_variables {
+        let vars = if state.initialization_options.inlay_hints_variables {
             state
                 .untyped_var_decls(&uri)
                 .iter()
@@ -3057,7 +3039,7 @@ option x = T;
         for options in opts {
             let mut db = TestDatabase::default();
             let uri = Uri::from_file_path("/x.zeek").unwrap();
-            db.0.initialization_options = Arc::new(options);
+            db.0.initialization_options = options;
 
             let source = "
 global f: function(x: count);

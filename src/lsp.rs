@@ -89,6 +89,7 @@ impl Database {
                 SourceUpdate::Remove(uri) => {
                     self.files.remove(uri);
                     self.versions.remove(uri);
+                    self.sources.remove(uri);
                 }
             }
         }

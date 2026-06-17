@@ -171,7 +171,7 @@ unsafe impl Sync for Database {}
 #[salsa::db]
 impl crate::Db for Database {
     fn source_file(&self, uri: &Uri) -> Option<SourceFile> {
-        self.source_files.get(uri).copied()
+        self.sources.get(uri).copied()
     }
 
     fn files(&self) -> Arc<[Uri]> {
@@ -185,7 +185,7 @@ impl crate::Db for Database {
 
 impl Database {
     pub(crate) fn source(&self, uri: &Uri) -> Option<Str> {
-        self.sources.get(uri).cloned()
+        self.sources.get(uri).map(|f| f.text(self))
     }
 
     pub(crate) fn capabilities(&self) -> Arc<ClientCapabilities> {

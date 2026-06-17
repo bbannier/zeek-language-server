@@ -1838,8 +1838,7 @@ fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<OwnedLocation> {
         .iter()
         .filter(|f| **f == *decl_uri || all_sources(f, db).contains(decl_uri))
         .flat_map(|f| {
-            let uris = db
-                .ids(f)
+            db.ids(f)
                 .iter()
                 .filter_map(|loc| {
                     let tree = db.parse(&loc.uri)?;
@@ -1864,8 +1863,7 @@ fn references_impl(db: &Database, decl: &Decl) -> FxHashSet<OwnedLocation> {
                         Some(loc.clone())
                     })
                 })
-                .collect::<Vec<_>>();
-            uris
+                .collect::<Vec<_>>()
         })
         .collect()
 }

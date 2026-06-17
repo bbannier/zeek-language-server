@@ -412,9 +412,7 @@ impl Backend {
                 ParseResult::HasDiagnostics
             };
 
-            client
-                .publish_diagnostics(uri.clone(), diags, None)
-                .await;
+            client.publish_diagnostics(uri.clone(), diags, None).await;
 
             return Ok(parse_result);
         }

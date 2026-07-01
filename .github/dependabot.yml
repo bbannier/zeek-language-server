@@ -14,6 +14,8 @@ updates:
       default-days: 7
   - package-ecosystem: "github-actions" # See documentation for possible values
     directory: "/"
+    exclude-paths:
+      - ".github/workflows/release.yml"
     schedule:
       interval: "monthly"
     cooldown:

@@ -176,7 +176,7 @@
 	"devDependencies": {
 		"@types/node": "^25.9.1",
 		"@types/vscode": "^1.82.0",
-		"@vscode/vsce": "^3.9.1",
+		"@vscode/vsce": "^3.9.2",
 		"esbuild": "^0.28.1",
 		"typescript": "^6.0.3",
 		"vscode-languageclient": "^9.0.1"

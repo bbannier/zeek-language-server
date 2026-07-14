@@ -1797,7 +1797,7 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             decl.documentation
                 .starts_with("Multiline\ndocumentation.\n"),
             "{docs}",
-            docs = &decl.documentation
+            docs = decl.documentation
         );
     }
 

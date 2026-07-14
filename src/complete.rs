@@ -687,7 +687,7 @@ fn completion_text<'a>(node: Node, source: &'a str, reject_top_level: bool) -> O
         .lines()
         .next()
         .map(str::trim)
-        .and_then(|t| if t.is_empty() { None } else { Some(t) })
+        .filter(|t| !t.is_empty())
 }
 
 #[cfg(test)]

@@ -556,7 +556,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
 
             let mut fqid = match &module {
                 ModuleId::Global | ModuleId::None => id,
-                ModuleId::String(m) => format!("{}::{}", &m, &id).into(),
+                ModuleId::String(m) => format!("{m}::{id}").into(),
             };
 
             let signature = || -> Option<Signature> {

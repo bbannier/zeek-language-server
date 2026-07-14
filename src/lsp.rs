@@ -182,7 +182,7 @@ impl Backend {
             return None;
         }
 
-        let token = ProgressToken::String(format!("zeek-language-server/{}", &title));
+        let token = ProgressToken::String(format!("zeek-language-server/{title}"));
 
         if let Some(client) = &self.client {
             client

@@ -31,7 +31,7 @@ fn generate_keywords(parser_c: &Path) {
     pub static KEYWORDS: [&str; {}] = [{}];",
         set.len(),
         set.iter()
-            .map(|keyword| format!("{:#?}", &keyword))
+            .map(|keyword| format!("{keyword:#?}"))
             .collect::<Vec<_>>()
             .join(", ")
     );

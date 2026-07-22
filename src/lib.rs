@@ -26,8 +26,8 @@ pub struct FileList {
 pub struct ClientState {
     #[returns(clone)]
     pub capabilities: Arc<ClientCapabilities>,
-    #[returns(clone)]
-    pub initialization_options: Arc<lsp::InitializationOptions>,
+    #[returns(copy)]
+    pub initialization_options: lsp::InitializationOptions,
 }
 
 #[salsa::input]

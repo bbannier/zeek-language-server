@@ -158,7 +158,7 @@ impl Database {
     pub(crate) fn set_client_state(
         &mut self,
         capabilities: Arc<ClientCapabilities>,
-        initialization_options: Arc<InitializationOptions>,
+        initialization_options: InitializationOptions,
     ) {
         #[allow(clippy::unwrap_used)]
         self.client_state
@@ -207,7 +207,7 @@ impl Database {
     }
 
     #[cfg(test)]
-    pub(crate) fn set_initialization_options(&mut self, opts: Arc<InitializationOptions>) {
+    pub(crate) fn set_initialization_options(&mut self, opts: InitializationOptions) {
         #[allow(clippy::unwrap_used)]
         self.client_state
             .unwrap()
@@ -262,7 +262,7 @@ impl Default for Database {
         };
         let file_list = crate::FileList::new(&db, Arc::default());
         let client_state =
-            crate::ClientState::new(&db, Arc::default(), Arc::new(InitializationOptions::new()));
+            crate::ClientState::new(&db, Arc::default(), InitializationOptions::new());
         let workspace_state = crate::WorkspaceState::new(&db, Arc::default(), Arc::default());
         db.file_list = Some(file_list);
         db.client_state = Some(client_state);
@@ -530,12 +530,10 @@ impl LanguageServer for Backend {
             let mut state = self.state.write().await;
             state.set_client_state(
                 Arc::new(params.capabilities),
-                Arc::new(
-                    params
-                        .initialization_options
-                        .and_then(|options| serde_json::from_value(options).ok())
-                        .unwrap_or_else(InitializationOptions::new),
-                ),
+                params
+                    .initialization_options
+                    .and_then(|options| serde_json::from_value(options).ok())
+                    .unwrap_or_else(InitializationOptions::new),
             );
             state.set_workspace_state(Arc::from(workspace_folders), Arc::default());
         }
@@ -3220,7 +3218,7 @@ option x = T;
         for options in opts {
             let mut db = TestDatabase::default();
             let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
-            db.0.set_initialization_options(Arc::new(options));
+            db.0.set_initialization_options(options);
 
             let source = "
 global f: function(x: count);

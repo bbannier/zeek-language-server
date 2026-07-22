@@ -12,7 +12,11 @@ use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use salsa::ParallelDatabase;
 use serde::Deserialize;
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
+use std::{
+    fmt::Debug,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tower_lsp_server::{
     LanguageServer, LspService, Server,
     jsonrpc::{Error, Result},
@@ -59,6 +63,8 @@ pub(crate) use test::TestDatabase;
 )]
 pub struct Database {
     storage: salsa::Storage<Self>,
+    /// Records `WillExecute` events when set; shared across snapshots for test assertions.
+    event_log: Option<Arc<Mutex<Vec<String>>>>,
 }
 
 unsafe impl Sync for Database {}
@@ -102,12 +108,29 @@ impl Database {
         // Precompute decls in this file.
         let _d = self.decls(uri);
     }
+
+    #[cfg(test)]
+    pub(crate) fn enable_event_log(&mut self) {
+        self.event_log = Some(Arc::new(Mutex::new(Vec::new())));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_events(&self) -> Vec<String> {
+        self.event_log
+            .as_ref()
+            .map(|log| {
+                #[allow(clippy::unwrap_used)]
+                std::mem::take(&mut *log.lock().unwrap())
+            })
+            .unwrap_or_default()
+    }
 }
 
 impl Default for Database {
     fn default() -> Self {
         let mut db = Self {
             storage: salsa::Storage::default(),
+            event_log: None,
         };
 
         db.set_files(Arc::default());
@@ -120,12 +143,24 @@ impl Default for Database {
     }
 }
 
-impl salsa::Database for Database {}
+impl salsa::Database for Database {
+    fn salsa_event(&self, event: salsa::Event) {
+        if let salsa::EventKind::WillExecute { database_key } = event.kind {
+            if let Some(log) = &self.event_log {
+                #[allow(clippy::unwrap_used)]
+                log.lock()
+                    .unwrap()
+                    .push(format!("{:?}", database_key.debug(self)));
+            }
+        }
+    }
+}
 
 impl salsa::ParallelDatabase for Database {
     fn snapshot(&self) -> salsa::Snapshot<Self> {
         salsa::Snapshot::new(Database {
             storage: self.storage.snapshot(),
+            event_log: self.event_log.clone(),
         })
     }
 }
@@ -2120,6 +2155,7 @@ pub(crate) mod test {
         ast::Ast,
         lsp::{self, tree_diagnostics},
         parse::Parse,
+        query::Query,
         zeek,
     };
 
@@ -2145,6 +2181,14 @@ pub(crate) mod test {
 
         pub(crate) fn snapshot(self) -> lsp::Database {
             self.0
+        }
+
+        pub(crate) fn enable_event_log(&mut self) {
+            self.0.enable_event_log();
+        }
+
+        pub(crate) fn take_events(&self) -> Vec<String> {
+            self.0.take_events()
         }
     }
 
@@ -3244,6 +3288,108 @@ const z = x;
                     partial_result_params: PartialResultParams::default(),
                 })
                 .await
+        );
+    }
+
+    #[test]
+    fn incremental_unrelated_file_not_reexecuted() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        let b = Arc::new(Uri::from_file_path("/b.zeek").unwrap());
+        db.add_file((*a).clone(), "global A: count;");
+        db.add_file((*b).clone(), "global B: count;");
+
+        // Prime Salsa's memo cache.
+        let _ = db.0.parse(Arc::clone(&b));
+        let _ = db.0.decls(Arc::clone(&b));
+
+        db.enable_event_log();
+        db.add_file((*a).clone(), "global A: string;");
+
+        let _ = db.0.parse(Arc::clone(&b));
+        let _ = db.0.decls(Arc::clone(&b));
+
+        let events = db.take_events();
+        assert!(
+            events.iter().all(|e| !e.contains("/b.zeek")),
+            "modifying /a.zeek should not re-execute queries for /b.zeek, got: {events:?}"
+        );
+    }
+
+    #[test]
+    fn incremental_changed_file_reexecuted() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        db.add_file((*a).clone(), "global A: count;");
+
+        // Prime Salsa's memo cache.
+        let _ = db.0.decls(Arc::clone(&a));
+
+        db.enable_event_log();
+        db.add_file((*a).clone(), "global A: string;");
+        let _ = db.0.decls(Arc::clone(&a));
+
+        let events = db.take_events();
+        assert!(
+            events.iter().any(|e| e.contains("/a.zeek")),
+            "modifying /a.zeek should re-execute queries for it, got: {events:?}"
+        );
+    }
+
+    #[test]
+    fn incremental_loaded_file_change_invalidates_resolver() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        let b = Arc::new(Uri::from_file_path("/b.zeek").unwrap());
+        db.add_file((*b).clone(), "module b; export { global VAL: count; }");
+        db.add_file(
+            (*a).clone(),
+            "@load ./b
+b::VAL;",
+        );
+
+        // Prime Salsa's memo cache.
+        let _ = db.0.decls(Arc::clone(&b));
+        let _ = db.0.decls(Arc::clone(&a));
+
+        db.enable_event_log();
+        db.add_file((*b).clone(), "module b; export { global VAL: string; }");
+        let _ = db.0.decls(Arc::clone(&b));
+        let _ = db.0.decls(Arc::clone(&a));
+
+        let events = db.take_events();
+        assert!(
+            events
+                .iter()
+                .any(|e| e.contains("/b.zeek") || e.contains("/a.zeek")),
+            "modifying a @loaded file should trigger re-execution, got: {events:?}"
+        );
+    }
+
+    // Adding a new file currently over-invalidates: the `source()` query depends on the full
+    // file list, so adding any file invalidates `source()` for all files. This is fixed in the
+    // salsa 0.28.0 migration where each file's source is a separate input.
+    #[test]
+    #[ignore = "known over-invalidation bug; fixed in salsa 0.28.0 migration"]
+    fn incremental_new_file_does_not_invalidate_existing() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        let b = Arc::new(Uri::from_file_path("/b.zeek").unwrap());
+        db.add_file((*a).clone(), "global A: count;");
+
+        // Prime Salsa's memo cache.
+        let _ = db.0.parse(Arc::clone(&a));
+        let _ = db.0.decls(Arc::clone(&a));
+
+        db.enable_event_log();
+        db.add_file((*b).clone(), "global B: count;");
+        let _ = db.0.parse(Arc::clone(&a));
+        let _ = db.0.decls(Arc::clone(&a));
+
+        let events = db.take_events();
+        assert!(
+            events.iter().all(|e| !e.contains("/a.zeek")),
+            "adding /b.zeek should not re-execute queries for /a.zeek, got: {events:?}"
         );
     }
 }

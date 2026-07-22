@@ -48,7 +48,7 @@ mod test {
     #![allow(clippy::unwrap_used)]
 
     use {
-        crate::lsp::TestDatabase, insta::assert_debug_snapshot, std::sync::Arc,
+        crate::lsp::TestDatabase, crate::test_util::assert_debug_snapshot, std::sync::Arc,
         tower_lsp_server::ls_types::Uri,
     };
 

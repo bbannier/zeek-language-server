@@ -1411,8 +1411,8 @@ mod test {
 
     use std::sync::Arc;
 
+    use crate::test_util::assert_debug_snapshot;
     use crate::{lsp::TestDatabase, query::Node};
-    use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use tower_lsp_server::ls_types::{Position, Uri};
 

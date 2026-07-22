@@ -8,6 +8,8 @@ pub mod lsp;
 pub mod parse;
 pub mod query;
 pub mod rst;
+#[cfg(test)]
+pub(crate) mod test_util;
 pub mod zeek;
 
 #[salsa::input]

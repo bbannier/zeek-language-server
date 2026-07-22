@@ -2216,7 +2216,7 @@ mod semantic_tokens {
     mod test {
         #![allow(clippy::unwrap_used)]
 
-        use insta::assert_debug_snapshot;
+        use crate::test_util::assert_debug_snapshot;
         use tower_lsp_server::ls_types::{Position, SemanticToken, SemanticTokenType};
 
         use crate::lsp::semantic_tokens::{highlight, legend};
@@ -2307,7 +2307,7 @@ pub(crate) mod test {
         sync::Arc,
     };
 
-    use insta::assert_debug_snapshot;
+    use crate::test_util::assert_debug_snapshot;
     use tower_lsp_server::{
         LanguageServer,
         ls_types::{

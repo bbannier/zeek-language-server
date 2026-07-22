@@ -856,7 +856,7 @@ mod test {
 
     use std::{ops::Deref, path::PathBuf, str::FromStr, sync::Arc};
 
-    use insta::assert_debug_snapshot;
+    use crate::test_util::assert_debug_snapshot;
     use tower_lsp_server::ls_types::{Position, Range, Uri};
 
     use crate::{

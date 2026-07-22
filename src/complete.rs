@@ -700,7 +700,7 @@ fn completion_text<'a>(node: Node, source: &'a str, reject_top_level: bool) -> O
 mod test {
     #![allow(clippy::unwrap_used)]
 
-    use insta::assert_debug_snapshot;
+    use crate::test_util::assert_debug_snapshot;
     use tower_lsp_server::ls_types::{
         CompletionContext, CompletionItem, CompletionItemKind, CompletionParams,
         CompletionResponse, CompletionTriggerKind, Documentation, PartialResultParams, Position,

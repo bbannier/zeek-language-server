@@ -1,78 +1,10 @@
 ---
 source: src/ast.rs
-expression: db.0.loaded_files(foo)
+expression: result
 ---
 [
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/tmp/foo.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/tmp/foo.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/tmp/p/p1/p1.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/p/p2/p2.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
+    "/tmp/foo.zeek",
+    "/tmp/foo.zeek",
+    "/tmp/p/p1/p1.zeek",
+    "/p/p2/p2.zeek",
 ]

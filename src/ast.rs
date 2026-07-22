@@ -128,7 +128,6 @@ pub fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> Option<A
         // If we have found a redef resolve it and synthesize a new, full decl.
         // NOTE: since we have found the last decl, all other relevant redefs are already in scope.
         let redef = last_decl;
-        let uri = uri.uri(db);
         let decls = resolve_redef(db, redef, uri);
 
         let original_decl = decls.iter().find(|d| !is_redef(d))?.clone();
@@ -569,7 +568,7 @@ fn resolve_impl(
 
 #[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[Arc<Uri>]> {
+pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[InternedUri]> {
     let arc_uri = uri.uri(db);
     let files = db.file_list().files(db);
 
@@ -584,7 +583,7 @@ pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[Arc<Uri>]> {
 
     for load in &loads {
         if let Some(f) = load_to_file(load, arc_uri.as_ref(), &files, &prefixes) {
-            loaded_files.push(f);
+            loaded_files.push(crate::uri_db(db, f));
         }
     }
 
@@ -593,16 +592,16 @@ pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[Arc<Uri>]> {
 
 #[salsa::tracked(returns(clone))]
 #[instrument(skip_all)]
-pub fn loaded_files_recursive(db: &dyn Db, url: InternedUri) -> Arc<[Arc<Uri>]> {
-    let mut files: Vec<_> = loaded_files(db, url).iter().cloned().collect();
+pub fn loaded_files_recursive(db: &dyn Db, url: InternedUri) -> Arc<[InternedUri]> {
+    let mut files: Vec<_> = loaded_files(db, url).iter().copied().collect();
 
     loop {
         let mut new_files = Vec::new();
 
         for f in &files {
-            for load in loaded_files(db, crate::uri_db(db, Arc::clone(f))).as_ref() {
-                if !files.iter().any(|f| f.as_ref() == load.as_ref()) {
-                    new_files.push(Arc::clone(load));
+            for load in loaded_files(db, *f).as_ref() {
+                if !files.contains(load) {
+                    new_files.push(*load);
                 }
             }
         }
@@ -611,9 +610,7 @@ pub fn loaded_files_recursive(db: &dyn Db, url: InternedUri) -> Arc<[Arc<Uri>]> 
             break;
         }
 
-        for n in new_files {
-            files.push(n);
-        }
+        files.extend(new_files);
     }
 
     Arc::from(files)
@@ -627,21 +624,18 @@ pub fn explicit_decls_recursive(db: &dyn Db, uri: InternedUri) -> Arc<[Decl]> {
 
     let d = loaded_files_recursive(db, uri);
     let decls2 = d.iter().flat_map(|load| {
-        let decls: Vec<_> = crate::query::decls(db, crate::uri_db(db, Arc::clone(load)))
+        crate::query::decls(db, *load)
             .iter()
             .cloned()
-            .collect();
-        decls
+            .collect::<Vec<_>>()
     });
 
-    let d = decls1.chain(decls2).unique();
-
-    Arc::from(d.into_iter().collect::<Vec<_>>())
+    Arc::from(decls1.chain(decls2).unique().collect::<Vec<_>>())
 }
 
 #[salsa::tracked(returns(clone))]
 #[instrument(skip(db))]
-pub fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
+pub fn implicit_loads(db: &dyn Db) -> Arc<[InternedUri]> {
     let mut loads = Vec::new();
 
     // These loops looks horrible, but is okay since this function will be cached most of the time
@@ -668,7 +662,7 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
         // Not being able to resolve the load is potentially not an
         // error since this might race with prefixes being loaded.
         if let Some(implicit_load) = implicit_file {
-            loads.push(implicit_load);
+            loads.push(crate::uri_db(db, implicit_load));
         }
     }
 
@@ -678,17 +672,13 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
 #[salsa::tracked(returns(clone))]
 #[instrument(skip(db))]
 pub fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
-    let loads = implicit_loads(db);
-
-    loads
+    implicit_loads(db)
         .iter()
-        .cloned()
         .flat_map(|load| {
-            let xs: Vec<_> = explicit_decls_recursive(db, crate::uri_db(db, load))
+            explicit_decls_recursive(db, *load)
                 .iter()
                 .cloned()
-                .collect();
-            xs
+                .collect::<Vec<_>>()
         })
         .unique()
         .collect()
@@ -748,13 +738,12 @@ pub fn is_redef(d: &Decl) -> bool {
 
 #[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-fn resolve_redef(db: &dyn Db, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
+fn resolve_redef(db: &dyn Db, redef: &Decl, uri: InternedUri) -> Arc<[Decl]> {
     if !is_redef(redef) {
         return Arc::default();
     }
 
     let implicit_decls = implicit_decls(db);
-    let uri = crate::uri_db(db, Arc::clone(&scope));
     let loaded_decls = explicit_decls_recursive(db, uri);
     let decls = crate::query::decls(db, uri);
 
@@ -868,10 +857,11 @@ mod test {
         let d = Uri::from_file_path("/tmp/d.zeek").unwrap();
         db.add_file(d, "");
 
-        assert_debug_snapshot!(crate::ast::loaded_files_recursive(
-            &db.0,
-            crate::uri_db(&db.0, a)
-        ));
+        let result: Vec<_> = crate::ast::loaded_files_recursive(&db.0, crate::uri_db(&db.0, a))
+            .iter()
+            .map(|u| u.uri(&db.0).path().to_string())
+            .collect();
+        assert_debug_snapshot!(result);
     }
 
     #[test]
@@ -899,7 +889,11 @@ mod test {
              @load p2/p2",
         );
 
-        assert_debug_snapshot!(crate::ast::loaded_files(&db.0, crate::uri_db(&db.0, foo)));
+        let result: Vec<_> = crate::ast::loaded_files(&db.0, crate::uri_db(&db.0, foo))
+            .iter()
+            .map(|u| u.uri(&db.0).path().to_string())
+            .collect();
+        assert_debug_snapshot!(result);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::Str;
 pub(crate) use crate::{
-    Db, InternedStr,
+    Db, InternedStr, InternedUri,
     ast::load_to_file,
     complete::complete,
     query::{self, Decl, DeclKind, ModuleId, NodeLocation},
@@ -1877,17 +1877,20 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
 
 async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
-    fn all_sources(f: Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
-        let mut loads = FxHashSet::default();
-        loads.extend(crate::ast::implicit_loads(db).iter().cloned());
-        let f = uri_db(db, f);
-        loads.extend(crate::ast::loaded_files(db, f).iter().cloned());
+    fn all_sources(f: InternedUri, db: &Database) -> FxHashSet<InternedUri> {
+        let mut loads: FxHashSet<InternedUri> = FxHashSet::default();
+        loads.extend(crate::ast::implicit_loads(db).iter().copied());
+        loads.extend(crate::ast::loaded_files(db, f).iter().copied());
 
-        let mut recursive_loads = FxHashSet::default();
-        for l in &loads {
-            let l = uri_db(db, Arc::clone(l));
-            recursive_loads.extend(crate::ast::loaded_files_recursive(db, l).iter().cloned());
-        }
+        let recursive_loads: FxHashSet<InternedUri> = loads
+            .iter()
+            .flat_map(|l| {
+                crate::ast::loaded_files_recursive(db, *l)
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .collect();
         loads.extend(recursive_loads);
 
         loads
@@ -1896,7 +1899,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     let Some(decl_loc) = decl.loc.as_ref() else {
         return FxHashSet::default();
     };
-    let decl_uri = decl_loc.uri.uri(db);
+    let decl_uri = decl_loc.uri;
 
     let locs: Vec<_> = {
         let locs: Vec<_> = db
@@ -1906,8 +1909,8 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
             .filter(|f| {
                 // If the file we look at does not load the file with the decl, no references to it
                 // can exist.
-                f.as_ref() == decl_uri.as_ref()
-                    || all_sources(Arc::clone(f), db).contains(&decl_uri)
+                let f = uri_db(db, Arc::clone(f));
+                f == decl_uri || all_sources(f, db).contains(&decl_uri)
             })
             .map(|f| {
                 let db = db.clone();

@@ -1226,7 +1226,7 @@ global e_foo: E = eC;
 ",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
@@ -1267,7 +1267,7 @@ redef record connection += { name: string; };
 global c: connection;",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
@@ -1297,7 +1297,7 @@ function f(a: A) {
 }",
         );
 
-        let db = db.snapshot();
+        let db = db.0;
         let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 

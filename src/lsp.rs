@@ -2353,10 +2353,6 @@ pub(crate) mod test {
             self.0.set_prefixes(Arc::from(prefixes.clone()));
         }
 
-        pub(crate) fn snapshot(self) -> lsp::Database {
-            self.0
-        }
-
         pub(crate) fn enable_event_log(&mut self) {
             self.0.enable_event_log();
         }

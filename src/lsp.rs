@@ -21,26 +21,26 @@ use tower_lsp_server::{
     LanguageServer, LspService, Server,
     jsonrpc::{Error, Result},
     ls_types::{
-        CodeAction, CodeActionKind, CodeActionParams, CodeActionProviderCapability,
-        CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
-        DeclarationCapability, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-        DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentRangeFormattingParams,
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent,
-        FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip,
-        LanguageString, Location, MarkedString, MarkupContent, MarkupKind, MessageType,
-        NumberOrString, OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams,
-        ProgressParamsValue, ProgressToken, Range, ReferenceParams, RenameParams,
-        SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
-        SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
-        WorkspaceSymbolResponse,
+        ClientCapabilities, CodeAction, CodeActionKind, CodeActionParams,
+        CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
+        CompletionResponse, DeclarationCapability, Diagnostic, DiagnosticSeverity,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintKind,
+        InlayHintLabel, InlayHintParams, InlayHintTooltip, LanguageString, Location, MarkedString,
+        MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, ParameterInformation,
+        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
+        ReferenceParams, RenameParams, SemanticTokensFullOptions, SemanticTokensOptions,
+        SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
+        WorkspaceSymbolParams, WorkspaceSymbolResponse,
         notification::Progress,
         request::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
@@ -109,6 +109,24 @@ impl Database {
         let _d = self.decls(uri);
     }
 
+    pub(crate) fn set_client_state(
+        &mut self,
+        capabilities: Arc<ClientCapabilities>,
+        initialization_options: Arc<InitializationOptions>,
+    ) {
+        self.set_capabilities(capabilities);
+        self.set_initialization_options(initialization_options);
+    }
+
+    pub(crate) fn set_workspace_state(
+        &mut self,
+        workspace_folders: Arc<[Uri]>,
+        prefixes: Arc<[PathBuf]>,
+    ) {
+        self.set_workspace_folders(workspace_folders);
+        self.set_prefixes(prefixes);
+    }
+
     #[cfg(test)]
     pub(crate) fn enable_event_log(&mut self) {
         self.event_log = Some(Arc::new(Mutex::new(Vec::new())));
@@ -134,10 +152,8 @@ impl Default for Database {
         };
 
         db.set_files(Arc::default());
-        db.set_prefixes(Arc::default());
-        db.set_workspace_folders(Arc::default());
-        db.set_capabilities(Arc::default());
-        db.set_initialization_options(Arc::new(InitializationOptions::new()));
+        db.set_client_state(Arc::default(), Arc::new(InitializationOptions::new()));
+        db.set_workspace_state(Arc::default(), Arc::default());
 
         db
     }
@@ -145,13 +161,13 @@ impl Default for Database {
 
 impl salsa::Database for Database {
     fn salsa_event(&self, event: salsa::Event) {
-        if let salsa::EventKind::WillExecute { database_key } = event.kind {
-            if let Some(log) = &self.event_log {
-                #[allow(clippy::unwrap_used)]
-                log.lock()
-                    .unwrap()
-                    .push(format!("{:?}", database_key.debug(self)));
-            }
+        if let salsa::EventKind::WillExecute { database_key } = event.kind
+            && let Some(log) = &self.event_log
+        {
+            #[allow(clippy::unwrap_used)]
+            log.lock()
+                .unwrap()
+                .push(format!("{:?}", database_key.debug(self)));
         }
     }
 }
@@ -421,14 +437,16 @@ impl LanguageServer for Backend {
 
         {
             let mut state = self.state.write().await;
-            state.set_workspace_folders(Arc::from(workspace_folders));
-            state.set_capabilities(Arc::new(params.capabilities));
-            state.set_initialization_options(Arc::new(
-                params
-                    .initialization_options
-                    .and_then(|options| serde_json::from_value(options).ok())
-                    .unwrap_or_else(InitializationOptions::new),
-            ));
+            state.set_client_state(
+                Arc::new(params.capabilities),
+                Arc::new(
+                    params
+                        .initialization_options
+                        .and_then(|options| serde_json::from_value(options).ok())
+                        .unwrap_or_else(InitializationOptions::new),
+                ),
+            );
+            state.set_workspace_state(Arc::from(workspace_folders), Arc::default());
         }
 
         // Check prerequisites and set system prefixes.

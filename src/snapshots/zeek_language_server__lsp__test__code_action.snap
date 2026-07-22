@@ -1,6 +1,6 @@
 ---
 source: src/lsp.rs
-expression: "server.code_action(CodeActionParams\n{\n    text_document: TextDocumentIdentifier::new((*uri).clone()), range:\n    Range::new(Position::new(0, 1), Position::new(0, 2)), context,\n    work_done_progress_params: WorkDoneProgressParams::default(),\n    partial_result_params: PartialResultParams::default(),\n}).await"
+expression: "server.code_action(CodeActionParams\n{\n    text_document: TextDocumentIdentifier::new(text_document_uri), range:\n    Range::new(Position::new(0, 1), Position::new(0, 2)), context,\n    work_done_progress_params: WorkDoneProgressParams::default(),\n    partial_result_params: PartialResultParams::default(),\n}).await"
 ---
 Ok(
     Some(

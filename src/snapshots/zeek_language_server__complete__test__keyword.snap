@@ -1,7 +1,6 @@
 ---
 source: src/complete.rs
 expression: result
-snapshot_kind: text
 ---
 [
     CompletionItem {

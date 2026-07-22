@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "db.resolve(NodeLocation::from_node(uri, node))"
+expression: "crate::ast::resolve(&db.0, NodeLocation::from_node(uri, node))"
 ---
 Some(
     Decl {

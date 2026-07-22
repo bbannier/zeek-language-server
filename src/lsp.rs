@@ -170,6 +170,7 @@ impl Database {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn set_prefixes(&mut self, prefixes: Arc<[PathBuf]>) {
         if let Some(ws) = self.workspace_state {
             ws.set_prefixes(self).to(prefixes);
@@ -506,7 +507,20 @@ impl LanguageServer for Backend {
             .workspace_folders
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
-        {
+        // Resolve async values before acquiring the lock.
+        let prefixes = match zeek::prefixes(None).await {
+            Ok(prefixes) => Some(Arc::from(prefixes.collect::<Vec<_>>())),
+            Err(e) => {
+                self.warn_message(format!(
+                    "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
+                ))
+                .await;
+                None
+            }
+        };
+        let has_zeek_format = zeek::has_format().await;
+
+        let initialization_options = {
             let mut state = self.state.lock().await;
             state.set_client_state(
                 Arc::new(params.capabilities),
@@ -515,33 +529,13 @@ impl LanguageServer for Backend {
                     .and_then(|options| serde_json::from_value(options).ok())
                     .unwrap_or_else(InitializationOptions::new),
             );
-            state.set_workspace_state(Arc::from(workspace_folders), Arc::default());
-        }
-
-        // Check prerequisites and set system prefixes.
-        match zeek::prefixes(None).await {
-            Ok(prefixes) => self
-                .state
-                .lock()
-                .await
-                .set_prefixes(Arc::from(prefixes.collect::<Vec<_>>())),
-            Err(e) => {
-                self.warn_message(format!(
-                    "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
-                ))
-                .await;
-            }
-        }
-
-        let initialization_options = {
-            let state = self.state.lock().await;
+            state.set_workspace_state(Arc::from(workspace_folders), prefixes.unwrap_or_default());
             state
                 .client_state()
                 .map_or_else(InitializationOptions::new, |cs| {
                     cs.initialization_options(&*state)
                 })
         };
-        let has_zeek_format = zeek::has_format().await;
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {

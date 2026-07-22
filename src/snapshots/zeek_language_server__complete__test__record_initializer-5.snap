@@ -1,6 +1,6 @@
 ---
 source: src/complete.rs
-expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(1, 16),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n},).and_then(|completion|\n{\n    if let CompletionResponse::Array(items) = completion\n    {\n        Some(items.into_iter().filter(|item|\n        matches!(item.kind,\n        Some(CompletionItemKind::SNIPPET))).collect::<Vec<_>>(),)\n    } else { None }\n})"
+expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n    Position::new(1, 16),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n},).and_then(|completion|\n{\n    if let CompletionResponse::Array(items) = completion\n    {\n        Some(items.into_iter().filter(|item|\n        matches!(item.kind,\n        Some(CompletionItemKind::SNIPPET))).collect::<Vec<_>>(),)\n    } else { None }\n})"
 ---
 Some(
     [

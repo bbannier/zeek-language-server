@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: decl.as_ref().and_then(|d| db.typ(d.clone()))
+expression: "decl.as_ref().and_then(|d| crate::ast::typ(&db.0, Arc::clone(d)))"
 ---
 Some(
     Decl {

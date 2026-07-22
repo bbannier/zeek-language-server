@@ -1,8 +1,6 @@
 ---
 source: src/lsp.rs
-assertion_line: 1032
 expression: server.signature_help(params).await
-
 ---
 Ok(
     Some(

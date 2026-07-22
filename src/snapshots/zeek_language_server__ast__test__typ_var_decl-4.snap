@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: db.typ(decl)
+expression: "crate::ast::typ(&db.0, decl)"
 ---
 Some(
     Decl {

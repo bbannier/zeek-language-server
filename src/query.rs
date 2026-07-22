@@ -1551,10 +1551,9 @@ function f1(x: count, y: string) {
 }",
         );
 
-        let db = db.0;
-        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db.0, crate::uri_db(&db.0, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
-        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let source = crate::source(&db.0, crate::uri_db(&db.0, Arc::clone(&uri))).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
@@ -1585,10 +1584,9 @@ global ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);
 global hk: hook(info: Info, s: Seen, items: set[Item]);",
         );
 
-        let db = db.0;
-        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db.0, crate::uri_db(&db.0, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
-        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let source = crate::source(&db.0, crate::uri_db(&db.0, Arc::clone(&uri))).unwrap();
 
         assert_debug_snapshot!(super::decls_(root, &uri, source.as_bytes()));
     }
@@ -1603,10 +1601,9 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
 function f() {}",
         );
 
-        let db = db.0;
-        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db.0, crate::uri_db(&db.0, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
-        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let source = crate::source(&db.0, crate::uri_db(&db.0, Arc::clone(&uri))).unwrap();
 
         let decls = super::decls_(root, &uri, source.as_bytes());
         assert_eq!(decls.len(), 1);

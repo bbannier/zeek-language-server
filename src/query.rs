@@ -1184,9 +1184,9 @@ pub trait Query: Parse {
     fn ids(&self, uri: Arc<Uri>) -> Arc<[NodeLocation]>;
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
 #[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
+pub fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     let Some(source) = db.source(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1208,7 +1208,7 @@ fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
 }
 
 #[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+pub fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     let Some(tree) = db.parse(Arc::clone(&uri)) else {
         return Arc::default();
     };
@@ -1225,9 +1225,9 @@ fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     )
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
 #[instrument(skip(db))]
-fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
+pub fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
@@ -1268,9 +1268,9 @@ fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     )
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
 #[instrument(skip(db))]
-fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
+pub fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
@@ -1336,8 +1336,8 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     )
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
+#[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
+pub fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
@@ -1420,12 +1420,10 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::{Files, lsp::TestDatabase, parse::Parse, query::Node};
+    use crate::{lsp::TestDatabase, query::Node};
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use tower_lsp_server::ls_types::{Position, Uri};
-
-    use super::Query;
 
     const SOURCE: &str = r#"module test;
 
@@ -1462,7 +1460,7 @@ mod test {
             let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
 
             db.add_file((*uri).clone(), source);
-            db.0.parse(uri)
+            crate::parse::parse(&db.0, uri)
         };
 
         let loads = |source: &'static str| {
@@ -1483,7 +1481,7 @@ mod test {
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.0.parse(Arc::clone(&uri)).expect("cannot parse");
+        let tree = crate::parse::parse(&db.0, Arc::clone(&uri)).expect("cannot parse");
 
         let decls_ = |n: Node| super::decls_(n, &uri, SOURCE.as_bytes());
 
@@ -1521,7 +1519,7 @@ global GLOBAL::f3: function();
 }",
         );
 
-        let decls = db.0.decls(uri);
+        let decls = crate::query::decls(&db.0, uri);
         let mut decls = decls.iter().collect::<Vec<_>>();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
 
@@ -1533,7 +1531,7 @@ global GLOBAL::f3: function();
         let mut db = TestDatabase::default();
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
-        let tree = db.0.parse(uri).unwrap();
+        let tree = crate::parse::parse(&db.0, uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
 
@@ -1562,9 +1560,9 @@ function f1(x: count, y: string) {
         );
 
         let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
@@ -1596,9 +1594,9 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         );
 
         let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
 
         assert_debug_snapshot!(super::decls_(root, &uri, source.as_bytes()));
     }
@@ -1614,9 +1612,9 @@ function f() {}",
         );
 
         let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
 
         let decls = super::decls_(root, &uri, source.as_bytes());
         assert_eq!(decls.len(), 1);

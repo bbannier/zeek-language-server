@@ -2,11 +2,9 @@ use rustc_hash::FxHashSet;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
-    Files, InternedStr,
-    ast::{self, Ast},
+    InternedStr, ast,
     lsp::Database,
-    parse::Parse,
-    query::{self, Decl, DeclKind, Node, NodeLocation, Query},
+    query::{self, Decl, DeclKind, Node, NodeLocation},
 };
 
 use itertools::Itertools;
@@ -21,9 +19,9 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let source = state.source(Arc::clone(&uri))?;
+    let source = crate::source(state, Arc::clone(&uri))?;
 
-    let tree = state.parse(Arc::clone(&uri))?;
+    let tree = crate::parse::parse(state, Arc::clone(&uri))?;
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
@@ -96,8 +94,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     }).or_else(||
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
-            Some(state
-                .possible_loads(Arc::clone(&uri))
+            Some(crate::ast::possible_loads(state, Arc::clone(&uri))
                 .iter()
                 .map(|load| CompletionItem {
                     label: load.to_string(),
@@ -216,10 +213,10 @@ fn complete_field(
         node = stem.unwrap_or(node);
     }
 
-    if let Some(r) = state.resolve(NodeLocation::from_node(uri, node)) {
-        let decl = state.typ(r).and_then(|d| match &d.kind {
+    if let Some(r) = crate::ast::resolve(state, NodeLocation::from_node(uri, node)) {
+        let decl = crate::ast::typ(state, r).and_then(|d| match &d.kind {
             // If the decl refers to a field get the decl for underlying its type instead.
-            DeclKind::Field(_) => state.typ(d),
+            DeclKind::Field(_) => crate::ast::typ(state, d),
             _ => Some(d),
         });
 
@@ -247,11 +244,10 @@ fn complete_field(
 }
 
 fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
-    let implicit_decls = state.implicit_decls();
-    let explicit_decls_recursive = state.explicit_decls_recursive(Arc::clone(&uri));
+    let implicit_decls = crate::ast::implicit_decls(state);
+    let explicit_decls_recursive = crate::ast::explicit_decls_recursive(state, Arc::clone(&uri));
 
-    state
-        .decls(uri)
+    crate::query::decls(state, uri)
         .iter()
         .chain(implicit_decls.iter())
         .chain(explicit_decls_recursive.iter())
@@ -270,8 +266,8 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
                         .iter()
                         .filter_map(|d| {
                             let loc = &d.loc.as_ref()?;
-                            let tree = state.parse(Arc::clone(&loc.uri))?;
-                            let source = state.source(Arc::clone(&loc.uri))?;
+                            let tree = crate::parse::parse(state, Arc::clone(&loc.uri))?;
+                            let source = crate::source(state, Arc::clone(&loc.uri))?;
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -416,7 +412,7 @@ fn complete_record_initializer(
     node: Node,
     uri: Arc<Uri>,
 ) -> Option<Vec<CompletionItem>> {
-    let source = state.source(Arc::clone(&uri))?;
+    let source = crate::source(state, Arc::clone(&uri))?;
 
     // The member always needs to be an id.
     let id = match node.kind() {
@@ -446,7 +442,7 @@ fn complete_record_initializer(
         None
     };
 
-    let type_ = state.resolve_id(type_?.into(), NodeLocation::from_node(uri, node))?;
+    let type_ = crate::ast::resolve_id(state, type_?.into(), NodeLocation::from_node(uri, node))?;
 
     let DeclKind::Type(fields) = &type_.kind else {
         return None;
@@ -530,7 +526,7 @@ fn complete_any(
     mut node: Node,
     uri: Arc<Uri>,
 ) -> Vec<CompletionItem> {
-    let Some(source) = state.source(Arc::clone(&uri)) else {
+    let Some(source) = crate::source(state, Arc::clone(&uri)) else {
         return Vec::new();
     };
 
@@ -564,8 +560,8 @@ fn complete_any(
         };
     }
 
-    let loaded_decls = state.explicit_decls_recursive(uri);
-    let implicit_decls = state.implicit_decls();
+    let loaded_decls = crate::ast::explicit_decls_recursive(state, uri);
+    let implicit_decls = crate::ast::implicit_decls(state);
 
     let other_decls = loaded_decls
         .iter()

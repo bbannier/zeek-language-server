@@ -570,7 +570,7 @@ fn resolve_impl(
 #[allow(clippy::needless_pass_by_value)]
 pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[InternedUri]> {
     let arc_uri = uri.uri(db);
-    let files = db.file_list().files(db);
+    let files: Vec<_> = db.file_list().files(db).iter().map(|f| f.uri(db)).collect();
 
     let prefixes = db.workspace_state().prefixes(db);
 
@@ -642,8 +642,9 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[InternedUri]> {
     // (unless global state changes).
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
-        for f in &*db.file_list().files(db) {
-            let Some(path) = f.to_file_path() else {
+        for f in db.file_list().files(db).iter().copied() {
+            let arc_f = f.uri(db);
+            let Some(path) = arc_f.to_file_path() else {
                 continue;
             };
 
@@ -653,7 +654,7 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[InternedUri]> {
 
             for p in db.workspace_state().prefixes(db).iter() {
                 if path.strip_prefix(p).is_ok() {
-                    implicit_file = Some(Arc::clone(f));
+                    implicit_file = Some(f);
                     break;
                 }
             }
@@ -662,7 +663,7 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[InternedUri]> {
         // Not being able to resolve the load is potentially not an
         // error since this might race with prefixes being loaded.
         if let Some(implicit_load) = implicit_file {
-            loads.push(crate::uri_db(db, implicit_load));
+            loads.push(implicit_load);
         }
     }
 
@@ -698,7 +699,7 @@ pub fn possible_loads(db: &dyn Db, uri: InternedUri) -> Arc<[InternedStr]> {
     };
 
     let prefixes = db.workspace_state().prefixes(db);
-    let files = db.file_list().files(db);
+    let files: Vec<_> = db.file_list().files(db).iter().map(|f| f.uri(db)).collect();
 
     let loads: Vec<_> = files
         .iter()

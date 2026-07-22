@@ -114,7 +114,7 @@ impl Database {
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
         let mut needs_files_update = false;
         #[allow(clippy::unwrap_used)]
-        let mut files: FxHashSet<_> = self.file_list().files(self).iter().cloned().collect();
+        let mut files: FxHashSet<_> = self.file_list().files(self).iter().copied().collect();
 
         for u in updates {
             match u {
@@ -124,14 +124,16 @@ impl Database {
                         input.set_text(self).to(source.clone());
                     } else {
                         let input = crate::SourceInput::new(self, source.clone());
+                        let interned = uri_db(self, Arc::clone(uri));
                         self.sources.insert(Arc::clone(uri), input);
-                        files.insert(Arc::clone(uri));
+                        files.insert(interned);
                         needs_files_update = true;
                     }
                 }
                 SourceUpdate::Remove(uri) => {
                     if self.sources.remove(uri).is_some() {
-                        files.remove(uri);
+                        let interned = uri_db(self, Arc::clone(uri));
+                        files.remove(&interned);
                         needs_files_update = true;
                     }
                 }
@@ -695,10 +697,9 @@ impl LanguageServer for Backend {
             files
                 .iter()
                 .map(|f| {
-                    let f = Arc::clone(f);
+                    let f = *f;
                     let db = state.clone();
                     tokio::spawn(async move {
-                        let f = uri_db(&db, Arc::clone(&f));
                         let _x = crate::query::decls(&db, f);
                         let _x = crate::ast::loaded_files(&db, f);
                     })
@@ -863,10 +864,16 @@ impl LanguageServer for Backend {
             }
             "file" => {
                 let file = PathBuf::from(text);
+                let files: Vec<_> = state
+                    .file_list()
+                    .files(&*state)
+                    .iter()
+                    .map(|f| f.uri(&*state))
+                    .collect();
                 let uri = load_to_file(
                     &file,
                     uri.uri(&*state).as_ref(),
-                    state.file_list().files(&*state).as_ref(),
+                    &files,
                     state.workspace_state().prefixes(&*state).as_ref(),
                 );
                 if let Some(uri) = uri {
@@ -1089,10 +1096,16 @@ impl LanguageServer for Backend {
                     };
 
                     let file = PathBuf::from(text);
+                    let files: Vec<_> = state
+                        .file_list()
+                        .files(&*state)
+                        .iter()
+                        .map(|f| f.uri(&*state))
+                        .collect();
                     load_to_file(
                         &file,
                         uri.uri(&*state).as_ref(),
-                        state.file_list().files(&*state).as_ref(),
+                        &files,
                         state.workspace_state().prefixes(&*state).as_ref(),
                     )
                     .map(|uri| Location::new((*uri).clone(), Range::default()))
@@ -1429,8 +1442,7 @@ impl LanguageServer for Backend {
         let response = files
             .iter()
             .flat_map(|f| {
-                let f = crate::uri_db(&*state, Arc::clone(f));
-                crate::query::decls(&*state, f)
+                crate::query::decls(&*state, *f)
                     .iter()
                     .cloned()
                     .collect::<Vec<_>>()
@@ -1748,12 +1760,11 @@ fn word_at_position(source: &str, position: Position) -> Option<InternedStr> {
 fn fuzzy_search_symbol(db: &Database, symbol: &str) -> impl Iterator<Item = (f32, Decl)> {
     let symbol = String::from(symbol);
 
-    let files = db.file_list().files(db).iter().cloned().collect_vec();
-    files.into_iter().flat_map(move |uri| {
+    let files = db.file_list().files(db).iter().copied().collect_vec();
+    files.into_iter().flat_map(move |f| {
         let symbol = symbol.clone();
 
-        let uri = uri_db(db, Arc::clone(&uri));
-        let decls = crate::query::decls(db, uri).iter().cloned().collect_vec();
+        let decls = crate::query::decls(db, f).iter().cloned().collect_vec();
         decls.into_iter().filter_map(move |d| {
             let rank = rust_fuzzy_search::fuzzy_compare(&symbol, &d.fqid.to_lowercase());
             if rank > 0.0 { Some((rank, d)) } else { None }
@@ -1909,15 +1920,14 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
             .filter(|f| {
                 // If the file we look at does not load the file with the decl, no references to it
                 // can exist.
-                let f = uri_db(db, Arc::clone(f));
-                f == decl_uri || all_sources(f, db).contains(&decl_uri)
+                **f == decl_uri || all_sources(**f, db).contains(&decl_uri)
             })
             .map(|f| {
                 let db = db.clone();
                 let decl = Arc::clone(&decl);
-                let f = Arc::clone(f);
+                let f = *f;
                 tokio::spawn(async move {
-                    let f = uri_db(&db, Arc::clone(&f));
+                    let f = f;
                     Some(
                         crate::query::ids(&db, f)
                             .iter()

@@ -21,7 +21,7 @@ pub struct SourceInput {
 #[salsa::input]
 pub struct FileList {
     #[returns(clone)]
-    pub files: Arc<[Arc<Uri>]>,
+    pub files: Arc<[InternedUri]>,
 }
 
 #[salsa::input]

@@ -387,24 +387,18 @@ fn typ_impl(db: &dyn Db, decl: Arc<Decl>, _: ()) -> Option<Arc<Decl>> {
 
 #[allow(clippy::needless_pass_by_value)]
 pub fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> {
-    let uri = location.uri.uri(db);
-    let range = location.range;
-    resolve_impl(db, uri, range)
+    resolve_impl(db, location.uri, location.range)
 }
 
-// Note: `resolve` delegates to `resolve_impl` which takes `uri` and `range` as separate arguments
-// rather than a `NodeLocation`. This is because `NodeLocation` is not a salsa struct, so a
-// single-argument tracked function taking it would require `SalsaStructInDb`. Using two arguments
-// bypasses this via the RequiresInterning path. When `NodeLocation` is replaced with proper salsa
-// types, the wrapper can be removed.
-#[salsa::tracked(returns(clone), unsafe(non_salsa_values))]
+// `NodeLocation` is not a Salsa struct (`Range` isn't a Salsa value), so the tracked impl takes
+// `uri` and `range` separately to bypass the single-arg `SalsaStructInDb` requirement.
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::too_many_lines)]
 fn resolve_impl(
     db: &dyn Db,
-    uri: Arc<Uri>,
+    uri: InternedUri,
     range: tower_lsp_server::ls_types::Range,
 ) -> Option<Arc<Decl>> {
-    let uri = crate::uri_db(db, uri);
     let location = NodeLocation::from_range(uri, range);
     let tree = crate::parse::parse(db, uri)?;
     let node = tree.root_node().named_descendant_for_point_range(range)?;

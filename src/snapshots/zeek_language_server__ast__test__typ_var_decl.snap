@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: db.typ(decl)
+expression: "crate::ast::typ(&db.0, decl)"
 ---
 Some(
     Decl {
@@ -39,24 +39,7 @@ Some(
                                     character: 17,
                                 },
                             },
-                            uri: Uri(
-                                Uri {
-                                    scheme: "file",
-                                    authority: Some(
-                                        Authority {
-                                            userinfo: None,
-                                            host: "",
-                                            host_parsed: RegName(
-                                                "",
-                                            ),
-                                            port: None,
-                                        },
-                                    ),
-                                    path: "/x.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
-                            ),
+                            uri: InternedUri(Id(_)),
                         },
                     ),
                     documentation: u!("```zeek\n# In B\ni: count;\n```"),
@@ -88,24 +71,7 @@ Some(
                         character: 18,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\ntype B: record {\n                i: count;\n            };\n```"),

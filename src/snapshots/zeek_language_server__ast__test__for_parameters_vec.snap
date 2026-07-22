@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "db.resolve(NodeLocation::from_node(uri.clone(), i1))"
+expression: "crate::ast::resolve(&db.0, NodeLocation::from_node(uri, i1))"
 ---
 Some(
     Decl {
@@ -36,24 +36,7 @@ Some(
                         character: 6,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("Index 0 of `vector(1, 2, 3)`"),

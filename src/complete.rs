@@ -2,7 +2,7 @@ use rustc_hash::FxHashSet;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
-    InternedStr, ast,
+    InternedStr, InternedUri, ast,
     lsp::Database,
     query::{self, Decl, DeclKind, Node, NodeLocation},
     uri_db,
@@ -11,7 +11,7 @@ use crate::{
 use itertools::Itertools;
 use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
-    CompletionResponse, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position, Uri,
+    CompletionResponse, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position,
 };
 use tree_sitter_zeek::KEYWORDS;
 
@@ -20,10 +20,10 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let uri_db = uri_db(state, Arc::clone(&uri));
-    let source = crate::source(state, uri_db)?;
+    let uri = uri_db(state, Arc::clone(&uri));
+    let source = crate::source(state, uri)?;
 
-    let tree = crate::parse::parse(state, uri_db)?;
+    let tree = crate::parse::parse(state, uri)?;
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
@@ -80,7 +80,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
             || node.parent().is_some_and(|p| {
                 matches!(p.kind() , "field_access" | "field_check")
             }) {
-            complete_field(state, node, Arc::clone(&uri), is_partial)
+            complete_field(state, node, uri, is_partial)
         } else {
             None
         }
@@ -96,7 +96,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     }).or_else(||
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
-            Some(crate::ast::possible_loads(state, crate::uri_db(state, Arc::clone(&uri)))
+            Some(crate::ast::possible_loads(state, uri)
                 .iter()
                 .map(|load| CompletionItem {
                     label: load.to_string(),
@@ -107,7 +107,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         } else {
             None
         }
-    ).or_else(|| complete_record_initializer(state, node, Arc::clone(&uri))
+    ).or_else(|| complete_record_initializer(state, node, uri)
     ).or_else(||
         // If we are completing a function/event/hook definition complete from declarations.
         if node.kind() == "id" {
@@ -117,7 +117,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                 .and_then(|line| {
                     static RE: LazyLock<regex::Regex> = LazyLock::new(|| { regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp") });
                     Some(RE.captures(line)?.get(1)?.as_str())
-                }).map(|kind| complete_from_decls(state, Arc::clone(&uri), kind))
+                }).map(|kind| complete_from_decls(state, uri, kind))
         } else {
             None
         }
@@ -200,7 +200,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 fn complete_field(
     state: &Database,
     mut node: Node,
-    uri: Arc<Uri>,
+    uri: InternedUri,
     is_partial: bool,
 ) -> Option<Vec<CompletionItem>> {
     // If we are completing with something after the `$` (e.g., `foo$a`), instead
@@ -246,12 +246,11 @@ fn complete_field(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
-    let uri_db = uri_db(state, Arc::clone(&uri));
+fn complete_from_decls(state: &Database, uri: InternedUri, kind: &str) -> Vec<CompletionItem> {
     let implicit_decls = crate::ast::implicit_decls(state);
-    let explicit_decls_recursive = crate::ast::explicit_decls_recursive(state, uri_db);
+    let explicit_decls_recursive = crate::ast::explicit_decls_recursive(state, uri);
 
-    crate::query::decls(state, uri_db)
+    crate::query::decls(state, uri)
         .iter()
         .chain(implicit_decls.iter())
         .chain(explicit_decls_recursive.iter())
@@ -270,12 +269,8 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
                         .iter()
                         .filter_map(|d| {
                             let loc = &d.loc.as_ref()?;
-                            let tree = crate::parse::parse(
-                                state,
-                                crate::uri_db(state, Arc::clone(&loc.uri)),
-                            )?;
-                            let source =
-                                crate::source(state, crate::uri_db(state, Arc::clone(&loc.uri)))?;
+                            let tree = crate::parse::parse(state, loc.uri)?;
+                            let source = crate::source(state, loc.uri)?;
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -418,9 +413,9 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
 fn complete_record_initializer(
     state: &Database,
     node: Node,
-    uri: Arc<Uri>,
+    uri: InternedUri,
 ) -> Option<Vec<CompletionItem>> {
-    let source = crate::source(state, uri_db(state, Arc::clone(&uri)))?;
+    let source = crate::source(state, uri)?;
 
     // The member always needs to be an id.
     let id = match node.kind() {
@@ -533,10 +528,9 @@ fn complete_any(
     state: &Database,
     root: Node,
     mut node: Node,
-    uri: Arc<Uri>,
+    uri: InternedUri,
 ) -> Vec<CompletionItem> {
-    let uri_db = uri_db(state, Arc::clone(&uri));
-    let Some(source) = crate::source(state, uri_db) else {
+    let Some(source) = crate::source(state, uri) else {
         return Vec::new();
     };
 
@@ -550,7 +544,7 @@ fn complete_any(
     let text_at_completion = completion_text(node, &source, true);
 
     loop {
-        for d in query::decls_(node, &uri, source.as_bytes()) {
+        for d in query::decls_(state, node, uri, source.as_bytes()) {
             // Slightly fudge the ID we use for local declarations by removing the current
             // module from the FQID.
             let fqid = match current_module {
@@ -570,7 +564,7 @@ fn complete_any(
         };
     }
 
-    let loaded_decls = crate::ast::explicit_decls_recursive(state, uri_db);
+    let loaded_decls = crate::ast::explicit_decls_recursive(state, uri);
     let implicit_decls = crate::ast::implicit_decls(state);
 
     let other_decls = loaded_decls

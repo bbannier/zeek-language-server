@@ -46,7 +46,26 @@ pub struct InternedUri {
     pub uri: Arc<Uri>,
 }
 
-/// Convenience method: intern or look up an [`Arc<Uri>`] in the database.
+impl std::fmt::Debug for InternedUri {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use salsa::plumbing::AsId as _;
+        write!(f, "InternedUri({:?})", self.as_id())
+    }
+}
+
+impl PartialOrd for InternedUri {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for InternedUri {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use salsa::plumbing::AsId as _;
+        self.as_id().index().cmp(&other.as_id().index())
+    }
+}
+
 pub fn uri_db(db: &dyn Db, uri: Arc<Uri>) -> InternedUri {
     InternedUri::new(db, uri)
 }

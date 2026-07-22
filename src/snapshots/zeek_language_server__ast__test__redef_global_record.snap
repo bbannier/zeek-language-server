@@ -38,24 +38,7 @@ Decl {
                                 character: 28,
                             },
                         },
-                        uri: Uri(
-                            Uri {
-                                scheme: "file",
-                                authority: Some(
-                                    Authority {
-                                        userinfo: None,
-                                        host: "",
-                                        host_parsed: RegName(
-                                            "",
-                                        ),
-                                        port: None,
-                                    },
-                                ),
-                                path: "/init-bare.zeek",
-                                query: None,
-                                fragment: None,
-                            },
-                        ),
+                        uri: InternedUri(Id(_)),
                     },
                 ),
                 documentation: u!("```zeek\n# In connection\nid: string;\n```"),
@@ -90,24 +73,7 @@ Decl {
                                 character: 33,
                             },
                         },
-                        uri: Uri(
-                            Uri {
-                                scheme: "file",
-                                authority: Some(
-                                    Authority {
-                                        userinfo: None,
-                                        host: "",
-                                        host_parsed: RegName(
-                                            "",
-                                        ),
-                                        port: None,
-                                    },
-                                ),
-                                path: "/x.zeek",
-                                query: None,
-                                fragment: None,
-                            },
-                        ),
+                        uri: InternedUri(Id(_)),
                     },
                 ),
                 documentation: u!("```zeek\n# In x::connection\nname: string;\n```"),
@@ -139,24 +105,7 @@ Decl {
                     character: 15,
                 },
             },
-            uri: Uri(
-                Uri {
-                    scheme: "file",
-                    authority: Some(
-                        Authority {
-                            userinfo: None,
-                            host: "",
-                            host_parsed: RegName(
-                                "",
-                            ),
-                            port: None,
-                        },
-                    ),
-                    path: "/init-bare.zeek",
-                    query: None,
-                    fragment: None,
-                },
-            ),
+            uri: InternedUri(Id(_)),
         },
     ),
     documentation: u!("```zeek\ntype connection: record { id: string; };\n```"),

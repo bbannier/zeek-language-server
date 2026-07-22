@@ -56,12 +56,12 @@ Ok(
                 ),
                 range: Range {
                     start: Position {
-                        line: 7,
-                        character: 10,
+                        line: 4,
+                        character: 6,
                     },
                     end: Position {
-                        line: 7,
-                        character: 11,
+                        line: 4,
+                        character: 7,
                     },
                 },
             },
@@ -86,12 +86,12 @@ Ok(
                 ),
                 range: Range {
                     start: Position {
-                        line: 4,
-                        character: 6,
+                        line: 7,
+                        character: 10,
                     },
                     end: Position {
-                        line: 4,
-                        character: 7,
+                        line: 7,
+                        character: 11,
                     },
                 },
             },

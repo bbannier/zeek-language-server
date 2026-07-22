@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "db.typ(db.resolve(NodeLocation::from_node(uri.clone(), a)).unwrap())"
+expression: "crate::ast::typ(&db.0,\ncrate::ast::resolve(&db.0, NodeLocation::from_node(uri, a)).unwrap())"
 ---
 Some(
     Decl {
@@ -43,24 +43,7 @@ Some(
                                     character: 21,
                                 },
                             },
-                            uri: Uri(
-                                Uri {
-                                    scheme: "file",
-                                    authority: Some(
-                                        Authority {
-                                            userinfo: None,
-                                            host: "",
-                                            host_parsed: RegName(
-                                                "",
-                                            ),
-                                            port: None,
-                                        },
-                                    ),
-                                    path: "/x.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
-                            ),
+                            uri: InternedUri(Id(_)),
                         },
                     ),
                     documentation: u!("```zeek\n# In x::A\nc: count &optional;\n```"),
@@ -92,24 +75,7 @@ Some(
                         character: 6,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\ntype A: record {};\n```"),

@@ -165,6 +165,12 @@ impl salsa::ParallelDatabase for Database {
     }
 }
 
+impl Database {
+    pub(crate) fn fork(&self) -> salsa::Snapshot<Self> {
+        self.snapshot()
+    }
+}
+
 impl Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Database").finish()
@@ -578,7 +584,7 @@ impl LanguageServer for Backend {
                 .iter()
                 .map(|f| {
                     let f = Arc::clone(f);
-                    let db = state.snapshot();
+                    let db = state.fork();
                     tokio::spawn(async move {
                         let _x = db.decls(Arc::clone(&f));
                         let _x = db.loaded_files(f);
@@ -1375,7 +1381,7 @@ impl LanguageServer for Backend {
                 .iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
                 .map(|c| {
-                    let state = state.snapshot();
+                    let state = state.fork();
 
                     let c = c.clone();
 
@@ -1441,7 +1447,7 @@ impl LanguageServer for Backend {
                         .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
                 })
                 .map(|d| {
-                    let state = state.snapshot();
+                    let state = state.fork();
 
                     let d = d.clone();
 
@@ -1747,7 +1753,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
                 f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri)
             })
             .map(|f| {
-                let db = db.snapshot();
+                let db = db.fork();
                 let decl = Arc::clone(&decl);
                 let f = Arc::clone(f);
                 tokio::spawn(async move {

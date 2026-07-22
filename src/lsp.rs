@@ -2321,10 +2321,12 @@ pub(crate) mod test {
         LanguageServer,
         ls_types::{
             ClientCapabilities, CodeActionContext, CodeActionParams, CompletionParams,
-            CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions,
-            HoverParams, InlayHintParams, PartialResultParams, Position, Range, ReferenceContext,
-            ReferenceParams, RenameParams, SemanticTokensParams, TextDocumentIdentifier,
-            TextDocumentPositionParams, Uri, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionResponse, DidChangeTextDocumentParams, DocumentSymbolParams,
+            DocumentSymbolResponse, FormattingOptions, HoverParams, InlayHintParams,
+            PartialResultParams, Position, Range, ReferenceContext, ReferenceParams, RenameParams,
+            SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+            TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
+            WorkDoneProgressParams, WorkspaceSymbolParams,
         },
     };
 
@@ -3574,5 +3576,39 @@ b::VAL;",
             events.iter().all(|e| !e.contains("/a.zeek")),
             "adding /b.zeek should not re-execute queries for /a.zeek, got: {events:?}"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_did_change_and_hover() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(uri.clone(), "global x: count;");
+        let server = Arc::new(serve(db));
+
+        let hover_params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri.clone()),
+                Position::new(0, 7),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let change_params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier { uri, version: 1 },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "global x: string;".into(),
+            }],
+        };
+
+        let s1 = Arc::clone(&server);
+        let s2 = Arc::clone(&server);
+        let ((), hover) = tokio::join!(
+            async move { s1.did_change(change_params).await },
+            async move { s2.hover(hover_params).await },
+        );
+
+        // Either result (pre- or post-change type) is valid; what matters is no panic.
+        assert!(hover.is_ok());
     }
 }

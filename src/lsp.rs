@@ -234,10 +234,6 @@ impl Database {
             })
             .unwrap_or_default()
     }
-
-    pub(crate) fn fork(&self) -> Self {
-        self.clone()
-    }
 }
 
 impl Default for Database {
@@ -703,7 +699,7 @@ impl LanguageServer for Backend {
                 .iter()
                 .map(|f| {
                     let f = Arc::clone(f);
-                    let db = state.fork();
+                    let db = state.clone();
                     tokio::spawn(async move {
                         let f_db = uri_db(&db, Arc::clone(&f));
                         let _x = crate::query::decls(&db, f_db);
@@ -1530,7 +1526,7 @@ impl LanguageServer for Backend {
                 .iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
                 .map(|c| {
-                    let state = state.fork();
+                    let state = state.clone();
 
                     let c = c.clone();
 
@@ -1600,7 +1596,7 @@ impl LanguageServer for Backend {
                         .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
                 })
                 .map(|d| {
-                    let state = state.fork();
+                    let state = state.clone();
 
                     let d = d.clone();
 
@@ -1921,7 +1917,7 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
                 f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri)
             })
             .map(|f| {
-                let db = db.fork();
+                let db = db.clone();
                 let decl = Arc::clone(&decl);
                 let f = Arc::clone(f);
                 tokio::spawn(async move {

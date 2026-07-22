@@ -2106,4 +2106,72 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
             assert_debug_snapshot!(typ);
         }
     }
+
+    #[test]
+    fn resolve_builtin_implicit() {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
+        db.add_file((*uri).clone(), "global x: count;");
+
+        let db = db.0;
+        let source = db.source(Arc::clone(&uri)).unwrap();
+        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let node = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(0, 10))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("count"));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(uri, node)));
+    }
+
+    #[test]
+    fn resolve_from_loaded_file() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        db.add_file(
+            Uri::from_file_path("/b.zeek").unwrap(),
+            "module b; export { global VAL: count; }",
+        );
+        db.add_file(
+            (*a).clone(),
+            "@load ./b
+b::VAL;",
+        );
+
+        let db = db.0;
+        let source = db.source(Arc::clone(&a)).unwrap();
+        let tree = db.parse(Arc::clone(&a)).unwrap();
+        let node = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(1, 0))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("b::VAL"));
+        assert_debug_snapshot!(db.resolve(NodeLocation::from_node(a, node)));
+    }
+
+    #[test]
+    fn typ_from_loaded_file() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        db.add_file(
+            Uri::from_file_path("/b.zeek").unwrap(),
+            "module b; export { global VAL: count; }",
+        );
+        db.add_file(
+            (*a).clone(),
+            "@load ./b
+b::VAL;",
+        );
+
+        let db = db.0;
+        let source = db.source(Arc::clone(&a)).unwrap();
+        let tree = db.parse(Arc::clone(&a)).unwrap();
+        let node = tree
+            .root_node()
+            .named_descendant_for_position(Position::new(1, 0))
+            .unwrap();
+        assert_eq!(node.utf8_text(source.as_bytes()), Ok("b::VAL"));
+        let decl = db.resolve(NodeLocation::from_node(Arc::clone(&a), node));
+        assert_debug_snapshot!(decl.as_ref().and_then(|d| db.typ(Arc::clone(d))));
+    }
 }

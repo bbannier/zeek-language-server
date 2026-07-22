@@ -1,0 +1,60 @@
+---
+source: src/ast.rs
+expression: "db.resolve(NodeLocation::from_node(a, node))"
+---
+Some(
+    Decl {
+        module: String(
+            u!("b"),
+        ),
+        id: u!("VAL"),
+        fqid: u!("b::VAL"),
+        kind: Global,
+        is_export: Some(
+            true,
+        ),
+        loc: Some(
+            Location {
+                range: Range {
+                    start: Position {
+                        line: 0,
+                        character: 19,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 37,
+                    },
+                },
+                selection_range: Range {
+                    start: Position {
+                        line: 0,
+                        character: 26,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 29,
+                    },
+                },
+                uri: Uri(
+                    Uri {
+                        scheme: "file",
+                        authority: Some(
+                            Authority {
+                                userinfo: None,
+                                host: "",
+                                host_parsed: RegName(
+                                    "",
+                                ),
+                                port: None,
+                            },
+                        ),
+                        path: "/b.zeek",
+                        query: None,
+                        fragment: None,
+                    },
+                ),
+            },
+        ),
+        documentation: u!("```zeek\nglobal VAL: count;\n```"),
+    },
+)

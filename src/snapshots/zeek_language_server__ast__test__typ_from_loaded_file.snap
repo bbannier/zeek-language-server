@@ -1,0 +1,17 @@
+---
+source: src/ast.rs
+expression: decl.as_ref().and_then(|d| db.typ(d.clone()))
+---
+Some(
+    Decl {
+        module: Global,
+        id: u!("count"),
+        fqid: u!("count"),
+        kind: Builtin(
+            Count,
+        ),
+        is_export: None,
+        loc: None,
+        documentation: u!("Builtin type 'count'"),
+    },
+)

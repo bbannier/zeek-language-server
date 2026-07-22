@@ -21,6 +21,7 @@ telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "ope
 [dependencies]
 clap = { workspace = true }
 conv = { workspace = true }
+dashmap = { workspace = true }
 eyre = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
@@ -63,6 +64,7 @@ members = [".", "crates/tree-sitter-zeek"]
 cc = "1.2.62"
 clap = { version = "4.6.1", features = ["std", "derive", "help"], default-features = false }
 conv = { version = "0.3.3", default-features = false }
+dashmap = "6.1.0"
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.32" }
 itertools = "0.14.0"
@@ -76,7 +78,7 @@ rayon = "1.12.0"
 regex = { default-features = false, version = "1.12.3" }
 rust-fuzzy-search = "0.1.1"
 rustc-hash = "2.1.2"
-salsa = "0.16.1"
+salsa = "0.28.0"
 serde = { version = "1.0.228", default-features = false }
 serde_json = { default-features = false, version = "1.0.149" }
 smol_str = { version = "0.3.6", default-features = false, features = ["std"] }

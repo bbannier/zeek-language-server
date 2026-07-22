@@ -8,62 +8,22 @@ use tower_lsp_server::ls_types::Uri;
 use tracing::{instrument, warn};
 
 use crate::{
-    InternedStr,
-    parse::Parse,
-    query::{self, Decl, DeclKind, Index, NodeLocation, Query, Type},
+    Db, InternedStr, InternedUri,
+    query::{self, Decl, DeclKind, Index, NodeLocation, Type},
     zeek,
 };
 
-#[salsa::query_group(AstStorage)]
-pub trait Ast: Parse + Query {
-    #[salsa::input]
-    fn workspace_folders(&self) -> Arc<[Uri]>;
-
-    #[salsa::input]
-    fn prefixes(&self) -> Arc<[PathBuf]>;
-
-    #[must_use]
-    fn loaded_files(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]>;
-
-    #[must_use]
-    fn loaded_files_recursive(&self, url: Arc<Uri>) -> Arc<[Arc<Uri>]>;
-
-    /// Get the decls in uri and all files explicitly loaded by it.
-    #[must_use]
-    fn explicit_decls_recursive(&self, url: Arc<Uri>) -> Arc<[Decl]>;
-
-    #[must_use]
-    fn implicit_loads(&self) -> Arc<[Arc<Uri>]>;
-
-    #[must_use]
-    fn implicit_decls(&self) -> Arc<[Decl]>;
-
-    #[must_use]
-    fn possible_loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]>;
-
-    /// Find decl with ID from the node up the tree and in all other loaded files.
-    #[must_use]
-    fn resolve(&self, node: NodeLocation) -> Option<Arc<Decl>>;
-
-    /// Determine the type of the given decl.
-    fn typ(&self, decl: Arc<Decl>) -> Option<Arc<Decl>>;
-
-    /// Resolve identifier in a scope.
-    fn resolve_id(&self, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>>;
-
-    /// Resolve type in a scope.
-    fn resolve_type(&self, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>>;
-}
-
+#[salsa::tracked(returns(clone), unsafe(non_salsa_values))]
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 #[instrument(skip(db))]
-pub fn resolve_id(db: &dyn Ast, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
+pub fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
-    let tree = db.parse(Arc::clone(&uri))?;
+    let uri_db = crate::uri_db(db, Arc::clone(&uri));
+    let tree = crate::parse::parse(db, uri_db)?;
     let scope = tree
         .root_node()
         .named_descendant_for_point_range(scope.range)?;
-    let source = db.source(Arc::clone(&uri))?;
+    let source = crate::source(db, uri_db)?;
 
     let node = scope;
 
@@ -136,9 +96,9 @@ pub fn resolve_id(db: &dyn Ast, id: InternedStr, scope: NodeLocation) -> Option<
 
     // We haven't found a full decl yet, look in loaded modules. This needs to take all visible redefs
     // into account.
-    let decls = db.decls(Arc::clone(&uri));
-    let implicit_decls = db.implicit_decls();
-    let explicit_decls_recursive = db.explicit_decls_recursive(Arc::clone(&uri));
+    let decls = crate::query::decls(db, uri_db);
+    let implicit_decls = implicit_decls(db);
+    let explicit_decls_recursive = explicit_decls_recursive(db, uri_db);
     let last_decl = if let Some(redef) = &result {
         redef
     } else {
@@ -196,8 +156,9 @@ pub fn resolve_id(db: &dyn Ast, id: InternedStr, scope: NodeLocation) -> Option<
     }
 }
 
+#[salsa::tracked(returns(clone), unsafe(non_salsa_values))]
 #[instrument(skip(db))]
-pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>> {
+pub fn resolve_type(db: &dyn Db, typ: Type, scope: Option<NodeLocation>) -> Option<Arc<Decl>> {
     #[allow(clippy::needless_pass_by_value)]
     fn builtin_type(id: InternedStr, typ: Type) -> Arc<Decl> {
         Arc::new(Decl {
@@ -229,16 +190,16 @@ pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Opt
         Type::Table(ks, v) => {
             let ks: Vec<_> = ks
                 .iter()
-                .map(|k| db.resolve_type(k.clone(), scope.clone()).map(|d| d.fqid))
+                .map(|k| resolve_type(db, k.clone(), scope.clone()).map(|d| d.fqid))
                 .collect::<Option<_>>()?;
             let ks = ks.into_iter().join(", ");
-            let v = db.resolve_type((**v).clone(), scope).map(|d| d.fqid)?;
+            let v = resolve_type(db, (**v).clone(), scope).map(|d| d.fqid)?;
             builtin_type(format!("table[{ks}] of {v}").into(), typ)
         }
         Type::Set(xs) => {
             let xs = xs
                 .iter()
-                .map(|x| db.resolve_type(x.clone(), scope.clone()).map(|d| d.fqid))
+                .map(|x| resolve_type(db, x.clone(), scope.clone()).map(|d| d.fqid))
                 .collect::<Option<Vec<_>>>()?;
             let xs = xs.into_iter().join(", ");
             builtin_type(format!("set[{xs}]").into(), typ)
@@ -248,7 +209,7 @@ pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Opt
         Type::List(x) => builtin_type(
             format!(
                 "list of {}",
-                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
+                resolve_type(db, (**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -256,7 +217,7 @@ pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Opt
         Type::Vector(x) => builtin_type(
             format!(
                 "vector of {}",
-                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
+                resolve_type(db, (**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -264,7 +225,7 @@ pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Opt
         Type::File(x) => builtin_type(
             format!(
                 "file of {}",
-                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
+                resolve_type(db, (**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -272,7 +233,7 @@ pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Opt
         Type::Opaque(x) => builtin_type(
             format!(
                 "opaque of {}",
-                db.resolve_type((**x).clone(), scope).map(|d| d.fqid)?
+                resolve_type(db, (**x).clone(), scope).map(|d| d.fqid)?
             )
             .into(),
             typ,
@@ -280,8 +241,17 @@ pub fn resolve_type(db: &dyn Ast, typ: Type, scope: Option<NodeLocation>) -> Opt
     })
 }
 
+pub fn typ(db: &dyn Db, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+    typ_impl(db, decl, ())
+}
+
+// Note: `typ_impl` takes a dummy `()` second argument because salsa 0.28 requires single-argument
+// tracked functions to implement `SalsaStructInDb` for their argument. Using two arguments
+// bypasses this by triggering the RequiresInterning path instead. When `Arc<Decl>` is replaced
+// with a proper salsa interned type, the wrapper and `()` can be removed.
+#[salsa::tracked(returns(clone), unsafe(non_salsa_values))]
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
-pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
+fn typ_impl(db: &dyn Db, decl: Arc<Decl>, _: ()) -> Option<Arc<Decl>> {
     // If we see a type decl with location we are likely dealing with a builtin type already which
     // cannot be further resolved; return it directly.
     if let DeclKind::Type(_) = &decl.kind
@@ -293,21 +263,22 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     let Some(loc) = &decl.loc else {
         return Some(decl);
     };
-    let uri = &loc.uri;
+    let uri = Arc::clone(&loc.uri);
+    let uri_db = crate::uri_db(db, Arc::clone(&uri));
 
-    let tree = db.parse(Arc::clone(uri))?;
+    let tree = crate::parse::parse(db, uri_db)?;
 
     let node = tree
         .root_node()
         .named_descendant_for_point_range(loc.range)?;
 
     if let DeclKind::Index(i, from) = &decl.kind {
-        let from = db
-            .resolve_id(
-                from.as_str().into(),
-                NodeLocation::from_node(Arc::clone(uri), node),
-            )
-            .and_then(|r| db.typ(r))?;
+        let from = resolve_id(
+            db,
+            from.as_str().into(),
+            NodeLocation::from_node(Arc::clone(&uri), node),
+        )
+        .and_then(|r| typ(db, r))?;
 
         let DeclKind::Builtin(typ) = &from.kind else {
             // TODO(bbannier): report diagnostic for iteration over non-builtins.
@@ -327,8 +298,8 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
         #[allow(clippy::match_same_arms)]
         return match typ {
             Type::Vector(id) => match idx? {
-                0 => db.resolve_type(Type::Count, loc),
-                1 => db.resolve_type((**id).clone(), loc),
+                0 => resolve_type(db, Type::Count, loc),
+                1 => resolve_type(db, (**id).clone(), loc),
                 _ => None,
             },
             Type::Set(xs) => {
@@ -336,7 +307,7 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                     Index::Key(i) => Some(*i),
                     _ => None,
                 })?;
-                xs.get(idx).and_then(|x| db.resolve_type(x.clone(), loc))
+                xs.get(idx).and_then(|x| resolve_type(db, x.clone(), loc))
             }
             Type::List(_) => None, // Not implemented in Zeek.
             Type::Table(ks, v) => {
@@ -350,16 +321,16 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                         Index::Loop(_) => return None, // Should not reach here.
                     },
                 };
-                db.resolve_type(typ.clone(), loc)
+                resolve_type(db, typ.clone(), loc)
             }
             _ => None,
         };
     }
 
     let make_typ = |typ| {
-        let source = db.source(Arc::clone(uri))?;
+        let source = crate::source(db, uri_db)?;
         query::typ(typ, source.as_bytes())
-            .and_then(|t| db.resolve_type(t, Some(NodeLocation::from_node(Arc::clone(uri), typ))))
+            .and_then(|t| resolve_type(db, t, Some(NodeLocation::from_node(Arc::clone(&uri), typ))))
     };
 
     let d = match node.kind() {
@@ -370,7 +341,7 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                 "type" => make_typ(typ),
                 "initializer" => typ
                     .named_child("expr")
-                    .and_then(|n| db.resolve(NodeLocation::from_node(Arc::clone(uri), n))),
+                    .and_then(|n| resolve(db, NodeLocation::from_node(Arc::clone(&uri), n))),
                 _ => None,
             }
         }
@@ -384,7 +355,8 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
 
         match &d.kind {
             // For function declarations produce the function's return type.
-            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => db.resolve_type(
+            DeclKind::FuncDecl(sig) | DeclKind::FuncDef(sig) => resolve_type(
+                db,
                 sig.result.clone()?,
                 Some(NodeLocation::from_node(Arc::clone(&loc.uri), node)),
             ),
@@ -404,10 +376,10 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
                     }
                 }
 
-                db.resolve(NodeLocation::from_node(
-                    Arc::clone(&loc.uri),
-                    n.named_child("id")?,
-                ))
+                resolve(
+                    db,
+                    NodeLocation::from_node(Arc::clone(&loc.uri), n.named_child("id")?),
+                )
             }
 
             // Return the actual type for variable declarations.
@@ -415,7 +387,7 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
             | DeclKind::Field(_)
             | DeclKind::Global
             | DeclKind::Index(_, _)
-            | DeclKind::Variable => db.typ(d),
+            | DeclKind::Variable => typ(db, d),
 
             // Other kinds we return directly.
             _ => Some(d),
@@ -423,14 +395,30 @@ pub fn typ(db: &dyn Ast, decl: Arc<Decl>) -> Option<Arc<Decl>> {
     })
 }
 
-#[allow(clippy::too_many_lines)]
-pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
+#[allow(clippy::needless_pass_by_value)]
+pub fn resolve(db: &dyn Db, location: NodeLocation) -> Option<Arc<Decl>> {
     let uri = Arc::clone(&location.uri);
-    let tree = db.parse(Arc::clone(&uri))?;
-    let node = tree
-        .root_node()
-        .named_descendant_for_point_range(location.range)?;
-    let source = db.source(Arc::clone(&uri))?;
+    let range = location.range;
+    resolve_impl(db, uri, range)
+}
+
+// Note: `resolve` delegates to `resolve_impl` which takes `uri` and `range` as separate arguments
+// rather than a `NodeLocation`. This is because `NodeLocation` is not a salsa struct, so a
+// single-argument tracked function taking it would require `SalsaStructInDb`. Using two arguments
+// bypasses this via the RequiresInterning path. When `NodeLocation` is replaced with proper salsa
+// types, the wrapper can be removed.
+#[salsa::tracked(returns(clone), unsafe(non_salsa_values))]
+#[allow(clippy::too_many_lines)]
+fn resolve_impl(
+    db: &dyn Db,
+    uri: Arc<Uri>,
+    range: tower_lsp_server::ls_types::Range,
+) -> Option<Arc<Decl>> {
+    let location = NodeLocation::from_range(Arc::clone(&uri), range);
+    let uri_db = crate::uri_db(db, Arc::clone(&uri));
+    let tree = crate::parse::parse(db, uri_db)?;
+    let node = tree.root_node().named_descendant_for_point_range(range)?;
+    let source = crate::source(db, uri_db)?;
 
     let id: InternedStr = node.utf8_text(source.as_bytes()).ok()?.into();
 
@@ -441,44 +429,45 @@ pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
         // TODO(bbannier): the parser doesn't cleanly expose whether an integer is an `int` or a
         // `count`, use a dummy type until we resolve it
         "integer" => {
-            return db.resolve_type(
+            return resolve_type(
+                db,
                 Type::Id(format!("<{}>", node.kind()).into()),
                 Some(location),
             );
         }
 
         "hostname" => {
-            return db.resolve_type(Type::Set(vec![Type::Addr]), Some(location));
+            return resolve_type(db, Type::Set(vec![Type::Addr]), Some(location));
         }
-        "floatp" => return db.resolve_type(Type::Double, Some(location)),
-        "ipv4" | "ipv6" => return db.resolve_type(Type::Addr, Some(location)),
-        "subnet" => return db.resolve_type(Type::Subnet, Some(location)),
-        "interval" => return db.resolve_type(Type::Interval, Some(location)),
-        "port" => return db.resolve_type(Type::Port, Some(location)),
-        "string" => return db.resolve_type(Type::String, Some(location)),
-        "hex" => return db.resolve_type(Type::Count, Some(location)),
+        "floatp" => return resolve_type(db, Type::Double, Some(location)),
+        "ipv4" | "ipv6" => return resolve_type(db, Type::Addr, Some(location)),
+        "subnet" => return resolve_type(db, Type::Subnet, Some(location)),
+        "interval" => return resolve_type(db, Type::Interval, Some(location)),
+        "port" => return resolve_type(db, Type::Port, Some(location)),
+        "string" => return resolve_type(db, Type::String, Some(location)),
+        "hex" => return resolve_type(db, Type::Count, Some(location)),
 
         "constant" => {
             match node.utf8_text(source.as_bytes()).ok()? {
-                "T" | "F" => return db.resolve_type(Type::Bool, Some(location)),
+                "T" | "F" => return resolve_type(db, Type::Bool, Some(location)),
                 _ => return None,
             };
         }
 
         "type" => {
             return query::typ(node, source.as_bytes())
-                .and_then(|t| db.resolve_type(t, Some(location)));
+                .and_then(|t| resolve_type(db, t, Some(location)));
         }
 
         "expr" => {
             // Try to interpret expr as a cast `_ as @type`.
             if let Some(typ) = query::typ_from_cast(node, source.as_bytes()) {
-                return db.resolve_type(typ, Some(location));
+                return resolve_type(db, typ, Some(location));
             }
 
             return node
                 .named_child_not("nl")
-                .and_then(|c| db.resolve(NodeLocation::from_node(Arc::clone(&uri), c)));
+                .and_then(|c| resolve(db, NodeLocation::from_node(Arc::clone(&uri), c)));
         }
         // If we are on a `field_access` or `field_check` search the rhs in the scope of the lhs.
         "field_access" | "field_check" => {
@@ -488,15 +477,15 @@ pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
 
             let id = rhs.utf8_text(source.as_bytes()).ok()?;
 
-            let var_decl = db.resolve(NodeLocation::from_node(uri, lhs))?;
-            let type_decl = db.typ(var_decl)?;
+            let var_decl = resolve(db, NodeLocation::from_node(uri, lhs))?;
+            let type_decl = typ(db, var_decl)?;
 
             match &type_decl.kind {
                 DeclKind::Type(fields) => {
                     // Find the given id in the fields.
                     return fields.iter().find(|f| &*f.id == id).cloned().map(Arc::new);
                 }
-                DeclKind::Field(_) => return db.typ(type_decl),
+                DeclKind::Field(_) => return typ(db, type_decl),
                 _ => return None,
             }
         }
@@ -519,7 +508,7 @@ pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                 // If the expr has an ID we are in code like `X($abc=123)`.
                 let type_ = expr
                     .named_child("id")
-                    .and_then(|id| db.resolve(NodeLocation::from_node(Arc::clone(&uri), id)))
+                    .and_then(|id| resolve(db, NodeLocation::from_node(Arc::clone(&uri), id)))
                     // Otherwise check the RHS for expressions like `local a: A = [$abc=123]`.
                     .or_else(|| {
                         let parent = expr.parent()?;
@@ -527,11 +516,11 @@ pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
                         let type_id = parent.named_child("expr").and_then(|c| c.named_child("id"));
 
                         if let Some(id) = type_id {
-                            db.resolve(NodeLocation::from_node(Arc::clone(&uri), id))
-                                .and_then(|decl| db.typ(decl))
+                            resolve(db, NodeLocation::from_node(Arc::clone(&uri), id))
+                                .and_then(|decl| typ(db, decl))
                         } else if parent.kind() == "initializer" {
                             parent.prev_sibling().and_then(|t| {
-                                db.resolve(NodeLocation::from_node(Arc::clone(&uri), t))
+                                resolve(db, NodeLocation::from_node(Arc::clone(&uri), t))
                             })
                         } else {
                             None
@@ -555,18 +544,18 @@ pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
     if let Some(p) = node.parent()
         && matches!(p.kind(), "field_access" | "field_check")
     {
-        return db.resolve(NodeLocation::from_node(uri, p));
+        return resolve(db, NodeLocation::from_node(uri, p));
     }
 
     // Try to find a decl with name of the given node up the tree.
 
-    if let Some(r) = db.resolve_id(id, location.clone()) {
+    if let Some(r) = resolve_id(db, id, location.clone()) {
         // If we have found something which can have separate declaration and definition
         // return the declaration if possible. At this point this must be in another file.
         match r.kind {
             DeclKind::FuncDef(_) | DeclKind::EventDef(_) | DeclKind::HookDef(_) => {
                 if let Some(decl) =
-                    db.resolve_id(id, NodeLocation::from_node(uri, tree.root_node()))
+                    resolve_id(db, id, NodeLocation::from_node(uri, tree.root_node()))
                 {
                     return Some(decl);
                 }
@@ -587,21 +576,22 @@ pub fn resolve(db: &dyn Ast, location: NodeLocation) -> Option<Arc<Decl>> {
             .named_child("module_decl")
             .and_then(|d| d.named_child("id"))
             .and_then(|id| id.utf8_text(source.as_bytes()).ok())
-        && let Some(r) = db.resolve_id(format!("{module}::{id}").as_str().into(), location)
+        && let Some(r) = resolve_id(db, format!("{module}::{id}").as_str().into(), location)
     {
         return Some(r);
     }
     None
 }
 
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-pub fn loaded_files(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
-    let files = db.files();
+pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[Arc<Uri>]> {
+    let arc_uri = uri.uri(db);
+    let files = db.file_list().files(db);
 
-    let prefixes = db.prefixes();
+    let prefixes = db.workspace_state().prefixes(db);
 
-    let loads: Vec<_> = db
-        .loads(Arc::clone(&uri))
+    let loads: Vec<_> = crate::query::loads(db, uri)
         .iter()
         .map(|load| PathBuf::from(load.as_str()))
         .collect();
@@ -609,7 +599,7 @@ pub fn loaded_files(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
     let mut loaded_files = Vec::new();
 
     for load in &loads {
-        if let Some(f) = load_to_file(load, uri.as_ref(), &files, &prefixes) {
+        if let Some(f) = load_to_file(load, arc_uri.as_ref(), &files, &prefixes) {
             loaded_files.push(f);
         }
     }
@@ -617,15 +607,16 @@ pub fn loaded_files(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Arc<Uri>]> {
     Arc::from(loaded_files)
 }
 
-#[instrument(skip(db))]
-pub fn loaded_files_recursive(db: &dyn Ast, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
-    let mut files: Vec<_> = db.loaded_files(url).iter().cloned().collect();
+#[salsa::tracked(returns(clone))]
+#[instrument(skip_all)]
+pub fn loaded_files_recursive(db: &dyn Db, url: InternedUri) -> Arc<[Arc<Uri>]> {
+    let mut files: Vec<_> = loaded_files(db, url).iter().cloned().collect();
 
     loop {
         let mut new_files = Vec::new();
 
         for f in &files {
-            for load in db.loaded_files(Arc::clone(f)).as_ref() {
+            for load in loaded_files(db, crate::uri_db(db, Arc::clone(f))).as_ref() {
                 if !files.iter().any(|f| f.as_ref() == load.as_ref()) {
                     new_files.push(Arc::clone(load));
                 }
@@ -644,14 +635,18 @@ pub fn loaded_files_recursive(db: &dyn Ast, url: Arc<Uri>) -> Arc<[Arc<Uri>]> {
     Arc::from(files)
 }
 
-#[instrument(skip(db))]
-pub fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Decl]> {
-    let d = db.decls(Arc::clone(&uri));
+#[salsa::tracked(returns(clone))]
+#[instrument(skip_all)]
+pub fn explicit_decls_recursive(db: &dyn Db, uri: InternedUri) -> Arc<[Decl]> {
+    let d = crate::query::decls(db, uri);
     let decls1 = d.iter().cloned();
 
-    let d = db.loaded_files_recursive(uri);
+    let d = loaded_files_recursive(db, uri);
     let decls2 = d.iter().flat_map(|load| {
-        let decls: Vec<_> = db.decls(Arc::clone(load)).iter().cloned().collect();
+        let decls: Vec<_> = crate::query::decls(db, crate::uri_db(db, Arc::clone(load)))
+            .iter()
+            .cloned()
+            .collect();
         decls
     });
 
@@ -660,15 +655,16 @@ pub fn explicit_decls_recursive(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[Decl]> {
     Arc::from(d.into_iter().collect::<Vec<_>>())
 }
 
+#[salsa::tracked(returns(clone))]
 #[instrument(skip(db))]
-pub fn implicit_loads(db: &dyn Ast) -> Arc<[Arc<Uri>]> {
+pub fn implicit_loads(db: &dyn Db) -> Arc<[Arc<Uri>]> {
     let mut loads = Vec::new();
 
     // These loops looks horrible, but is okay since this function will be cached most of the time
     // (unless global state changes).
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
-        for f in &*db.files() {
+        for f in &*db.file_list().files(db) {
             let Some(path) = f.to_file_path() else {
                 continue;
             };
@@ -677,7 +673,7 @@ pub fn implicit_loads(db: &dyn Ast) -> Arc<[Arc<Uri>]> {
                 continue;
             }
 
-            for p in db.prefixes().iter() {
+            for p in db.workspace_state().prefixes(db).iter() {
                 if path.strip_prefix(p).is_ok() {
                     implicit_file = Some(Arc::clone(f));
                     break;
@@ -695,16 +691,16 @@ pub fn implicit_loads(db: &dyn Ast) -> Arc<[Arc<Uri>]> {
     Arc::from(loads)
 }
 
+#[salsa::tracked(returns(clone))]
 #[instrument(skip(db))]
-pub fn implicit_decls(db: &dyn Ast) -> Arc<[Decl]> {
-    let loads = db.implicit_loads();
+pub fn implicit_decls(db: &dyn Db) -> Arc<[Decl]> {
+    let loads = implicit_loads(db);
 
     loads
         .iter()
         .cloned()
         .flat_map(|load| {
-            let xs: Vec<_> = db
-                .explicit_decls_recursive(Arc::clone(&load))
+            let xs: Vec<_> = explicit_decls_recursive(db, crate::uri_db(db, load))
                 .iter()
                 .cloned()
                 .collect();
@@ -714,9 +710,11 @@ pub fn implicit_decls(db: &dyn Ast) -> Arc<[Decl]> {
         .collect()
 }
 
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-#[instrument(skip(db))]
-pub fn possible_loads(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[InternedStr]> {
+#[instrument(skip_all)]
+pub fn possible_loads(db: &dyn Db, uri: InternedUri) -> Arc<[InternedStr]> {
+    let uri = uri.uri(db);
     let Some(path) = uri.to_file_path() else {
         return Arc::default();
     };
@@ -725,8 +723,8 @@ pub fn possible_loads(db: &dyn Ast, uri: Arc<Uri>) -> Arc<[InternedStr]> {
         return Arc::default();
     };
 
-    let prefixes = db.prefixes();
-    let files = db.files();
+    let prefixes = db.workspace_state().prefixes(db);
+    let files = db.file_list().files(db);
 
     let loads: Vec<_> = files
         .iter()
@@ -764,15 +762,17 @@ pub fn is_redef(d: &Decl) -> bool {
     )
 }
 
+#[allow(clippy::needless_pass_by_value)]
 #[instrument(skip(db))]
-fn resolve_redef(db: &dyn Ast, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
+fn resolve_redef(db: &dyn Db, redef: &Decl, scope: Arc<Uri>) -> Arc<[Decl]> {
     if !is_redef(redef) {
         return Arc::default();
     }
 
-    let implicit_decls = db.implicit_decls();
-    let loaded_decls = db.explicit_decls_recursive(Arc::clone(&scope));
-    let decls = db.decls(scope);
+    let implicit_decls = implicit_decls(db);
+    let scope_db = crate::uri_db(db, Arc::clone(&scope));
+    let loaded_decls = explicit_decls_recursive(db, scope_db);
+    let decls = crate::query::decls(db, scope_db);
 
     implicit_decls
         .iter()
@@ -860,7 +860,6 @@ mod test {
     use tower_lsp_server::ls_types::{Position, Range, Uri};
 
     use crate::{
-        ast::Ast,
         lsp::TestDatabase,
         query::{self, DeclKind, NodeLocation},
     };
@@ -885,7 +884,10 @@ mod test {
         let d = Uri::from_file_path("/tmp/d.zeek").unwrap();
         db.add_file(d, "");
 
-        assert_debug_snapshot!(crate::ast::loaded_files_recursive(&db.0, a));
+        assert_debug_snapshot!(crate::ast::loaded_files_recursive(
+            &db.0,
+            crate::uri_db(&db.0, a)
+        ));
     }
 
     #[test]
@@ -913,7 +915,7 @@ mod test {
              @load p2/p2",
         );
 
-        assert_debug_snapshot!(crate::ast::loaded_files(&db.0, foo));
+        assert_debug_snapshot!(crate::ast::loaded_files(&db.0, crate::uri_db(&db.0, foo)));
     }
 
     #[test]
@@ -952,8 +954,8 @@ y$yx$f1;
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         // `c` resolves to `local c: ...`.
@@ -1038,8 +1040,8 @@ x$f;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1063,8 +1065,8 @@ x$f;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1096,8 +1098,8 @@ x::x;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1129,8 +1131,8 @@ y;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let node = tree.root_node();
         let node = node
@@ -1162,8 +1164,8 @@ x$x2;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let x = root
@@ -1225,8 +1227,8 @@ global e_foo: E = eC;
         );
 
         let db = db.snapshot();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let type_ = tree
             .root_node()
@@ -1266,8 +1268,8 @@ global c: connection;",
         );
 
         let db = db.snapshot();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let c = tree
             .root_node()
@@ -1296,8 +1298,8 @@ function f(a: A) {
         );
 
         let db = db.snapshot();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         let g = tree
             .root_node()
@@ -1354,8 +1356,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let x1 = root
@@ -1410,8 +1412,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         {
@@ -1420,9 +1422,8 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(b0.utf8_text(source.as_bytes()).unwrap(), "b0");
 
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), b0))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), b0)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(crate::ast::typ(&db, decl));
@@ -1434,9 +1435,8 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(b1.utf8_text(source.as_bytes()).unwrap(), "b1");
 
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), b1))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), b1)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(crate::ast::typ(&db, decl));
@@ -1448,9 +1448,8 @@ global x2 = f2();
                 .unwrap();
             assert_eq!(i1.utf8_text(source.as_bytes()).unwrap(), "i1");
 
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), i1))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), i1)).unwrap();
             assert_eq!(decl.kind, DeclKind::Variable);
 
             assert_debug_snapshot!(crate::ast::typ(&db, decl));
@@ -1482,8 +1481,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1509,8 +1508,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1556,8 +1555,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         for (i, line) in source
@@ -1581,15 +1580,13 @@ global x2 = f2();
             .named_descendant_for_position(Position::new(1, 19))
             .unwrap();
         assert_eq!(x.utf8_text(source.as_bytes()).unwrap(), "x");
-        let x_typ = db
-            .resolve(NodeLocation::from_node(Arc::clone(&uri), x))
+        let x_typ = crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), x))
             .and_then(|d| crate::ast::typ(&db, d));
         let y = root
             .named_descendant_for_position(Position::new(2, 19))
             .unwrap();
         assert_eq!(y.utf8_text(source.as_bytes()).unwrap(), "y");
-        let y_typ = db
-            .resolve(NodeLocation::from_node(Arc::clone(&uri), y))
+        let y_typ = crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), y))
             .and_then(|d| crate::ast::typ(&db, d));
         assert_eq!(x_typ, y_typ);
     }
@@ -1609,8 +1606,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1645,8 +1642,8 @@ global x2 = f2();
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let x = root
@@ -1674,9 +1671,9 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
 
         // Vector iteration.
         let i1 = root
@@ -1692,7 +1689,11 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
         assert_eq!(
-            i2.utf8_text(crate::source(&db, Arc::clone(&uri)).unwrap().as_bytes()),
+            i2.utf8_text(
+                crate::source(&db, crate::uri_db(&db, Arc::clone(&uri)))
+                    .unwrap()
+                    .as_bytes()
+            ),
             Ok("i")
         );
         assert_debug_snapshot!(crate::ast::resolve(
@@ -1750,8 +1751,8 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1809,8 +1810,8 @@ for (ta, tb in table([1]="a", [2]="b")) { ta; tb; }
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let foo = root
@@ -1856,8 +1857,8 @@ local x18: opaque of count;
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let check = |position: Position, expected_id: &str| {
@@ -1865,9 +1866,12 @@ local x18: opaque of count;
             assert_eq!(n.utf8_text(source.as_bytes()), Ok(expected_id));
             let typ = n.parent().unwrap().named_child("type").unwrap();
             let t = query::typ(typ, source.as_bytes()).unwrap();
-            let resolved = db
-                .resolve_type(t, Some(NodeLocation::from_node(Arc::clone(&uri), typ)))
-                .unwrap();
+            let resolved = crate::ast::resolve_type(
+                &db,
+                t,
+                Some(NodeLocation::from_node(Arc::clone(&uri), typ)),
+            )
+            .unwrap();
             assert_debug_snapshot!(resolved);
         };
 
@@ -1909,8 +1913,8 @@ local x18: opaque of count;
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let a = root
@@ -1938,17 +1942,15 @@ event zeek_init() { for (i, v in vs) ; }
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let v = root
             .named_descendant_for_position(Position::new(2, 25))
             .unwrap();
         assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-        let decl = db
-            .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
-            .unwrap();
+        let decl = crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), v)).unwrap();
         let typ = crate::ast::typ(&db, decl).unwrap();
         assert_debug_snapshot!(typ);
 
@@ -1956,9 +1958,7 @@ event zeek_init() { for (i, v in vs) ; }
             .named_descendant_for_position(Position::new(3, 25))
             .unwrap();
         assert_eq!(i.utf8_text(source.as_bytes()), Ok("i"));
-        let decl = db
-            .resolve(NodeLocation::from_node(Arc::clone(&uri), i))
-            .unwrap();
+        let decl = crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), i)).unwrap();
         let typ = crate::ast::typ(&db, decl).unwrap();
         assert_debug_snapshot!(typ);
 
@@ -1966,9 +1966,7 @@ event zeek_init() { for (i, v in vs) ; }
             .named_descendant_for_position(Position::new(3, 28))
             .unwrap();
         assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-        let decl = db
-            .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
-            .unwrap();
+        let decl = crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), v)).unwrap();
         let typ = crate::ast::typ(&db, decl).unwrap();
         assert_debug_snapshot!(typ);
     }
@@ -1986,8 +1984,8 @@ event zeek_init() { for (v in vs) ; }
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let v = root
@@ -2012,17 +2010,15 @@ event zeek_init() { for ([c, s] in vs) ; }
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         let c = root
             .named_descendant_for_position(Position::new(2, 26))
             .unwrap();
         assert_eq!(c.utf8_text(source.as_bytes()), Ok("c"));
-        let decl = db
-            .resolve(NodeLocation::from_node(Arc::clone(&uri), c))
-            .unwrap();
+        let decl = crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), c)).unwrap();
         let typ = crate::ast::typ(&db, decl).unwrap();
         assert_debug_snapshot!(typ);
 
@@ -2052,8 +2048,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let root = tree.root_node();
 
         {
@@ -2061,9 +2057,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(4, 26))
                 .unwrap();
             assert_eq!(k.utf8_text(source.as_bytes()), Ok("k"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), k))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), k)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
 
@@ -2071,9 +2066,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(4, 29))
                 .unwrap();
             assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), v)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
         }
@@ -2083,9 +2077,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(5, 28))
                 .unwrap();
             assert_eq!(k1.utf8_text(source.as_bytes()), Ok("k1"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), k1))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), k1)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
 
@@ -2093,9 +2086,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(5, 32))
                 .unwrap();
             assert_eq!(k2.utf8_text(source.as_bytes()), Ok("k2"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), k2))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), k2)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
 
@@ -2103,9 +2095,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(5, 38))
                 .unwrap();
             assert_eq!(v.utf8_text(source.as_bytes()), Ok("v"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), v))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), v)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
         }
@@ -2115,9 +2106,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(6, 28))
                 .unwrap();
             assert_eq!(k1.utf8_text(source.as_bytes()), Ok("k1"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), k1))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), k1)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
 
@@ -2125,9 +2115,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
                 .named_descendant_for_position(Position::new(6, 32))
                 .unwrap();
             assert_eq!(k2.utf8_text(source.as_bytes()), Ok("k2"));
-            let decl = db
-                .resolve(NodeLocation::from_node(Arc::clone(&uri), k2))
-                .unwrap();
+            let decl =
+                crate::ast::resolve(&db, NodeLocation::from_node(Arc::clone(&uri), k2)).unwrap();
             let typ = crate::ast::typ(&db, decl).unwrap();
             assert_debug_snapshot!(typ);
         }
@@ -2140,8 +2129,8 @@ event zeek_init() { for ( [ k1, k2 ] in t2 ) ; }
         db.add_file((*uri).clone(), "global x: count;");
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&uri)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&uri))).unwrap();
         let node = tree
             .root_node()
             .named_descendant_for_position(Position::new(0, 10))
@@ -2165,8 +2154,8 @@ b::VAL;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&a)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&a)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&a))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&a))).unwrap();
         let node = tree
             .root_node()
             .named_descendant_for_position(Position::new(1, 0))
@@ -2190,8 +2179,8 @@ b::VAL;",
         );
 
         let db = db.0;
-        let source = crate::source(&db, Arc::clone(&a)).unwrap();
-        let tree = crate::parse::parse(&db, Arc::clone(&a)).unwrap();
+        let source = crate::source(&db, crate::uri_db(&db, Arc::clone(&a))).unwrap();
+        let tree = crate::parse::parse(&db, crate::uri_db(&db, Arc::clone(&a))).unwrap();
         let node = tree
             .root_node()
             .named_descendant_for_position(Position::new(1, 0))

@@ -5,6 +5,7 @@ use crate::{
     InternedStr, ast,
     lsp::Database,
     query::{self, Decl, DeclKind, Node, NodeLocation},
+    uri_db,
 };
 
 use itertools::Itertools;
@@ -19,9 +20,10 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let uri = Arc::new(params.text_document_position.text_document.uri);
     let position = params.text_document_position.position;
 
-    let source = crate::source(state, Arc::clone(&uri))?;
+    let uri_db = uri_db(state, Arc::clone(&uri));
+    let source = crate::source(state, uri_db)?;
 
-    let tree = crate::parse::parse(state, Arc::clone(&uri))?;
+    let tree = crate::parse::parse(state, uri_db)?;
 
     // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
@@ -94,7 +96,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     }).or_else(||
         // If we are completing a file return valid load patterns.
         if node.kind() == "file" {
-            Some(crate::ast::possible_loads(state, Arc::clone(&uri))
+            Some(crate::ast::possible_loads(state, crate::uri_db(state, Arc::clone(&uri)))
                 .iter()
                 .map(|load| CompletionItem {
                     label: load.to_string(),
@@ -243,11 +245,13 @@ fn complete_field(
     None
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<CompletionItem> {
+    let uri_db = uri_db(state, Arc::clone(&uri));
     let implicit_decls = crate::ast::implicit_decls(state);
-    let explicit_decls_recursive = crate::ast::explicit_decls_recursive(state, Arc::clone(&uri));
+    let explicit_decls_recursive = crate::ast::explicit_decls_recursive(state, uri_db);
 
-    crate::query::decls(state, uri)
+    crate::query::decls(state, uri_db)
         .iter()
         .chain(implicit_decls.iter())
         .chain(explicit_decls_recursive.iter())
@@ -266,8 +270,12 @@ fn complete_from_decls(state: &Database, uri: Arc<Uri>, kind: &str) -> Vec<Compl
                         .iter()
                         .filter_map(|d| {
                             let loc = &d.loc.as_ref()?;
-                            let tree = crate::parse::parse(state, Arc::clone(&loc.uri))?;
-                            let source = crate::source(state, Arc::clone(&loc.uri))?;
+                            let tree = crate::parse::parse(
+                                state,
+                                crate::uri_db(state, Arc::clone(&loc.uri)),
+                            )?;
+                            let source =
+                                crate::source(state, crate::uri_db(state, Arc::clone(&loc.uri)))?;
                             tree.root_node()
                                 .named_descendant_for_point_range(loc.selection_range)?
                                 .utf8_text(source.as_bytes())
@@ -412,7 +420,7 @@ fn complete_record_initializer(
     node: Node,
     uri: Arc<Uri>,
 ) -> Option<Vec<CompletionItem>> {
-    let source = crate::source(state, Arc::clone(&uri))?;
+    let source = crate::source(state, uri_db(state, Arc::clone(&uri)))?;
 
     // The member always needs to be an id.
     let id = match node.kind() {
@@ -520,13 +528,15 @@ fn complete_record_initializer(
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn complete_any(
     state: &Database,
     root: Node,
     mut node: Node,
     uri: Arc<Uri>,
 ) -> Vec<CompletionItem> {
-    let Some(source) = crate::source(state, Arc::clone(&uri)) else {
+    let uri_db = uri_db(state, Arc::clone(&uri));
+    let Some(source) = crate::source(state, uri_db) else {
         return Vec::new();
     };
 
@@ -560,7 +570,7 @@ fn complete_any(
         };
     }
 
-    let loaded_decls = crate::ast::explicit_decls_recursive(state, uri);
+    let loaded_decls = crate::ast::explicit_decls_recursive(state, uri_db);
     let implicit_decls = crate::ast::implicit_decls(state);
 
     let other_decls = loaded_decls

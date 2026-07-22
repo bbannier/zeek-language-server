@@ -1,6 +1,5 @@
-use crate::{Files, query::Node};
+use crate::{Db, InternedUri, query::Node};
 use std::sync::Arc;
-use tower_lsp_server::ls_types::Uri;
 use tracing::instrument;
 use tree_sitter::Parser;
 use tree_sitter_zeek::language_zeek;
@@ -29,21 +28,15 @@ impl From<tree_sitter::Tree> for Tree {
 
 impl Eq for Tree {}
 
-#[salsa::query_group(ParseStorage)]
-pub trait Parse: Files {
-    #[must_use]
-    fn parse(&self, file: Arc<Uri>) -> Option<Arc<Tree>>;
-}
-
-#[instrument(skip(db))]
-#[allow(clippy::missing_panics_doc)]
-pub fn parse(db: &dyn Parse, file: Arc<Uri>) -> Option<Arc<Tree>> {
+#[salsa::tracked(returns(clone))]
+#[instrument(skip_all)]
+pub fn parse(db: &dyn Db, file: InternedUri) -> Option<Arc<Tree>> {
     let mut parser = Parser::new();
     parser
         .set_language(&language_zeek())
         .expect("cannot set parser language");
 
-    let source = db.source(file)?;
+    let source = crate::source(db, file)?;
     parser
         .parse(source.as_bytes(), None)
         .map(Tree)
@@ -68,7 +61,8 @@ mod test {
 
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = crate::parse::parse(&db.0, uri);
+        let uri_db = crate::uri_db(&db.0, uri);
+        let tree = crate::parse::parse(&db.0, uri_db);
         let sexp = tree.map(|t| t.root_node().to_sexp());
         assert_debug_snapshot!(sexp);
     }

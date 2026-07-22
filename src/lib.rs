@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tower_lsp_server::ls_types::{ClientCapabilities, Uri};
 use tracing::instrument;
 
@@ -10,41 +10,57 @@ pub mod query;
 pub mod rst;
 pub mod zeek;
 
-#[allow(clippy::trait_duplication_in_bounds)]
-#[salsa::query_group(FilesStorage)]
-pub trait Files: salsa::Database {
-    #[salsa::input]
-    fn unsafe_source(&self, uri: Arc<Uri>) -> Str;
-
-    #[salsa::input]
-    fn files(&self) -> Arc<[Arc<Uri>]>;
-
-    /// Gets the source code for a file if it is known.
-    fn source(&self, uri: Arc<Uri>) -> Option<Str>;
+#[salsa::input]
+pub struct SourceInput {
+    #[returns(clone)]
+    pub text: Str,
 }
 
-#[instrument(skip(db))]
-pub fn source(db: &dyn Files, uri: Arc<Uri>) -> Option<Str> {
-    // Check if we know the file. This reduces chances of us trying to get sources for a not
-    // yet added uri.
-    //
-    // TODO(bbannier): Ideally this would really be modelled in a more compact way, e.g., by us
-    // getting sources from the files database.
-    if !db.files().contains(&uri) {
-        return None;
-    }
-
-    Some(db.unsafe_source(uri))
+#[salsa::input]
+pub struct FileList {
+    #[returns(clone)]
+    pub files: Arc<[Arc<Uri>]>,
 }
 
-#[allow(clippy::trait_duplication_in_bounds)]
-#[salsa::query_group(ClientStorage)]
-pub trait Client: salsa::Database {
-    #[salsa::input]
-    fn capabilities(&self) -> Arc<ClientCapabilities>;
+#[salsa::input]
+pub struct ClientState {
+    #[returns(clone)]
+    pub capabilities: Arc<ClientCapabilities>,
+    #[returns(clone)]
+    pub initialization_options: Arc<lsp::InitializationOptions>,
+}
 
-    #[salsa::input]
-    fn initialization_options(&self) -> Arc<lsp::InitializationOptions>;
+#[salsa::input]
+pub struct WorkspaceState {
+    #[returns(clone)]
+    pub workspace_folders: Arc<[Uri]>,
+    #[returns(clone)]
+    pub prefixes: Arc<[PathBuf]>,
+}
+
+#[salsa::interned(unsafe(no_lifetime), unsafe(non_salsa_values), revisions = usize::MAX)]
+pub struct InternedUri {
+    #[returns(clone)]
+    pub uri: Arc<Uri>,
+}
+
+/// Convenience method: intern or look up an [`Arc<Uri>`] in the database.
+pub fn uri_db(db: &dyn Db, uri: Arc<Uri>) -> InternedUri {
+    InternedUri::new(db, uri)
+}
+
+#[salsa::db]
+pub trait Db: salsa::Database {
+    fn source_input(&self, uri: &Arc<Uri>) -> Option<SourceInput>;
+    fn file_list(&self) -> FileList;
+    fn client_state(&self) -> ClientState;
+    fn workspace_state(&self) -> WorkspaceState;
+}
+
+#[salsa::tracked(returns(clone))]
+#[instrument(skip_all)]
+pub fn source(db: &dyn Db, uri: InternedUri) -> Option<Str> {
+    db.source_input(&uri.uri(db)).map(|s| s.text(db))
 }
 
 type InternedStr = ustr::Ustr;

@@ -1094,6 +1094,11 @@ x::x;",
             .named_descendant_for_position(Position::new(2, 3))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("x::x"));
+        let decl = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, node)).unwrap();
+        assert_eq!(
+            decl.loc.as_ref().unwrap().uri,
+            crate::uri_db(&db.0, Arc::new(Uri::from_file_path("/x.zeek").unwrap()))
+        );
         assert_debug_snapshot!(crate::ast::resolve(
             &db.0,
             NodeLocation::from_node(uri, node)
@@ -1130,6 +1135,11 @@ y;",
             .named_descendant_for_position(Position::new(2, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("y"));
+        let decl = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, node)).unwrap();
+        assert_eq!(
+            decl.loc.as_ref().unwrap().uri,
+            crate::uri_db(&db.0, Arc::new(Uri::from_file_path("/x.zeek").unwrap()))
+        );
         assert_debug_snapshot!(crate::ast::resolve(
             &db.0,
             NodeLocation::from_node(uri, node)
@@ -1177,17 +1187,22 @@ x$x2;",
             .named_descendant_for_position(Position::new(5, 3))
             .unwrap();
         assert_eq!(x1.utf8_text(source.as_bytes()), Ok("x1"));
-        assert!(matches!(
-            crate::ast::resolve(&db.0, NodeLocation::from_node(uri, x1))
-                .unwrap()
-                .kind,
-            super::DeclKind::Field(_)
-        ));
+        let x1_decl = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, x1)).unwrap();
+        assert!(matches!(x1_decl.kind, super::DeclKind::Field(_)));
+        assert_eq!(
+            x1_decl.loc.as_ref().unwrap().uri,
+            crate::uri_db(&db.0, Arc::new(Uri::from_file_path("/x.zeek").unwrap()))
+        );
 
         let x2 = root
             .named_descendant_for_position(Position::new(6, 3))
             .unwrap();
         assert_eq!(x2.utf8_text(source.as_bytes()), Ok("x2"));
+        let x2_decl = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, x2)).unwrap();
+        assert_eq!(
+            x2_decl.loc.as_ref().unwrap().uri,
+            crate::uri_db(&db.0, Arc::new(Uri::from_file_path("/y.zeek").unwrap()))
+        );
         assert_debug_snapshot!(crate::ast::resolve(&db.0, NodeLocation::from_node(uri, x2)));
     }
 
@@ -1229,6 +1244,9 @@ global e_foo: E = eC;
             .named_descendant_for_position(Position::new(7, 14))
             .unwrap();
         assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eB"));
+        let uri_x = crate::uri_db(&db.0, Arc::new(Uri::from_file_path("/x.zeek").unwrap()));
+        let decl = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, type_)).unwrap();
+        assert_eq!(decl.loc.as_ref().unwrap().uri, uri_x);
         assert_debug_snapshot!(
             crate::ast::resolve(&db.0, NodeLocation::from_node(uri, type_)).unwrap()
         );
@@ -1238,6 +1256,8 @@ global e_foo: E = eC;
             .named_descendant_for_position(Position::new(14, 18))
             .unwrap();
         assert_eq!(type_.utf8_text(source.as_bytes()), Ok("eC"));
+        let decl = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, type_)).unwrap();
+        assert_eq!(decl.loc.as_ref().unwrap().uri, uri_x);
         assert_debug_snapshot!(
             crate::ast::resolve(&db.0, NodeLocation::from_node(uri, type_)).unwrap()
         );
@@ -1273,6 +1293,13 @@ global c: connection;",
         let c_res = crate::ast::resolve(&db.0, NodeLocation::from_node(uri, c)).unwrap();
         assert_eq!(c_res.kind, super::DeclKind::Global);
         let c_type = crate::ast::typ(&db.0, c_res).unwrap();
+        assert_eq!(
+            c_type.loc.as_ref().unwrap().uri,
+            crate::uri_db(
+                &db.0,
+                Arc::new(Uri::from_file_path("/init-bare.zeek").unwrap())
+            )
+        );
         assert_debug_snapshot!(c_type);
     }
 
@@ -2128,6 +2155,15 @@ b::VAL;",
             .named_descendant_for_position(Position::new(1, 0))
             .unwrap();
         assert_eq!(node.utf8_text(source.as_bytes()), Ok("b::VAL"));
+        let decl = crate::ast::resolve(
+            &db.0,
+            NodeLocation::from_node(crate::uri_db(&db.0, Arc::clone(&a)), node),
+        )
+        .unwrap();
+        assert_eq!(
+            decl.loc.as_ref().unwrap().uri,
+            crate::uri_db(&db.0, Arc::new(Uri::from_file_path("/b.zeek").unwrap()))
+        );
         assert_debug_snapshot!(crate::ast::resolve(
             &db.0,
             NodeLocation::from_node(crate::uri_db(&db.0, Arc::clone(&a)), node)

@@ -77,10 +77,6 @@ pub struct Database {
 #[salsa::db]
 impl salsa::Database for Database {}
 
-// Safety: salsa-0.28 uses RefCell internally for per-thread query tracking but all
-// cross-thread access is guarded by the RwLock in Backend, as with salsa-0.16.
-unsafe impl Sync for Database {}
-
 #[salsa::db]
 impl crate::Db for Database {
     fn source_input(&self, uri: &Arc<Uri>) -> Option<crate::SourceInput> {
@@ -280,7 +276,7 @@ impl Debug for Database {
 #[derive(Debug, Default)]
 pub struct Backend {
     pub client: Option<tower_lsp_server::Client>,
-    state: tokio::sync::RwLock<Database>,
+    state: tokio::sync::Mutex<Database>,
 }
 
 enum ParseResult {
@@ -311,7 +307,7 @@ impl Backend {
     {
         // Short circuit progress report if client doesn't support it.
         let has_work_done_progress = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             state
                 .client_state()
                 .capabilities(&*state)
@@ -388,7 +384,7 @@ impl Backend {
 
     async fn file_changed(&self, uri: Arc<Uri>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let diags = {
                 state.file_changed(Arc::clone(&uri));
 
@@ -427,7 +423,7 @@ impl Backend {
             .filter_map(|f| Uri::from_file_path(f.path));
 
         let workspace_folders = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             state.workspace_state().workspace_folders(&*state)
         };
 
@@ -467,7 +463,7 @@ impl Backend {
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
         let workspace_folders = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             state.workspace_state().workspace_folders(&*state)
         };
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
@@ -528,7 +524,7 @@ impl LanguageServer for Backend {
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
         {
-            let mut state = self.state.write().await;
+            let mut state = self.state.lock().await;
             state.set_client_state(
                 Arc::new(params.capabilities),
                 params
@@ -543,7 +539,7 @@ impl LanguageServer for Backend {
         match zeek::prefixes(None).await {
             Ok(prefixes) => self
                 .state
-                .write()
+                .lock()
                 .await
                 .set_prefixes(Arc::from(prefixes.collect::<Vec<_>>())),
             Err(e) => {
@@ -555,7 +551,7 @@ impl LanguageServer for Backend {
         }
 
         let initialization_options = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             state.client_state().initialization_options(&*state)
         };
         let has_zeek_format = zeek::has_format().await;
@@ -672,7 +668,8 @@ impl LanguageServer for Backend {
             let changes = removals.chain(updates).collect::<Vec<_>>();
 
             // Update files.
-            self.state.write().await.update_sources(&changes);
+            let mut state = self.state.lock().await;
+            state.update_sources(&changes);
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -684,7 +681,7 @@ impl LanguageServer for Backend {
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
         let files = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             state.file_list().files(&*state)
         };
 
@@ -692,7 +689,7 @@ impl LanguageServer for Backend {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
 
             files
                 .iter()
@@ -712,7 +709,7 @@ impl LanguageServer for Backend {
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
         {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let _implicit = crate::ast::implicit_decls(&*state);
         }
 
@@ -725,7 +722,7 @@ impl LanguageServer for Backend {
 
         // Update source.
         self.state
-            .write()
+            .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
@@ -735,7 +732,7 @@ impl LanguageServer for Backend {
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
         {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let _implicit = crate::ast::implicit_decls(&*state);
         }
 
@@ -768,7 +765,7 @@ impl LanguageServer for Backend {
 
         // Update source.
         self.state
-            .write()
+            .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
@@ -800,7 +797,7 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let Some(source) = crate::source(&*state, uri) else {
@@ -974,7 +971,7 @@ impl LanguageServer for Backend {
         };
 
         let modules = {
-            let db = self.state.read().await;
+            let db = self.state.lock().await;
 
             // Even though a valid source file can only contain a single module, one can still make
             // declarations in other modules. Sort declarations by module so users get a clean view.
@@ -1027,7 +1024,7 @@ impl LanguageServer for Backend {
         let query = params.query.to_lowercase();
 
         let symbols = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             fuzzy_search_symbol(&state, &query)
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
@@ -1052,7 +1049,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         Ok(complete(&state, params))
     }
 
@@ -1065,7 +1062,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let tree = crate::parse::parse(&*state, uri);
@@ -1136,7 +1133,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position_params.text_document.uri);
         let position = params.text_document_position_params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let Some(source) = crate::source(&*state, uri) else {
@@ -1271,7 +1268,7 @@ impl LanguageServer for Backend {
             folds
         }
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         let uri = uri_db(&*state, Arc::new(params.text_document.uri));
         let tree = crate::parse::parse(&*state, uri);
 
@@ -1282,7 +1279,7 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let source = crate::source(&*state, uri);
@@ -1314,7 +1311,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let source = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let uri = uri_db(&*state, Arc::clone(&uri));
             crate::source(&*state, uri)
         };
@@ -1354,7 +1351,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let tree = crate::parse::parse(&*state, uri);
@@ -1415,7 +1412,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let tree = crate::parse::parse(&*state, uri);
@@ -1479,7 +1476,7 @@ impl LanguageServer for Backend {
         };
 
         let uri = Arc::new(params.text_document.uri);
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         let uri = uri_db(&*state, Arc::clone(&uri));
         let Some(missing) = crate::parse::parse(&*state, uri).and_then(|t| {
             t.root_node().errors().find_map(|err| {
@@ -1523,7 +1520,7 @@ impl LanguageServer for Backend {
 
         let mut hints = Vec::new();
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         let uri = uri_db(&*state, Arc::clone(&uri));
 
         let params = if state
@@ -1661,7 +1658,7 @@ impl LanguageServer for Backend {
 
         // TODO(bbannier): respect `params.context.include_declaration`.
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let tree = crate::parse::parse(&*state, uri);
@@ -1690,7 +1687,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
         let uri = uri_db(&*state, Arc::clone(&uri));
         let tree = crate::parse::parse(&*state, uri);
@@ -1733,7 +1730,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
 
         let source = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let uri = uri_db(&*state, Arc::new(uri));
             crate::source(&*state, uri)
         };
@@ -2371,7 +2368,7 @@ pub(crate) mod test {
 
     pub(crate) fn serve(database: TestDatabase) -> Backend {
         Backend {
-            state: tokio::sync::RwLock::new(database.0),
+            state: tokio::sync::Mutex::new(database.0),
             ..Backend::default()
         }
     }

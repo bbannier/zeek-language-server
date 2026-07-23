@@ -73,9 +73,9 @@ pub fn uri_db(db: &dyn Db, uri: Arc<Uri>) -> InternedUri {
 #[salsa::db]
 pub trait Db: salsa::Database {
     fn source_input(&self, uri: &Arc<Uri>) -> Option<SourceInput>;
-    fn file_list(&self) -> FileList;
-    fn client_state(&self) -> ClientState;
-    fn workspace_state(&self) -> WorkspaceState;
+    fn file_list(&self) -> Option<FileList>;
+    fn client_state(&self) -> Option<ClientState>;
+    fn workspace_state(&self) -> Option<WorkspaceState>;
 }
 
 #[salsa::tracked(returns(clone))]

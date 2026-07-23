@@ -570,9 +570,16 @@ fn resolve_impl(
 #[allow(clippy::needless_pass_by_value)]
 pub fn loaded_files(db: &dyn Db, uri: InternedUri) -> Arc<[InternedUri]> {
     let arc_uri = uri.uri(db);
-    let files: Vec<_> = db.file_list().files(db).iter().map(|f| f.uri(db)).collect();
+    let files: Vec<_> = db
+        .file_list()
+        .map_or_else(Arc::default, |fl| fl.files(db))
+        .iter()
+        .map(|f| f.uri(db))
+        .collect();
 
-    let prefixes = db.workspace_state().prefixes(db);
+    let prefixes = db
+        .workspace_state()
+        .map_or_else(Arc::default, |ws| ws.prefixes(db));
 
     let loads: Vec<_> = crate::query::loads(db, uri)
         .iter()
@@ -642,7 +649,12 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[InternedUri]> {
     // (unless global state changes).
     for essential_input in zeek::essential_input_files() {
         let mut implicit_file = None;
-        for f in db.file_list().files(db).iter().copied() {
+        for f in db
+            .file_list()
+            .map_or_else(Arc::default, |fl| fl.files(db))
+            .iter()
+            .copied()
+        {
             let arc_f = f.uri(db);
             let Some(path) = arc_f.to_file_path() else {
                 continue;
@@ -652,7 +664,11 @@ pub fn implicit_loads(db: &dyn Db) -> Arc<[InternedUri]> {
                 continue;
             }
 
-            for p in db.workspace_state().prefixes(db).iter() {
+            for p in db
+                .workspace_state()
+                .map_or_else(Arc::default, |ws| ws.prefixes(db))
+                .iter()
+            {
                 if path.strip_prefix(p).is_ok() {
                     implicit_file = Some(f);
                     break;
@@ -698,8 +714,15 @@ pub fn possible_loads(db: &dyn Db, uri: InternedUri) -> Arc<[InternedStr]> {
         return Arc::default();
     };
 
-    let prefixes = db.workspace_state().prefixes(db);
-    let files: Vec<_> = db.file_list().files(db).iter().map(|f| f.uri(db)).collect();
+    let prefixes = db
+        .workspace_state()
+        .map_or_else(Arc::default, |ws| ws.prefixes(db));
+    let files: Vec<_> = db
+        .file_list()
+        .map_or_else(Arc::default, |fl| fl.files(db))
+        .iter()
+        .map(|f| f.uri(db))
+        .collect();
 
     let loads: Vec<_> = files
         .iter()

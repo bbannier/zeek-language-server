@@ -83,19 +83,16 @@ impl crate::Db for Database {
         self.sources.get(uri).map(|r| *r)
     }
 
-    fn file_list(&self) -> crate::FileList {
-        #[allow(clippy::unwrap_used)]
-        self.file_list.unwrap()
+    fn file_list(&self) -> Option<crate::FileList> {
+        self.file_list
     }
 
-    fn client_state(&self) -> crate::ClientState {
-        #[allow(clippy::unwrap_used)]
-        self.client_state.unwrap()
+    fn client_state(&self) -> Option<crate::ClientState> {
+        self.client_state
     }
 
-    fn workspace_state(&self) -> crate::WorkspaceState {
-        #[allow(clippy::unwrap_used)]
-        self.workspace_state.unwrap()
+    fn workspace_state(&self) -> Option<crate::WorkspaceState> {
+        self.workspace_state
     }
 }
 
@@ -105,12 +102,14 @@ pub enum SourceUpdate {
 }
 
 impl Database {
-    /// # Panics
-    /// Panics if the file list Salsa input has not been initialized.
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
         let mut needs_files_update = false;
-        #[allow(clippy::unwrap_used)]
-        let mut files: FxHashSet<_> = self.file_list().files(self).iter().copied().collect();
+        let mut files: FxHashSet<_> = self
+            .file_list()
+            .map_or_else(Arc::default, |fl| fl.files(self))
+            .iter()
+            .copied()
+            .collect();
 
         for u in updates {
             match u {
@@ -136,11 +135,8 @@ impl Database {
             }
         }
 
-        if needs_files_update {
-            #[allow(clippy::unwrap_used)]
-            self.file_list
-                .unwrap()
-                .set_files(self)
+        if needs_files_update && let Some(fl) = self.file_list {
+            fl.set_files(self)
                 .to(Arc::from(files.into_iter().collect::<Vec<_>>()));
         }
     }
@@ -156,16 +152,11 @@ impl Database {
         capabilities: Arc<ClientCapabilities>,
         initialization_options: InitializationOptions,
     ) {
-        #[allow(clippy::unwrap_used)]
-        self.client_state
-            .unwrap()
-            .set_capabilities(self)
-            .to(capabilities);
-        #[allow(clippy::unwrap_used)]
-        self.client_state
-            .unwrap()
-            .set_initialization_options(self)
-            .to(initialization_options);
+        if let Some(cs) = self.client_state {
+            cs.set_capabilities(self).to(capabilities);
+            cs.set_initialization_options(self)
+                .to(initialization_options);
+        }
     }
 
     pub(crate) fn set_workspace_state(
@@ -173,42 +164,30 @@ impl Database {
         workspace_folders: Arc<[Uri]>,
         prefixes: Arc<[PathBuf]>,
     ) {
-        #[allow(clippy::unwrap_used)]
-        self.workspace_state
-            .unwrap()
-            .set_workspace_folders(self)
-            .to(workspace_folders);
-        #[allow(clippy::unwrap_used)]
-        self.workspace_state
-            .unwrap()
-            .set_prefixes(self)
-            .to(prefixes);
+        if let Some(ws) = self.workspace_state {
+            ws.set_workspace_folders(self).to(workspace_folders);
+            ws.set_prefixes(self).to(prefixes);
+        }
     }
 
     pub(crate) fn set_prefixes(&mut self, prefixes: Arc<[PathBuf]>) {
-        #[allow(clippy::unwrap_used)]
-        self.workspace_state
-            .unwrap()
-            .set_prefixes(self)
-            .to(prefixes);
+        if let Some(ws) = self.workspace_state {
+            ws.set_prefixes(self).to(prefixes);
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn set_capabilities(&mut self, capabilities: Arc<ClientCapabilities>) {
-        #[allow(clippy::unwrap_used)]
-        self.client_state
-            .unwrap()
-            .set_capabilities(self)
-            .to(capabilities);
+        if let Some(cs) = self.client_state {
+            cs.set_capabilities(self).to(capabilities);
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn set_initialization_options(&mut self, opts: InitializationOptions) {
-        #[allow(clippy::unwrap_used)]
-        self.client_state
-            .unwrap()
-            .set_initialization_options(self)
-            .to(opts);
+        if let Some(cs) = self.client_state {
+            cs.set_initialization_options(self).to(opts);
+        }
     }
 
     #[cfg(test)]
@@ -308,13 +287,13 @@ impl Backend {
         // Short circuit progress report if client doesn't support it.
         let has_work_done_progress = {
             let state = self.state.lock().await;
-            state
-                .client_state()
-                .capabilities(&*state)
-                .window
-                .as_ref()
-                .and_then(|w| w.work_done_progress)
-                .unwrap_or(false)
+            state.client_state().is_some_and(|cs| {
+                cs.capabilities(&*state)
+                    .window
+                    .as_ref()
+                    .and_then(|w| w.work_done_progress)
+                    .unwrap_or(false)
+            })
         };
         if !has_work_done_progress {
             return None;
@@ -424,7 +403,9 @@ impl Backend {
 
         let workspace_folders = {
             let state = self.state.lock().await;
-            state.workspace_state().workspace_folders(&*state)
+            state
+                .workspace_state()
+                .map_or_else(Arc::default, |ws| ws.workspace_folders(&*state))
         };
 
         let workspace_files = workspace_folders
@@ -464,7 +445,9 @@ impl Backend {
         // else use the directory the file is in.
         let workspace_folders = {
             let state = self.state.lock().await;
-            state.workspace_state().workspace_folders(&*state)
+            state
+                .workspace_state()
+                .map_or_else(Arc::default, |ws| ws.workspace_folders(&*state))
         };
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
@@ -552,7 +535,11 @@ impl LanguageServer for Backend {
 
         let initialization_options = {
             let state = self.state.lock().await;
-            state.client_state().initialization_options(&*state)
+            state
+                .client_state()
+                .map_or_else(InitializationOptions::new, |cs| {
+                    cs.initialization_options(&*state)
+                })
         };
         let has_zeek_format = zeek::has_format().await;
 
@@ -682,7 +669,9 @@ impl LanguageServer for Backend {
             .await;
         let files = {
             let state = self.state.lock().await;
-            state.file_list().files(&*state)
+            state
+                .file_list()
+                .map_or_else(Arc::default, |fl| fl.files(&*state))
         };
 
         let preloaded_decls = {
@@ -863,7 +852,7 @@ impl LanguageServer for Backend {
                 let file = PathBuf::from(text);
                 let files: Vec<_> = state
                     .file_list()
-                    .files(&*state)
+                    .map_or_else(Arc::default, |fl| fl.files(&*state))
                     .iter()
                     .map(|f| f.uri(&*state))
                     .collect();
@@ -871,7 +860,10 @@ impl LanguageServer for Backend {
                     &file,
                     uri.uri(&*state).as_ref(),
                     &files,
-                    state.workspace_state().prefixes(&*state).as_ref(),
+                    state
+                        .workspace_state()
+                        .map_or_else(Arc::default, |ws| ws.prefixes(&*state))
+                        .as_ref(),
                 );
                 if let Some(uri) = uri {
                     contents.push(MarkedString::String(format!("`{}`", uri.path())));
@@ -904,7 +896,9 @@ impl LanguageServer for Backend {
         #[cfg(not(all(debug_assertions, not(test))))]
         let debug_ast_nodes = state
             .client_state()
-            .initialization_options(&*state)
+            .map_or_else(InitializationOptions::new, |cs| {
+                cs.initialization_options(&*state)
+            })
             .debug_ast_nodes;
 
         if debug_ast_nodes {
@@ -1095,7 +1089,7 @@ impl LanguageServer for Backend {
                     let file = PathBuf::from(text);
                     let files: Vec<_> = state
                         .file_list()
-                        .files(&*state)
+                        .map_or_else(Arc::default, |fl| fl.files(&*state))
                         .iter()
                         .map(|f| f.uri(&*state))
                         .collect();
@@ -1103,7 +1097,10 @@ impl LanguageServer for Backend {
                         &file,
                         uri.uri(&*state).as_ref(),
                         &files,
-                        state.workspace_state().prefixes(&*state).as_ref(),
+                        state
+                            .workspace_state()
+                            .map_or_else(Arc::default, |ws| ws.prefixes(&*state))
+                            .as_ref(),
                     )
                     .map(|uri| Location::new((*uri).clone(), Range::default()))
                 }
@@ -1440,7 +1437,7 @@ impl LanguageServer for Backend {
             (decl, state.clone())
         };
 
-        let files = db.file_list().files(&db);
+        let files = db.file_list().map_or_else(Arc::default, |fl| fl.files(&db));
         let response = files
             .iter()
             .flat_map(|f| {
@@ -1530,7 +1527,9 @@ impl LanguageServer for Backend {
 
         let params = if state
             .client_state()
-            .initialization_options(&*state)
+            .map_or_else(InitializationOptions::new, |cs| {
+                cs.initialization_options(&*state)
+            })
             .inlay_hints_parameters
         {
             crate::query::function_calls(&*state, uri)
@@ -1595,7 +1594,9 @@ impl LanguageServer for Backend {
 
         let vars = if state
             .client_state()
-            .initialization_options(&*state)
+            .map_or_else(InitializationOptions::new, |cs| {
+                cs.initialization_options(&*state)
+            })
             .inlay_hints_variables
         {
             crate::query::untyped_var_decls(&*state, uri)
@@ -1760,7 +1761,12 @@ fn word_at_position(source: &str, position: Position) -> Option<InternedStr> {
 fn fuzzy_search_symbol(db: &Database, symbol: &str) -> impl Iterator<Item = (f32, Decl)> {
     let symbol = String::from(symbol);
 
-    let files = db.file_list().files(db).iter().copied().collect_vec();
+    let files = db
+        .file_list()
+        .map_or_else(Arc::default, |fl| fl.files(db))
+        .iter()
+        .copied()
+        .collect_vec();
     files.into_iter().flat_map(move |f| {
         let symbol = symbol.clone();
 
@@ -1915,7 +1921,7 @@ async fn references(db: Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     let locs: Vec<_> = {
         let locs: Vec<_> = db
             .file_list()
-            .files(&db)
+            .map_or_else(Arc::default, |fl| fl.files(&db))
             .iter()
             .filter(|f| {
                 // If the file we look at does not load the file with the decl, no references to it
@@ -2354,7 +2360,7 @@ pub(crate) mod test {
             let mut prefixes: Vec<_> = self
                 .0
                 .workspace_state()
-                .prefixes(&self.0)
+                .map_or_else(Arc::default, |ws| ws.prefixes(&self.0))
                 .iter()
                 .cloned()
                 .collect();

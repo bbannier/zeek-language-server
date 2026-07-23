@@ -46,6 +46,13 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", grammar.to_str().unwrap());
 
+    if !grammar.exists() {
+        panic!(
+            "{} does not exist, did you sync submodules?",
+            grammar.display()
+        );
+    }
+
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     tree_sitter_generate::generate_parser_in_directory(

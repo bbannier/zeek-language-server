@@ -1675,8 +1675,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references(&state, decl).await;
+        let references = references(state.clone(), decl).await;
 
         Ok(Some(
             references
@@ -1705,8 +1704,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references(&state, decl).await;
+        let references = references(state.clone(), decl).await;
 
         let new_name = params.new_name;
 
@@ -1886,7 +1884,7 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     })
 }
 
-async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+async fn references(db: Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
     fn all_sources(f: InternedUri, db: &Database) -> FxHashSet<InternedUri> {
         let mut loads: FxHashSet<InternedUri> = FxHashSet::default();
@@ -1915,12 +1913,12 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     let locs: Vec<_> = {
         let locs: Vec<_> = db
             .file_list()
-            .files(db)
+            .files(&db)
             .iter()
             .filter(|f| {
                 // If the file we look at does not load the file with the decl, no references to it
                 // can exist.
-                **f == decl_uri || all_sources(**f, db).contains(&decl_uri)
+                **f == decl_uri || all_sources(**f, &db).contains(&decl_uri)
             })
             .map(|f| {
                 let db = db.clone();

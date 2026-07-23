@@ -1412,34 +1412,39 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.lock().await;
+        let (decl, db) = {
+            let state = self.state.lock().await;
 
-        let uri = uri_db(&*state, Arc::clone(&uri));
-        let tree = crate::parse::parse(&*state, uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
+            let uri = uri_db(&*state, Arc::clone(&uri));
+            let tree = crate::parse::parse(&*state, uri);
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
+
+            let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+                return Ok(None);
+            };
+
+            let Some(decl) = crate::ast::resolve(&*state, NodeLocation::from_node(uri, node))
+            else {
+                return Ok(None);
+            };
+
+            if !matches!(
+                &decl.kind,
+                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
+            ) {
+                return Ok(None);
+            }
+
+            (decl, state.clone())
         };
 
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
-
-        let Some(decl) = crate::ast::resolve(&*state, NodeLocation::from_node(uri, node)) else {
-            return Ok(None);
-        };
-
-        if !matches!(
-            &decl.kind,
-            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
-        ) {
-            return Ok(None);
-        }
-
-        let files = state.file_list().files(&*state);
+        let files = db.file_list().files(&db);
         let response = files
             .iter()
             .flat_map(|f| {
-                crate::query::decls(&*state, *f)
+                crate::query::decls(&db, *f)
                     .iter()
                     .cloned()
                     .collect::<Vec<_>>()
@@ -1453,7 +1458,7 @@ impl LanguageServer for Backend {
             .filter_map(|d| {
                 let loc = &d.loc.as_ref()?;
                 if d.id == decl.id {
-                    Some(Location::new((*loc.uri.uri(&*state)).clone(), loc.range))
+                    Some(Location::new((*loc.uri.uri(&db)).clone(), loc.range))
                 } else {
                     None
                 }

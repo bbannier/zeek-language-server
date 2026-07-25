@@ -3068,7 +3068,7 @@ event x::foo() {}",
         );
     }
 
-    #[ignore = "requires spicy-format"]
+    #[ignore = "requires zeek-format"]
     #[tokio::test]
     async fn formatting() {
         use super::DocumentFormattingParams;
@@ -3105,7 +3105,7 @@ event x::foo() {}",
         );
     }
 
-    #[ignore = "requires spicy-format"]
+    #[ignore = "requires zeek-format"]
     #[tokio::test]
     async fn range_formatting() {
         use super::DocumentRangeFormattingParams;

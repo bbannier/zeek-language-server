@@ -13,7 +13,91 @@ use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
     CompletionResponse, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position,
 };
-use tree_sitter_zeek::KEYWORDS;
+use tree_sitter_zeek::{KEYWORDS, language_zeek};
+
+/// Returns the set of valid lookahead symbol names at this parse state, or `None` for ERROR nodes.
+fn lookahead_symbols(node: Node) -> Option<FxHashSet<&'static str>> {
+    let state = node.0.parse_state();
+    // ERROR nodes have an out-of-range parse state; skip filtering for them.
+    if node.0.is_error() {
+        return None;
+    }
+    let mut iter = language_zeek().lookahead_iterator(state)?;
+    Some(iter.iter_names().collect())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyntaxContext {
+    /// Cursor is where a new declaration name would appear (no completions make sense).
+    DeclarationId,
+    /// Cursor is in a type annotation position.
+    TypeAnnotation,
+    /// Cursor is in an expression position.
+    Expression,
+    /// Cursor is at statement or global level.
+    StatementOrGlobal,
+}
+
+fn node_syntax_context(node: Node, lookahead: Option<&FxHashSet<&'static str>>) -> SyntaxContext {
+    // If the lookahead set contains only declaration-id-like symbols, this is a new name position.
+    if let Some(symbols) = lookahead {
+        let non_id: Vec<_> = symbols
+            .iter()
+            .filter(|&&s| s != "id" && s != "ERROR")
+            .collect();
+        if non_id.is_empty() {
+            return SyntaxContext::DeclarationId;
+        }
+    }
+
+    // Walk ancestors to find the syntactic boundary.
+    let mut cur = node;
+    loop {
+        let kind = cur.kind();
+        if matches!(kind, "type" | "type_spec") {
+            return SyntaxContext::TypeAnnotation;
+        }
+        if kind == "expr" {
+            return SyntaxContext::Expression;
+        }
+        match cur.parent() {
+            Some(p) => cur = p,
+            None => break,
+        }
+    }
+
+    SyntaxContext::StatementOrGlobal
+}
+
+impl SyntaxContext {
+    fn allows_decl(self, kind: &DeclKind) -> bool {
+        match self {
+            SyntaxContext::DeclarationId => false,
+            SyntaxContext::TypeAnnotation => matches!(
+                kind,
+                DeclKind::Type(_) | DeclKind::Enum(_) | DeclKind::Module | DeclKind::Builtin(_)
+            ),
+            SyntaxContext::Expression => matches!(
+                kind,
+                DeclKind::Global
+                    | DeclKind::Variable
+                    | DeclKind::Const
+                    | DeclKind::Option
+                    | DeclKind::FuncDecl(_)
+                    | DeclKind::FuncDef(_)
+                    | DeclKind::HookDecl(_)
+                    | DeclKind::HookDef(_)
+                    | DeclKind::EventDecl(_)
+                    | DeclKind::EventDef(_)
+                    | DeclKind::EnumMember
+                    | DeclKind::Field(_)
+                    | DeclKind::Index(_, _)
+                    | DeclKind::Builtin(_)
+            ),
+            SyntaxContext::StatementOrGlobal => true,
+        }
+    }
+}
 
 /// Join all source lines up to and including the cursor column into one `\n`-joined string.
 pub(crate) fn source_up_to(source: &str, position: Position) -> String {
@@ -72,6 +156,12 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
             Some(n) => n,
             None => break,
         };
+    }
+
+    let lookahead = lookahead_symbols(node);
+    let context = node_syntax_context(node, lookahead.as_ref());
+    if context == SyntaxContext::DeclarationId {
+        return None;
     }
 
     let mut items = None.or_else(|| {
@@ -142,14 +232,24 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 
         let text_at_completion = completion_text(node, &source, true);
 
-        let decl_items = decls.iter().map(to_completion_item);
+        let decl_items = decls
+            .iter()
+            .filter(|d| context.allows_decl(&d.kind))
+            .map(to_completion_item);
 
         let keyword_items = KEYWORDS.iter().filter_map(|kw| {
-            let should_include = text_at_completion.is_none_or(|text|
-                text.is_empty()
-                    || rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &kw.to_lowercase())
-                        > 0.0
-                );
+            let allowed_by_lookahead =
+                lookahead.as_ref().is_none_or(|s| s.contains(*kw));
+            let should_include = allowed_by_lookahead
+                && if let Some(text) = text_at_completion {
+                    text.is_empty()
+                        || rust_fuzzy_search::fuzzy_compare(
+                            &text.to_lowercase(),
+                            &kw.to_lowercase(),
+                        ) > 0.0
+                } else {
+                    true
+                };
             if should_include {
                 Some(CompletionItem {
                     kind: Some(CompletionItemKind::KEYWORD),
@@ -211,9 +311,13 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         Some(items)
     });
 
-    // Snippet completions are always added.
+    // Snippet completions are added when the context allows them.
     if let Some(text) = completion_text(node, &source, false) {
-        let snippets = complete_snippet(text);
+        let snippets = complete_snippet(text).filter(|s| {
+            lookahead
+                .as_ref()
+                .is_none_or(|lh| lh.contains(s.label.as_str()))
+        });
         items = items.map(|mut xs| {
             xs.extend(snippets);
             xs
@@ -1166,7 +1270,7 @@ function foo() {}
 f",
         );
 
-        let result = complete(
+        let mut result = complete(
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
@@ -1179,14 +1283,9 @@ f",
             },
         );
 
-        // Sort results for debug output diffing.
-        let result = if let Some(CompletionResponse::Array(mut r)) = result {
+        if let Some(CompletionResponse::Array(ref mut r)) = result {
             r.sort_by(|a, b| a.label.cmp(&b.label));
-            r
-        } else {
-            unreachable!()
-        };
-
+        }
         assert_debug_snapshot!(result);
     }
 
@@ -1569,5 +1668,167 @@ global x = X(
                 context: None,
             },
         ));
+    }
+
+    /// Completions in a type annotation position -- type annotation context.
+    /// Expects type names and built-in scalars; no variable names.
+    #[test]
+    fn context_type_annotation() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+global myvar: count;
+type MyType: record { f: count; };
+event zeek_init() {
+    local x: MyType;
+}
+",
+        );
+
+        // Complete at `MyType` in `local x: MyType` -- this is a type annotation context.
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(4, 14),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    /// Completions after `local x = ` -- expression context.
+    /// Expects variables/functions/events; no snippets.
+    #[test]
+    fn context_expression() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+global myvar: count;
+function myfunc(): count { return 0; }
+type MyType: record { f: count; };
+event zeek_init() {
+    local x =
+}
+",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(5, 14),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    /// Completions on the identifier of a `local` declaration -- declaration-id context.
+    /// Expects no completions for a new name being declared.
+    #[test]
+    fn context_declaration_id() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+global myvar: count;
+event zeek_init() {
+    local x: count;
+}
+",
+        );
+
+        // Complete at the `x` identifier in `local x:`.
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(3, 10),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    /// Completions inside an event body -- statement context.
+    /// Expects the full set including context-valid snippets.
+    #[test]
+    fn context_statement() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+global myvar: count;
+event zeek_init() {
+
+}
+",
+        );
+
+        // Complete at an empty position inside the event body.
+        let mut result = complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(3, 4),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        );
+        if let Some(CompletionResponse::Array(ref mut r)) = result {
+            r.sort_by(|a, b| a.label.cmp(&b.label));
+        }
+        assert_debug_snapshot!(result);
+    }
+
+    /// Completions at file top level.
+    /// Expects top-level declarations and snippets.
+    #[test]
+    fn context_top_level() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "
+global myvar: count;
+",
+        );
+
+        // Complete at column 0 on an empty line.
+        let mut result = complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(2, 0),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        );
+        if let Some(CompletionResponse::Array(ref mut r)) = result {
+            r.sort_by(|a, b| a.label.cmp(&b.label));
+        }
+        assert_debug_snapshot!(result);
     }
 }

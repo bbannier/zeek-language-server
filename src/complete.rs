@@ -409,7 +409,8 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
 }
 
 /// Scan `line` backwards for an unbalanced `(` or `[` and return the type name before it.
-/// For `X($` the type is named before `(`; for `[$` it comes from the variable's type annotation.
+/// For `X($` the type is named before `(`; for `[$` it comes from the variable's type
+/// annotation before `=`.
 fn initializer_type_name(line: &str) -> Option<&str> {
     let mut depth = 0i32;
     for (i, ch) in line.char_indices().rev() {
@@ -437,21 +438,21 @@ fn complete_record_initializer(
 ) -> Option<Vec<CompletionItem>> {
     let source = crate::source(state, uri)?;
 
-    // The member always needs to be an id.
     let id = match node.kind() {
         "id" => node.utf8_text(source.as_bytes()).ok()?,
-        "[" | "(" => "",
-        _ => return None,
+        _ => "",
     };
 
+    let line_nr = node.range().start.line;
     let line = source
         .lines()
-        .nth(usize::try_from(node.range().start.line).ok()?)
+        .nth(usize::try_from(line_nr).ok()?)
         .map(|line| line.trim_end_matches(id).trim_end_matches('$').trim())?;
 
     let type_name = initializer_type_name(line)?;
-    let type_ =
-        crate::ast::resolve_id(state, type_name.into(), NodeLocation::from_node(uri, node))?;
+    let pos = Position::new(line_nr, 0);
+    let loc = NodeLocation::from_range(uri, tower_lsp_server::ls_types::Range::new(pos, pos));
+    let type_ = crate::ast::resolve_id(state, type_name.into(), loc)?;
 
     let DeclKind::Type(fields) = &type_.kind else {
         return None;
@@ -473,52 +474,43 @@ fn complete_record_initializer(
         })
         .collect();
 
-    // If no field ID was provided also complete a record constructor snippet.
-    if id.is_empty() {
+    // Only emit a full constructor snippet at the opening delimiter, not mid-initializer.
+    if id.is_empty()
+        && let Some(terminator) = match line.chars().last() {
+            Some('[') => Some(']'),
+            Some('(') => Some(')'),
+            _ => None,
+        }
+    {
         let dd = "\\$";
-
-        completion.extend({
-            let field_inits = fields
-                .iter()
-                .enumerate()
-                .filter_map(|(i, f)| {
-                    // Only complete required fields.
-                    let DeclKind::Field(attrs) = &f.kind else {
-                        return None;
-                    };
-
-                    if attrs
-                        .iter()
-                        .any(|a| a.starts_with("&optional") || a.starts_with("&default"))
-                    {
-                        None
-                    } else {
-                        let id = &f.id;
-                        let idx = i + 1;
-                        Some(format!("{dd}{id}=${{{idx}:[]}}"))
-                    }
-                })
-                .join(", ");
-
-            // We already have `T($` or `[$` in the input, do not emit them again.
-            let terminator = match line.chars().last() {
-                Some('[') => ']',
-                Some('(') => ')',
-                // Probably impossible since we already restrict this whole
-                // function to trigger only on proper record initializations.
-                _ => return None,
-            };
-            let code = format!("{field_inits}{terminator}")
-                .trim_start_matches(dd)
-                .into();
-
-            std::iter::once(CompletionItem {
-                label: type_.id.to_string(),
-                insert_text: Some(code),
-                kind: Some(CompletionItemKind::SNIPPET),
-                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                ..CompletionItem::default()
+        let field_inits = fields
+            .iter()
+            .enumerate()
+            .filter_map(|(i, f)| {
+                let DeclKind::Field(attrs) = &f.kind else {
+                    return None;
+                };
+                if attrs
+                    .iter()
+                    .any(|a| a.starts_with("&optional") || a.starts_with("&default"))
+                {
+                    None
+                } else {
+                    let id = &f.id;
+                    let idx = i + 1;
+                    Some(format!("{dd}{id}=${{{idx}:[]}}"))
+                }
             })
+            .join(", ");
+        let code = format!("{field_inits}{terminator}")
+            .trim_start_matches(dd)
+            .into();
+        completion.push(CompletionItem {
+            label: type_.id.to_string(),
+            insert_text: Some(code),
+            kind: Some(CompletionItemKind::SNIPPET),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..CompletionItem::default()
         });
     }
 
@@ -1442,8 +1434,28 @@ global x = X($
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri),
+                    TextDocumentIdentifier::new(uri.clone()),
                     Position::new(1, 14),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        db.add_file(
+            uri.clone(),
+            "@load ./decls
+global x = X($xa=1, $
+        ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(1, 20),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),

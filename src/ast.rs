@@ -273,7 +273,6 @@ fn typ_impl(db: &dyn Db, decl: Arc<Decl>, _: ()) -> Option<Arc<Decl>> {
             .and_then(|r| typ(db, r))?;
 
         let DeclKind::Builtin(typ) = &from.kind else {
-            // TODO(bbannier): report diagnostic for iteration over non-builtins.
             return None;
         };
 

@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "(line,\ndb.resolve(NodeLocation::from_range(uri.clone(),\nRange::new(pos, pos))).and_then(|d| db.typ(d)))"
+expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\nRange::new(pos, pos))).and_then(|d| crate::ast::typ(&db.0, d)))"
 ---
 (
     "            global y = x + 1;",

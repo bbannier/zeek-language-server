@@ -1,13 +1,14 @@
 ---
 source: src/lsp.rs
-expression: server.signature_help(params).await
+assertion_line: 2878
+expression: "server.signature_help(super::SignatureHelpParams\n{\n    context: None, text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(3, 20),), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
 ---
 Ok(
     Some(
         SignatureHelp {
             signatures: [
                 SignatureInformation {
-                    label: "f(x: count, y: string)",
+                    label: "f(x: count, y: count)",
                     documentation: None,
                     parameters: Some(
                         [
@@ -26,7 +27,7 @@ Ok(
                         ],
                     ),
                     active_parameter: Some(
-                        2,
+                        1,
                     ),
                 },
             ],

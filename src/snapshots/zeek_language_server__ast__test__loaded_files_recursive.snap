@@ -1,60 +1,9 @@
 ---
 source: src/ast.rs
-expression: db.0.loaded_files_recursive(a)
+expression: result
 ---
 [
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/tmp/b.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/tmp/c.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
-    Uri(
-        Uri {
-            scheme: "file",
-            authority: Some(
-                Authority {
-                    userinfo: None,
-                    host: "",
-                    host_parsed: RegName(
-                        "",
-                    ),
-                    port: None,
-                },
-            ),
-            path: "/tmp/d.zeek",
-            query: None,
-            fragment: None,
-        },
-    ),
+    "/tmp/b.zeek",
+    "/tmp/c.zeek",
+    "/tmp/d.zeek",
 ]

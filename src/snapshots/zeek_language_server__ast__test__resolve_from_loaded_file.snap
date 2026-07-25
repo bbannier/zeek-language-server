@@ -1,14 +1,14 @@
 ---
 source: src/ast.rs
-expression: "crate::ast::resolve(&db.0, NodeLocation::from_node(uri, node))"
+expression: "crate::ast::resolve(&db.0,\nNodeLocation::from_node(crate::uri_db(&db.0, Arc::clone(&a)), node))"
 ---
 Some(
     Decl {
         module: String(
-            u!("x"),
+            u!("b"),
         ),
-        id: u!("y"),
-        fqid: u!("x::y"),
+        id: u!("VAL"),
+        fqid: u!("b::VAL"),
         kind: Global,
         is_export: Some(
             true,
@@ -17,27 +17,27 @@ Some(
             Location {
                 range: Range {
                     start: Position {
-                        line: 3,
-                        character: 16,
+                        line: 0,
+                        character: 19,
                     },
                     end: Position {
-                        line: 3,
-                        character: 28,
+                        line: 0,
+                        character: 37,
                     },
                 },
                 selection_range: Range {
                     start: Position {
-                        line: 3,
-                        character: 23,
+                        line: 0,
+                        character: 26,
                     },
                     end: Position {
-                        line: 3,
-                        character: 24,
+                        line: 0,
+                        character: 29,
                     },
                 },
                 uri: InternedUri(Id(_)),
             },
         ),
-        documentation: u!("```zeek\nglobal y: X;\n```"),
+        documentation: u!("```zeek\nglobal VAL: count;\n```"),
     },
 )

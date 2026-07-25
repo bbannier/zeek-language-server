@@ -32,7 +32,7 @@ Some(
                 tags: None,
             },
             CompletionItem {
-                label: "foo/a1",
+                label: "foo/b1",
                 label_details: None,
                 kind: Some(
                     File,
@@ -54,7 +54,7 @@ Some(
                 tags: None,
             },
             CompletionItem {
-                label: "foo/b1",
+                label: "foo/a1",
                 label_details: None,
                 kind: Some(
                     File,

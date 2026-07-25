@@ -9,9 +9,9 @@ rust-version = "1.89"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dev-dependencies]
-criterion = { version = "4.5.0", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
-insta = "1.46.1"
-tempfile = "3.24.0"
+criterion = { version = "5.0.1", default-features = false, features = ["async_tokio", "html_reports", "plotters"], package = "codspeed-criterion-compat" }
+insta = { version = "1.48.0", features = ["filters"] }
+tempfile = "3.27.0"
 version-sync = "0.9.5"
 
 [features]
@@ -19,8 +19,9 @@ default = []
 telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp"]
 
 [dependencies]
+az = { workspace = true }
 clap = { workspace = true }
-conv = { workspace = true }
+dashmap = { workspace = true }
 eyre = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
@@ -60,38 +61,40 @@ walkdir = { workspace = true }
 members = [".", "crates/tree-sitter-zeek"]
 
 [workspace.dependencies]
-cc = "1.2.62"
-clap = { version = "4.6.1", features = ["std", "derive", "help"], default-features = false }
+az = { version = "1.3.0", default-features = false }
+cc = "1.4.0"
+clap = { version = "4.6.4", features = ["std", "derive", "help"], default-features = false }
 conv = { version = "0.3.3", default-features = false }
+dashmap = "6.2.1"
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
-futures = { default-features = false, version = "0.3.32" }
+futures = { default-features = false, version = "0.3.33" }
 itertools = "0.14.0"
 line-index = { version = "0.1.2", default-features = false }
 opentelemetry = { version = "0.26.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.26.0", features = ["grpc-tonic", "trace"], default-features = false }
-opentelemetry-semantic-conventions = { version = "0.32.0", default-features = false }
+opentelemetry-semantic-conventions = { version = "0.32.1", default-features = false }
 opentelemetry_sdk = { version = "0.26.0", features = ["rt-tokio", "trace"], default-features = false }
 path-clean = "1.0.1"
 rayon = "1.12.0"
-regex = { default-features = false, version = "1.12.3" }
+regex = { default-features = false, version = "1.13.1" }
 rust-fuzzy-search = "0.1.1"
-rustc-hash = "2.1.2"
-salsa = "0.16.1"
-serde = { version = "1.0.228", default-features = false }
-serde_json = { default-features = false, version = "1.0.149" }
+rustc-hash = "2.1.3"
+salsa = "0.28.1"
+serde = { version = "1.0.229", default-features = false }
+serde_json = { default-features = false, version = "1.0.151" }
 smol_str = { version = "0.3.6", default-features = false, features = ["std"] }
 streaming-iterator = { version = "0.1.9", default-features = false }
-tokio = { version = "1.52.3", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
+tokio = { version = "1.53.1", features = ["fs", "io-std", "io-util", "rt-multi-thread", "process", "macros", "sync"], default-features = false }
 tower-lsp-server = { version = "0.23.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.44" }
 tracing-appender = { version = "0.2.5", default-features = false }
 tracing-opentelemetry = { version = "0.27.0" }
 tracing-subscriber = { version = "0.3.23", features = ["tracing-log", "registry", "std"], default-features = false }
-tree-sitter = "0.26.9"
+tree-sitter = "0.26.11"
 tree-sitter-bash = "0.25.1"
 tree-sitter-btest = { git = "https://github.com/bbannier/tree-sitter-btest", version = "0.1.0" }
-tree-sitter-generate = "0.26.9"
-tree-sitter-highlight = { version = "0.26.8", default-features = false }
+tree-sitter-generate = "0.26.11"
+tree-sitter-highlight = { version = "0.26.11", default-features = false }
 tree-sitter-printf = "0.5.1"
 tree-sitter-regex = "0.25.0"
 tree-sitter-rst = "0.2.0"

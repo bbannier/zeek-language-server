@@ -46,45 +46,6 @@ Ok(
                     ),
                 },
                 SymbolInformation {
-                    name: "mod_x::X",
-                    kind: Variable,
-                    tags: None,
-                    deprecated: None,
-                    location: Location {
-                        uri: Uri(
-                            Uri {
-                                scheme: "file",
-                                authority: Some(
-                                    Authority {
-                                        userinfo: None,
-                                        host: "",
-                                        host_parsed: RegName(
-                                            "",
-                                        ),
-                                        port: None,
-                                    },
-                                ),
-                                path: "/x/x.zeek",
-                                query: None,
-                                fragment: None,
-                            },
-                        ),
-                        range: Range {
-                            start: Position {
-                                line: 0,
-                                character: 14,
-                            },
-                            end: Position {
-                                line: 0,
-                                character: 27,
-                            },
-                        },
-                    },
-                    container_name: Some(
-                        "mod_x",
-                    ),
-                },
-                SymbolInformation {
                     name: "mod_a::A",
                     kind: Variable,
                     tags: None,
@@ -121,6 +82,45 @@ Ok(
                     },
                     container_name: Some(
                         "mod_a",
+                    ),
+                },
+                SymbolInformation {
+                    name: "mod_x::X",
+                    kind: Variable,
+                    tags: None,
+                    deprecated: None,
+                    location: Location {
+                        uri: Uri(
+                            Uri {
+                                scheme: "file",
+                                authority: Some(
+                                    Authority {
+                                        userinfo: None,
+                                        host: "",
+                                        host_parsed: RegName(
+                                            "",
+                                        ),
+                                        port: None,
+                                    },
+                                ),
+                                path: "/x/x.zeek",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 14,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 27,
+                            },
+                        },
+                    },
+                    container_name: Some(
+                        "mod_x",
                     ),
                 },
             ],

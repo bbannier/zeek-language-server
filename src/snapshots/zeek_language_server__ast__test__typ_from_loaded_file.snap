@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "crate::ast::resolve(&db.0,\nNodeLocation::from_node(uri, a)).and_then(|d| crate::ast::typ(&db.0, d))"
+expression: "decl.as_ref().and_then(|d| crate::ast::typ(&db.0, Arc::clone(d)))"
 ---
 Some(
     Decl {

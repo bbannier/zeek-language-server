@@ -43,24 +43,7 @@ expression: root_decls
                                     character: 20,
                                 },
                             },
-                            uri: Uri(
-                                Uri {
-                                    scheme: "file",
-                                    authority: Some(
-                                        Authority {
-                                            userinfo: None,
-                                            host: "",
-                                            host_parsed: RegName(
-                                                "",
-                                            ),
-                                            port: None,
-                                        },
-                                    ),
-                                    path: "/foo/bar.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
-                            ),
+                            uri: InternedUri(Id(_)),
                         },
                     ),
                     documentation: u!("A new field.\n* * *\n```zeek\n# In bar::Y\ny2: count &optional;\n```"),
@@ -92,24 +75,7 @@ expression: root_decls
                         character: 28,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nredef record Y += {\n                  ## A new field.\n                  y2: count &optional;\n              };\n```"),
@@ -154,24 +120,7 @@ expression: root_decls
                                         character: 43,
                                     },
                                 },
-                                uri: Uri(
-                                    Uri {
-                                        scheme: "file",
-                                        authority: Some(
-                                            Authority {
-                                                userinfo: None,
-                                                host: "",
-                                                host_parsed: RegName(
-                                                    "",
-                                                ),
-                                                port: None,
-                                            },
-                                        ),
-                                        path: "/foo/bar.zeek",
-                                        query: None,
-                                        fragment: None,
-                                    },
-                                ),
+                                uri: InternedUri(Id(_)),
                             },
                         ),
                         documentation: u!("```zeek\nx: count\n```"),
@@ -204,24 +153,7 @@ expression: root_decls
                         character: 24,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nglobal fun: function(x: count): string;\n```"),
@@ -266,24 +198,7 @@ expression: root_decls
                                         character: 35,
                                     },
                                 },
-                                uri: Uri(
-                                    Uri {
-                                        scheme: "file",
-                                        authority: Some(
-                                            Authority {
-                                                userinfo: None,
-                                                host: "",
-                                                host_parsed: RegName(
-                                                    "",
-                                                ),
-                                                port: None,
-                                            },
-                                        ),
-                                        path: "/foo/bar.zeek",
-                                        query: None,
-                                        fragment: None,
-                                    },
-                                ),
+                                uri: InternedUri(Id(_)),
                             },
                         ),
                         documentation: u!("```zeek\nx: count\n```"),
@@ -316,24 +231,7 @@ expression: root_decls
                         character: 26,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nfunction fun(x: count): string { return \"\"; }\n```"),
@@ -375,24 +273,7 @@ expression: root_decls
                         character: 29,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nevent zeek_init() { local x=1;\n                  # Comment.\n              }\n```"),
@@ -437,24 +318,7 @@ expression: root_decls
                                     character: 19,
                                 },
                             },
-                            uri: Uri(
-                                Uri {
-                                    scheme: "file",
-                                    authority: Some(
-                                        Authority {
-                                            userinfo: None,
-                                            host: "",
-                                            host_parsed: RegName(
-                                                "",
-                                            ),
-                                            port: None,
-                                        },
-                                    ),
-                                    path: "/foo/bar.zeek",
-                                    query: None,
-                                    fragment: None,
-                                },
-                            ),
+                            uri: InternedUri(Id(_)),
                         },
                     ),
                     documentation: u!("A field.\n* * *\n```zeek\n# In test::Y\ny: vector of count &optional;\n```"),
@@ -486,24 +350,7 @@ expression: root_decls
                         character: 20,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("Y does the y.\nIt takes no arguments.\nBut it also has a field y\n* * *\n```zeek\ntype Y: record {\n                  ## A field.\n                  y: vector of count &optional;\n              };\n```"),
@@ -540,24 +387,7 @@ expression: root_decls
                         character: 25,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nconst x = 1 &redef;\n```"),
@@ -594,24 +424,7 @@ expression: root_decls
                         character: 26,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/foo/bar.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nglobal y = 1;\n```"),

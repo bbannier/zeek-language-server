@@ -8,11 +8,11 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use streaming_iterator::{StreamingIterator, StreamingIteratorMut, convert};
-use tower_lsp_server::ls_types::{Position, Range, Uri};
+use tower_lsp_server::ls_types::{Position, Range};
 use tracing::{debug, error, instrument};
 use tree_sitter_zeek::language_zeek;
 
-use crate::{InternedStr, parse::Parse, rst::markdownify};
+use crate::{Db, InternedStr, InternedUri, rst::markdownify};
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum DeclKind {
@@ -79,7 +79,7 @@ pub struct Signature {
 pub struct Location {
     pub range: Range,
     pub selection_range: Range,
-    pub uri: Arc<Uri>,
+    pub uri: InternedUri,
 }
 
 impl PartialOrd for Location {
@@ -105,8 +105,8 @@ impl Ord for Location {
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Location {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        NodeLocation::from_range(Arc::clone(&self.uri), self.range).hash(state);
-        NodeLocation::from_range(Arc::clone(&self.uri), self.selection_range).hash(state);
+        NodeLocation::from_range(self.uri, self.range).hash(state);
+        NodeLocation::from_range(self.uri, self.selection_range).hash(state);
         self.uri.hash(state);
     }
 }
@@ -190,15 +190,15 @@ impl Ord for OrderedRange {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NodeLocation {
     pub range: Range,
-    pub uri: Arc<Uri>,
+    pub uri: InternedUri,
 }
 
 impl NodeLocation {
     #[must_use]
-    pub fn from_node(uri: Arc<Uri>, node: Node) -> Self {
+    pub fn from_node(uri: InternedUri, node: Node) -> Self {
         Self {
             range: node.range(),
             uri,
@@ -206,7 +206,7 @@ impl NodeLocation {
     }
 
     #[must_use]
-    pub fn from_range(uri: Arc<Uri>, range: Range) -> Self {
+    pub fn from_range(uri: InternedUri, range: Range) -> Self {
         Self { range, uri }
     }
 }
@@ -443,9 +443,9 @@ fn in_export(mut node: Node) -> bool {
 }
 
 #[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
-#[instrument]
+#[instrument(skip(db))]
 #[must_use]
-pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+pub fn decls_(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         let signature = "((formal_args)? (type)?@fn_result)@signature";
         let signature = format!("[{signature} (func_params ({signature}))]");
@@ -582,7 +582,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: arg_id_.range(),
                                 selection_range: arg.range(),
-                                uri: Arc::clone(uri),
+                                uri,
                             }),
                             documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                                 .as_str()
@@ -648,7 +648,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                             loc: Some(Location {
                                 range: id_.range(),
                                 selection_range: id_.range(),
-                                uri: Arc::clone(uri),
+                                uri,
                             }),
                             documentation,
 
@@ -689,7 +689,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range,
                                     selection_range,
-                                    uri: Arc::clone(uri),
+                                    uri,
                                 }),
                                 documentation,
                                 // An enum value is exported if its wrapping decl is exported.
@@ -776,7 +776,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                                 loc: Some(Location {
                                     range: id_.range(),
                                     selection_range: id_.range(),
-                                    uri: Arc::clone(uri),
+                                    uri,
                                 }),
                                 documentation,
 
@@ -826,7 +826,7 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
                     loc: Some(Location {
                         range,
                         selection_range,
-                        uri: Arc::clone(uri),
+                        uri,
                     }),
                     documentation,
                 })
@@ -834,10 +834,8 @@ pub fn decls_(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
             )
         })
         .flatten()
-        .chain(convert(
-            fn_param_decls(node, &Arc::clone(uri), source).into_iter(),
-        ))
-        .chain(convert(loop_param_decls(node, uri, source).into_iter()))
+        .chain(convert(fn_param_decls(db, node, uri, source).into_iter()))
+        .chain(convert(loop_param_decls(db, node, uri, source).into_iter()))
         .cloned()
         .collect()
 }
@@ -935,9 +933,9 @@ fn typ_from_text(text: &str) -> Option<Type> {
     })
 }
 
-#[instrument]
+#[instrument(skip_all)]
 #[must_use]
-fn modules(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+fn modules(_db: &dyn Db, node: Node, _uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(module_decl (id)@id)").expect("invalid query")
     });
@@ -1006,8 +1004,9 @@ fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
 }
 
 /// Extract declarations for function parameters on the given node.
-#[instrument]
-pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+#[instrument(skip(db))]
+pub fn fn_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
+    let _ = db;
     match node.kind() {
         "func_decl" | "hook_decl" | "event_decl" => {}
         _ => return FxHashSet::default(),
@@ -1039,7 +1038,7 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
                 loc: Some(Location {
                     range: arg_id_.range(),
                     selection_range: arg.range(),
-                    uri: Arc::clone(uri),
+                    uri,
                 }),
                 documentation: format!("```zeek\n{}\n```", arg.utf8_text(source).ok()?)
                     .as_str()
@@ -1050,8 +1049,9 @@ pub fn fn_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<De
 }
 
 /// Extract for loop parameters on the given node.
-#[instrument]
-fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl> {
+#[instrument(skip(db))]
+fn loop_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
+    let _ = db;
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
             &language_zeek(),
@@ -1135,7 +1135,7 @@ fn loop_param_decls(node: Node, uri: &Arc<Uri>, source: &[u8]) -> FxHashSet<Decl
                             loc: Some(Location {
                                 range: n.range(),
                                 selection_range: n.range(),
-                                uri: Arc::clone(uri),
+                                uri,
                             }),
                             documentation,
                         })
@@ -1166,37 +1166,20 @@ fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
-#[salsa::query_group(QueryStorage)]
-pub trait Query: Parse {
-    #[must_use]
-    fn decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
-
-    #[must_use]
-    fn loads(&self, uri: Arc<Uri>) -> Arc<[InternedStr]>;
-
-    #[must_use]
-    fn function_calls(&self, uri: Arc<Uri>) -> Arc<[FunctionCall]>;
-
-    #[must_use]
-    fn untyped_var_decls(&self, uri: Arc<Uri>) -> Arc<[Decl]>;
-
-    #[must_use]
-    fn ids(&self, uri: Arc<Uri>) -> Arc<[NodeLocation]>;
-}
-
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-#[instrument(skip(db))]
-fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
-    let Some(source) = db.source(Arc::clone(&uri)) else {
+#[instrument(skip_all)]
+pub fn decls(db: &dyn Db, uri: InternedUri) -> Arc<[Decl]> {
+    let Some(source) = crate::source(db, uri) else {
         return Arc::default();
     };
 
-    let Some(tree) = db.parse(Arc::clone(&uri)) else {
+    let Some(tree) = crate::parse::parse(db, uri) else {
         return Arc::default();
     };
 
-    let decls = decls_(tree.root_node(), &uri, source.as_bytes());
-    let modules = modules(tree.root_node(), &uri, source.as_bytes());
+    let decls = decls_(db, tree.root_node(), uri, source.as_bytes());
+    let modules = modules(db, tree.root_node(), uri, source.as_bytes());
 
     Arc::from(
         decls
@@ -1207,13 +1190,14 @@ fn decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     )
 }
 
-#[instrument(skip(db))]
-fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
-    let Some(tree) = db.parse(Arc::clone(&uri)) else {
+#[salsa::tracked(returns(clone))]
+#[instrument(skip_all)]
+pub fn loads(db: &dyn Db, uri: InternedUri) -> Arc<[InternedStr]> {
+    let Some(tree) = crate::parse::parse(db, uri) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(uri) else {
+    let Some(source) = crate::source(db, uri) else {
         return Arc::default();
     };
 
@@ -1225,20 +1209,21 @@ fn loads(db: &dyn Query, uri: Arc<Uri>) -> Arc<[InternedStr]> {
     )
 }
 
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-#[instrument(skip(db))]
-fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
+#[instrument(skip_all)]
+pub fn function_calls(db: &dyn Db, uri: InternedUri) -> Arc<[FunctionCall]> {
     // Match things which look like function calls with arguments.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(expr (id) (expr_list))@fn")
             .expect("invalid query")
     });
 
-    let Some(tree) = db.parse(Arc::clone(&uri)) else {
+    let Some(tree) = crate::parse::parse(db, uri) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(Arc::clone(&uri)) else {
+    let Some(source) = crate::source(db, uri) else {
         return Arc::default();
     };
 
@@ -1256,9 +1241,9 @@ fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
                         .named_child("expr_list")?
                         .named_children("expr")
                         .into_iter()
-                        .map(|a| NodeLocation::from_node(Arc::clone(&uri), a))
+                        .map(|a| NodeLocation::from_node(uri, a))
                         .collect::<Vec<_>>();
-                    Some((NodeLocation::from_node(Arc::clone(&uri), n), args))
+                    Some((NodeLocation::from_node(uri, n), args))
                 })?;
 
                 Some(FunctionCall { f, args })
@@ -1268,9 +1253,10 @@ fn function_calls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[FunctionCall]> {
     )
 }
 
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-#[instrument(skip(db))]
-fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
+#[instrument(skip_all)]
+pub fn untyped_var_decls(db: &dyn Db, uri: InternedUri) -> Arc<[Decl]> {
     // Match untyped var and const decls
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(
@@ -1280,11 +1266,11 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
         .expect("invalid query")
     });
 
-    let Some(tree) = db.parse(Arc::clone(&uri)) else {
+    let Some(tree) = crate::parse::parse(db, uri) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(Arc::clone(&uri)) else {
+    let Some(source) = crate::source(db, uri) else {
         return Arc::default();
     };
 
@@ -1326,7 +1312,7 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
                     loc: Some(Location {
                         range: m.range(),
                         selection_range: m.named_child("id")?.range(),
-                        uri: Arc::clone(&uri),
+                        uri,
                     }),
                     documentation: empty,
                 })
@@ -1336,18 +1322,19 @@ fn untyped_var_decls(db: &dyn Query, uri: Arc<Uri>) -> Arc<[Decl]> {
     )
 }
 
+#[salsa::tracked(returns(clone))]
 #[allow(clippy::needless_pass_by_value)]
-fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
+pub fn ids(db: &dyn Db, uri: InternedUri) -> Arc<[NodeLocation]> {
     // Match any id.
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(id)@id").expect("invalid query")
     });
 
-    let Some(tree) = db.parse(Arc::clone(&uri)) else {
+    let Some(tree) = crate::parse::parse(db, uri) else {
         return Arc::default();
     };
 
-    let Some(source) = db.source(Arc::clone(&uri)) else {
+    let Some(source) = crate::source(db, uri) else {
         return Arc::default();
     };
 
@@ -1362,7 +1349,7 @@ fn ids(db: &dyn Query, uri: Arc<Uri>) -> Arc<[NodeLocation]> {
             .matches(&QUERY, tree.root_node().0, source)
             .filter_map(|m| {
                 let m = m.nodes_for_capture_index(c_id).next()?;
-                Some(NodeLocation::from_node(Arc::clone(&uri), m.into()))
+                Some(NodeLocation::from_node(uri, m.into()))
             })
             .cloned()
             .collect::<Vec<_>>(),
@@ -1420,12 +1407,10 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::{Files, lsp::TestDatabase, parse::Parse, query::Node};
-    use insta::assert_debug_snapshot;
+    use crate::test_util::assert_debug_snapshot;
+    use crate::{lsp::TestDatabase, query::Node};
     use itertools::Itertools;
     use tower_lsp_server::ls_types::{Position, Uri};
-
-    use super::Query;
 
     const SOURCE: &str = r#"module test;
 
@@ -1462,7 +1447,8 @@ mod test {
             let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
 
             db.add_file((*uri).clone(), source);
-            db.0.parse(uri)
+            let uri = crate::uri_db(&db.0, uri);
+            crate::parse::parse(&db.0, uri)
         };
 
         let loads = |source: &'static str| {
@@ -1483,9 +1469,10 @@ mod test {
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
 
-        let tree = db.0.parse(Arc::clone(&uri)).expect("cannot parse");
+        let uri = crate::uri_db(&db.0, uri);
+        let tree = crate::parse::parse(&db.0, uri).expect("cannot parse");
 
-        let decls_ = |n: Node| super::decls_(n, &uri, SOURCE.as_bytes());
+        let decls_ = |n: Node| super::decls_(&db.0, n, uri, SOURCE.as_bytes());
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
@@ -1521,8 +1508,9 @@ global GLOBAL::f3: function();
 }",
         );
 
-        let decls = db.0.decls(uri);
-        let mut decls = decls.iter().collect::<Vec<_>>();
+        let uri = crate::uri_db(&db.0, uri);
+        let decls = crate::query::decls(&db.0, uri);
+        let mut decls: Vec<_> = decls.iter().collect();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
 
         assert_debug_snapshot!(decls);
@@ -1533,7 +1521,8 @@ global GLOBAL::f3: function();
         let mut db = TestDatabase::default();
         let uri = Arc::new(Uri::from_file_path("/foo/bar.zeek").unwrap());
         db.add_file((*uri).clone(), SOURCE);
-        let tree = db.0.parse(uri).unwrap();
+        let uri = crate::uri_db(&db.0, uri);
+        let tree = crate::parse::parse(&db.0, uri).unwrap();
 
         assert!(!super::in_export(tree.root_node()));
 
@@ -1561,16 +1550,16 @@ function f1(x: count, y: string) {
 }",
         );
 
-        let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let uri = crate::uri_db(&db.0, uri);
+        let tree = crate::parse::parse(&db.0, uri).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db.0, uri).unwrap();
 
         let in_f1 = root
             .named_descendant_for_position(Position::new(1, 0))
             .unwrap();
         assert_eq!(in_f1.kind(), "func_decl");
-        let mut decls = super::fn_param_decls(in_f1, &uri, source.as_bytes())
+        let mut decls = super::fn_param_decls(&db.0, in_f1, uri, source.as_bytes())
             .into_iter()
             .collect::<Vec<_>>();
         decls.sort_by(|a, b| a.loc.cmp(&b.loc));
@@ -1580,7 +1569,7 @@ function f1(x: count, y: string) {
             .named_descendant_for_position(Position::new(0, 0))
             .unwrap();
         assert_eq!(outside_f1.kind(), "module_decl");
-        assert!(super::fn_param_decls(outside_f1, &uri, source.as_bytes()).is_empty());
+        assert!(super::fn_param_decls(&db.0, outside_f1, uri, source.as_bytes()).is_empty());
     }
 
     #[test]
@@ -1595,12 +1584,12 @@ global ev: event(c: connection, os: endpoint_stats, rs: endpoint_stats);
 global hk: hook(info: Info, s: Seen, items: set[Item]);",
         );
 
-        let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let uri = crate::uri_db(&db.0, uri);
+        let tree = crate::parse::parse(&db.0, uri).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db.0, uri).unwrap();
 
-        assert_debug_snapshot!(super::decls_(root, &uri, source.as_bytes()));
+        assert_debug_snapshot!(super::decls_(&db.0, root, uri, source.as_bytes()));
     }
 
     #[test]
@@ -1613,12 +1602,12 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
 function f() {}",
         );
 
-        let db = db.snapshot();
-        let tree = db.parse(Arc::clone(&uri)).unwrap();
+        let uri = crate::uri_db(&db.0, uri);
+        let tree = crate::parse::parse(&db.0, uri).unwrap();
         let root = tree.root_node();
-        let source = db.source(Arc::clone(&uri)).unwrap();
+        let source = crate::source(&db.0, uri).unwrap();
 
-        let decls = super::decls_(root, &uri, source.as_bytes());
+        let decls = super::decls_(&db.0, root, uri, source.as_bytes());
         assert_eq!(decls.len(), 1);
         let d = decls.iter().next().unwrap();
         assert_eq!(d.id, "f");

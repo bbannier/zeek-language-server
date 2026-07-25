@@ -1,42 +1,46 @@
 use crate::Str;
 pub(crate) use crate::{
-    Client, Files, InternedStr,
-    ast::{Ast, load_to_file},
+    Db, InternedStr, InternedUri,
+    ast::load_to_file,
     complete::complete,
-    parse::Parse,
-    query::{self, Decl, DeclKind, ModuleId, NodeLocation, Query},
-    zeek,
+    query::{self, Decl, DeclKind, ModuleId, NodeLocation},
+    uri_db, zeek,
 };
+use dashmap::DashMap;
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use salsa::ParallelDatabase;
+use salsa::Setter;
 use serde::Deserialize;
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
+use std::{
+    fmt::Debug,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tower_lsp_server::{
     LanguageServer, LspService, Server,
     jsonrpc::{Error, Result},
     ls_types::{
-        CodeAction, CodeActionKind, CodeActionParams, CodeActionProviderCapability,
-        CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
-        DeclarationCapability, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-        DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DidSaveTextDocumentParams, DocumentFormattingParams, DocumentRangeFormattingParams,
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, FileChangeType, FileEvent,
-        FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-        ImplementationProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-        InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, InlayHintTooltip,
-        LanguageString, Location, MarkedString, MarkupContent, MarkupKind, MessageType,
-        NumberOrString, OneOf, ParameterInformation, ParameterLabel, Position, ProgressParams,
-        ProgressParamsValue, ProgressToken, Range, ReferenceParams, RenameParams,
-        SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
-        SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-        SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-        SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-        Uri, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
-        WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit, WorkspaceSymbolParams,
-        WorkspaceSymbolResponse,
+        ClientCapabilities, CodeAction, CodeActionKind, CodeActionParams,
+        CodeActionProviderCapability, CodeActionResponse, CompletionOptions, CompletionParams,
+        CompletionResponse, DeclarationCapability, Diagnostic, DiagnosticSeverity,
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+        DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams,
+        DocumentRangeFormattingParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, FileChangeType, FileEvent, FoldingRange, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, HoverProviderCapability, ImplementationProviderCapability,
+        InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintKind,
+        InlayHintLabel, InlayHintParams, InlayHintTooltip, LanguageString, Location, MarkedString,
+        MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, ParameterInformation,
+        ParameterLabel, Position, ProgressParams, ProgressParamsValue, ProgressToken, Range,
+        ReferenceParams, RenameParams, SemanticTokensFullOptions, SemanticTokensOptions,
+        SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+        ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+        SignatureInformation, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+        TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
+        WorkspaceSymbolParams, WorkspaceSymbolResponse,
         notification::Progress,
         request::{
             GotoDeclarationResponse, GotoImplementationParams, GotoImplementationResponse,
@@ -50,18 +54,47 @@ use walkdir::WalkDir;
 #[cfg(test)]
 pub(crate) use test::TestDatabase;
 
-#[salsa::database(
-    crate::ast::AstStorage,
-    crate::parse::ParseStorage,
-    crate::query::QueryStorage,
-    crate::FilesStorage,
-    crate::ClientStorage
-)]
+/// Shared event-log slot used for test event capture. Protected by a Mutex so the
+/// Salsa event callback (which only holds a clone) can write into it.
+type EventLogSlot = Arc<Mutex<Option<Arc<Mutex<Vec<String>>>>>>;
+
+#[salsa::db]
+#[derive(Clone)]
 pub struct Database {
     storage: salsa::Storage<Self>,
+    sources: Arc<DashMap<Arc<Uri>, crate::SourceInput>>,
+    file_list: Option<crate::FileList>,
+    client_state: Option<crate::ClientState>,
+    workspace_state: Option<crate::WorkspaceState>,
+
+    #[cfg(test)]
+    event_log: Option<Arc<Mutex<Vec<String>>>>,
+
+    #[cfg(test)]
+    event_slot: EventLogSlot,
 }
 
-unsafe impl Sync for Database {}
+#[salsa::db]
+impl salsa::Database for Database {}
+
+#[salsa::db]
+impl crate::Db for Database {
+    fn source_input(&self, uri: &Arc<Uri>) -> Option<crate::SourceInput> {
+        self.sources.get(uri).map(|r| *r)
+    }
+
+    fn file_list(&self) -> Option<crate::FileList> {
+        self.file_list
+    }
+
+    fn client_state(&self) -> Option<crate::ClientState> {
+        self.client_state
+    }
+
+    fn workspace_state(&self) -> Option<crate::WorkspaceState> {
+        self.workspace_state
+    }
+}
 
 pub enum SourceUpdate {
     Remove(Arc<Uri>),
@@ -70,63 +103,147 @@ pub enum SourceUpdate {
 
 impl Database {
     pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
-        let mut files: FxHashSet<_> = self.files().iter().cloned().collect();
-
         let mut needs_files_update = false;
+        let mut files: FxHashSet<_> = self
+            .file_list()
+            .map_or_else(Arc::default, |fl| fl.files(self))
+            .iter()
+            .copied()
+            .collect();
 
         for u in updates {
             match u {
                 SourceUpdate::Update(uri, source) => {
-                    self.set_unsafe_source(Arc::clone(uri), source.clone());
-
-                    if !files.contains(uri) {
-                        files.insert(Arc::clone(uri));
+                    let existing = self.sources.get(uri).map(|r| *r);
+                    if let Some(input) = existing {
+                        input.set_text(self).to(source.clone());
+                    } else {
+                        let input = crate::SourceInput::new(self, source.clone());
+                        let interned = uri_db(self, Arc::clone(uri));
+                        self.sources.insert(Arc::clone(uri), input);
+                        files.insert(interned);
                         needs_files_update = true;
                     }
                 }
                 SourceUpdate::Remove(uri) => {
-                    if files.contains(uri) {
-                        files.remove(uri);
+                    if self.sources.remove(uri).is_some() {
+                        let interned = uri_db(self, Arc::clone(uri));
+                        files.remove(&interned);
                         needs_files_update = true;
                     }
                 }
             }
         }
 
-        if needs_files_update {
-            self.set_files(Arc::from(files.into_iter().collect::<Vec<_>>()));
+        if needs_files_update && let Some(fl) = self.file_list {
+            fl.set_files(self)
+                .to(Arc::from(files.into_iter().collect::<Vec<_>>()));
         }
     }
 
     fn file_changed(&self, uri: Arc<Uri>) {
         // Precompute decls in this file.
-        let _d = self.decls(uri);
+        let uri = uri_db(self, uri);
+        let _d = crate::query::decls(self, uri);
+    }
+
+    pub(crate) fn set_client_state(
+        &mut self,
+        capabilities: Arc<ClientCapabilities>,
+        initialization_options: InitializationOptions,
+    ) {
+        if let Some(cs) = self.client_state {
+            cs.set_capabilities(self).to(capabilities);
+            cs.set_initialization_options(self)
+                .to(initialization_options);
+        }
+    }
+
+    pub(crate) fn set_workspace_state(
+        &mut self,
+        workspace_folders: Arc<[Uri]>,
+        prefixes: Arc<[PathBuf]>,
+    ) {
+        if let Some(ws) = self.workspace_state {
+            ws.set_workspace_folders(self).to(workspace_folders);
+            ws.set_prefixes(self).to(prefixes);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_prefixes(&mut self, prefixes: Arc<[PathBuf]>) {
+        if let Some(ws) = self.workspace_state {
+            ws.set_prefixes(self).to(prefixes);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_capabilities(&mut self, capabilities: Arc<ClientCapabilities>) {
+        if let Some(cs) = self.client_state {
+            cs.set_capabilities(self).to(capabilities);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_initialization_options(&mut self, opts: InitializationOptions) {
+        if let Some(cs) = self.client_state {
+            cs.set_initialization_options(self).to(opts);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn enable_event_log(&mut self) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        if let Ok(mut slot) = self.event_slot.lock() {
+            *slot = Some(Arc::clone(&log));
+        }
+        self.event_log = Some(log);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_events(&self) -> Vec<String> {
+        self.event_log
+            .as_ref()
+            .map(|log| {
+                #[allow(clippy::unwrap_used)]
+                std::mem::take(&mut *log.lock().unwrap())
+            })
+            .unwrap_or_default()
     }
 }
 
 impl Default for Database {
     fn default() -> Self {
+        let event_slot: EventLogSlot = Arc::default();
+        let slot_ref = Arc::clone(&event_slot);
+        let storage = salsa::Storage::new(Some(Box::new(move |event: salsa::Event| {
+            if let salsa::EventKind::WillExecute { database_key } = event.kind
+                && let Ok(guard) = slot_ref.lock()
+                && let Some(log) = guard.as_ref()
+                && let Ok(mut log) = log.lock()
+            {
+                log.push(format!("{database_key:?}"));
+            }
+        })));
         let mut db = Self {
-            storage: salsa::Storage::default(),
+            storage,
+            sources: Arc::default(),
+            file_list: None,
+            client_state: None,
+            workspace_state: None,
+            #[cfg(test)]
+            event_log: None,
+            #[cfg(test)]
+            event_slot,
         };
-
-        db.set_files(Arc::default());
-        db.set_prefixes(Arc::default());
-        db.set_workspace_folders(Arc::default());
-        db.set_capabilities(Arc::default());
-        db.set_initialization_options(Arc::new(InitializationOptions::new()));
-
+        let file_list = crate::FileList::new(&db, Arc::default());
+        let client_state =
+            crate::ClientState::new(&db, Arc::default(), InitializationOptions::new());
+        let workspace_state = crate::WorkspaceState::new(&db, Arc::default(), Arc::default());
+        db.file_list = Some(file_list);
+        db.client_state = Some(client_state);
+        db.workspace_state = Some(workspace_state);
         db
-    }
-}
-
-impl salsa::Database for Database {}
-
-impl salsa::ParallelDatabase for Database {
-    fn snapshot(&self) -> salsa::Snapshot<Self> {
-        salsa::Snapshot::new(Database {
-            storage: self.storage.snapshot(),
-        })
     }
 }
 
@@ -139,7 +256,7 @@ impl Debug for Database {
 #[derive(Debug, Default)]
 pub struct Backend {
     pub client: Option<tower_lsp_server::Client>,
-    state: tokio::sync::RwLock<Database>,
+    state: tokio::sync::Mutex<Database>,
 }
 
 enum ParseResult {
@@ -169,16 +286,17 @@ impl Backend {
         T: Into<String> + std::fmt::Display,
     {
         // Short circuit progress report if client doesn't support it.
-        if !self
-            .state
-            .read()
-            .await
-            .capabilities()
-            .window
-            .as_ref()
-            .and_then(|w| w.work_done_progress)
-            .unwrap_or(false)
-        {
+        let has_work_done_progress = {
+            let state = self.state.lock().await;
+            state.client_state().is_some_and(|cs| {
+                cs.capabilities(&*state)
+                    .window
+                    .as_ref()
+                    .and_then(|w| w.work_done_progress)
+                    .unwrap_or(false)
+            })
+        };
+        if !has_work_done_progress {
             return None;
         }
 
@@ -246,11 +364,12 @@ impl Backend {
 
     async fn file_changed(&self, uri: Arc<Uri>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             let diags = {
                 state.file_changed(Arc::clone(&uri));
 
-                match state.parse(Arc::clone(&uri)) {
+                let uri = uri_db(&*state, Arc::clone(&uri));
+                match crate::parse::parse(&*state, uri) {
                     Some(tree) => tree_diagnostics(&tree.root_node()).collect(),
                     _ => Vec::new(),
                 }
@@ -283,7 +402,12 @@ impl Backend {
             })?
             .filter_map(|f| Uri::from_file_path(f.path));
 
-        let workspace_folders = self.state.read().await.workspace_folders();
+        let workspace_folders = {
+            let state = self.state.lock().await;
+            state
+                .workspace_state()
+                .map_or_else(Arc::default, |ws| ws.workspace_folders(&*state))
+        };
 
         let workspace_files = workspace_folders
             .iter()
@@ -320,7 +444,12 @@ impl Backend {
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
-        let workspace_folders = self.state.read().await.workspace_folders();
+        let workspace_folders = {
+            let state = self.state.lock().await;
+            state
+                .workspace_state()
+                .map_or_else(Arc::default, |ws| ws.workspace_folders(&*state))
+        };
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
         let checks = if let Some(folder) = workspace_folder {
@@ -378,35 +507,35 @@ impl LanguageServer for Backend {
             .workspace_folders
             .map_or_else(Vec::new, |xs| xs.into_iter().map(|x| x.uri).collect());
 
-        {
-            let mut state = self.state.write().await;
-            state.set_workspace_folders(Arc::from(workspace_folders));
-            state.set_capabilities(Arc::new(params.capabilities));
-            state.set_initialization_options(Arc::new(
-                params
-                    .initialization_options
-                    .and_then(|options| serde_json::from_value(options).ok())
-                    .unwrap_or_else(InitializationOptions::new),
-            ));
-        }
-
-        // Check prerequisites and set system prefixes.
-        match zeek::prefixes(None).await {
-            Ok(prefixes) => self
-                .state
-                .write()
-                .await
-                .set_prefixes(Arc::from(prefixes.collect::<Vec<_>>())),
+        // Resolve async values before acquiring the lock.
+        let prefixes = match zeek::prefixes(None).await {
+            Ok(prefixes) => Some(Arc::from(prefixes.collect::<Vec<_>>())),
             Err(e) => {
                 self.warn_message(format!(
                     "cannot detect Zeek prefixes, results will be incomplete or incorrect: {e}"
                 ))
                 .await;
+                None
             }
-        }
-
-        let initialization_options = self.state.read().await.initialization_options();
+        };
         let has_zeek_format = zeek::has_format().await;
+
+        let initialization_options = {
+            let mut state = self.state.lock().await;
+            state.set_client_state(
+                Arc::new(params.capabilities),
+                params
+                    .initialization_options
+                    .and_then(|options| serde_json::from_value(options).ok())
+                    .unwrap_or_else(InitializationOptions::new),
+            );
+            state.set_workspace_state(Arc::from(workspace_folders), prefixes.unwrap_or_default());
+            state
+                .client_state()
+                .map_or_else(InitializationOptions::new, |cs| {
+                    cs.initialization_options(&*state)
+                })
+        };
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -520,7 +649,8 @@ impl LanguageServer for Backend {
             let changes = removals.chain(updates).collect::<Vec<_>>();
 
             // Update files.
-            self.state.write().await.update_sources(&changes);
+            let mut state = self.state.lock().await;
+            state.update_sources(&changes);
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -531,22 +661,23 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files = self.state.read().await.files();
-
         let preloaded_decls = {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
+            let files = state
+                .file_list()
+                .map_or_else(Arc::default, |fl| fl.files(&*state));
 
             files
                 .iter()
                 .map(|f| {
-                    let f = Arc::clone(f);
-                    let db = state.snapshot();
+                    let f = *f;
+                    let db = state.clone();
                     tokio::spawn(async move {
-                        let _x = db.decls(Arc::clone(&f));
-                        let _x = db.loaded_files(f);
+                        let _x = crate::query::decls(&db, f);
+                        let _x = crate::ast::loaded_files(&db, f);
                     })
                 })
                 .collect::<Vec<_>>()
@@ -556,7 +687,10 @@ impl LanguageServer for Backend {
         // Reload implicit declarations.
         self.progress(progress_token.clone(), Some("implicit loads".to_string()))
             .await;
-        let _implicit = self.state.read().await.implicit_decls();
+        {
+            let state = self.state.lock().await;
+            let _implicit = crate::ast::implicit_decls(&*state);
+        }
 
         self.progress_end(progress_token).await;
     }
@@ -567,7 +701,7 @@ impl LanguageServer for Backend {
 
         // Update source.
         self.state
-            .write()
+            .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
@@ -576,7 +710,10 @@ impl LanguageServer for Backend {
 
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
-        let _implicit = self.state.read().await.implicit_decls();
+        {
+            let state = self.state.lock().await;
+            let _implicit = crate::ast::implicit_decls(&*state);
+        }
 
         let file_changed = self.file_changed(uri).await;
 
@@ -607,7 +744,7 @@ impl LanguageServer for Backend {
 
         // Update source.
         self.state
-            .write()
+            .lock()
             .await
             .update_sources(&[SourceUpdate::Update(
                 Arc::clone(&uri),
@@ -639,13 +776,14 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let Some(source) = state.source(Arc::clone(&uri)) else {
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let Some(source) = crate::source(&*state, uri) else {
             return Ok(None);
         };
 
-        let tree = state.parse(Arc::clone(&uri));
+        let tree = crate::parse::parse(&*state, uri);
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
@@ -665,7 +803,9 @@ impl LanguageServer for Backend {
 
         match node.kind() {
             "id" => {
-                if let Some(decl) = &state.resolve(NodeLocation::from_node(uri, node)) {
+                if let Some(decl) =
+                    &crate::ast::resolve(&*state, NodeLocation::from_node(uri, node))
+                {
                     let kind = match decl.kind {
                         DeclKind::Global => "global",
                         DeclKind::Option => "option",
@@ -691,7 +831,7 @@ impl LanguageServer for Backend {
                         id = decl.fqid
                     )));
 
-                    if let Some(typ) = state.typ(Arc::clone(decl)) {
+                    if let Some(typ) = crate::ast::typ(&*state, Arc::clone(decl)) {
                         contents.push(MarkedString::String(format!("Type: `{}`", typ.fqid)));
                     }
 
@@ -700,11 +840,20 @@ impl LanguageServer for Backend {
             }
             "file" => {
                 let file = PathBuf::from(text);
+                let files: Vec<_> = state
+                    .file_list()
+                    .map_or_else(Arc::default, |fl| fl.files(&*state))
+                    .iter()
+                    .map(|f| f.uri(&*state))
+                    .collect();
                 let uri = load_to_file(
                     &file,
-                    uri.as_ref(),
-                    state.files().as_ref(),
-                    state.prefixes().as_ref(),
+                    uri.uri(&*state).as_ref(),
+                    &files,
+                    state
+                        .workspace_state()
+                        .map_or_else(Arc::default, |ws| ws.prefixes(&*state))
+                        .as_ref(),
                 );
                 if let Some(uri) = uri {
                     contents.push(MarkedString::String(format!("`{}`", uri.path())));
@@ -731,17 +880,15 @@ impl LanguageServer for Backend {
             _ => {}
         }
 
-        drop(state);
-
         // In debug builds always debug AST nodes; in release mode honor the client config.
         #[cfg(all(debug_assertions, not(test)))]
         let debug_ast_nodes = true;
         #[cfg(not(all(debug_assertions, not(test))))]
-        let debug_ast_nodes = self
-            .state
-            .read()
-            .await
-            .initialization_options()
+        let debug_ast_nodes = state
+            .client_state()
+            .map_or_else(InitializationOptions::new, |cs| {
+                cs.initialization_options(&*state)
+            })
             .debug_ast_nodes;
 
         if debug_ast_nodes {
@@ -755,6 +902,8 @@ impl LanguageServer for Backend {
             contents: HoverContents::Array(contents),
             range: Some(node.range()),
         };
+
+        drop(state);
 
         Ok(Some(hover))
     }
@@ -806,13 +955,14 @@ impl LanguageServer for Backend {
         };
 
         let modules = {
-            let db = self.state.read().await;
+            let db = self.state.lock().await;
 
             // Even though a valid source file can only contain a single module, one can still make
             // declarations in other modules. Sort declarations by module so users get a clean view.
             // Then show declarations under their module, or at the top-level if they aren't exported
             // into a module.
-            let decls = db.decls(uri);
+            let uri = uri_db(&*db, Arc::clone(&uri));
+            let decls = crate::query::decls(&*db, uri);
             let mut decls = decls
                 .iter()
                 // Filter out top-level enum members since they are also exposed inside their enum here.
@@ -858,7 +1008,7 @@ impl LanguageServer for Backend {
         let query = params.query.to_lowercase();
 
         let symbols = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
             fuzzy_search_symbol(&state, &query)
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
@@ -868,7 +1018,7 @@ impl LanguageServer for Backend {
                         name: d.fqid.to_string(),
                         kind: to_symbol_kind(&d.kind),
 
-                        location: Location::new(loc.uri.as_ref().clone(), loc.range),
+                        location: Location::new((*loc.uri.uri(&*state)).clone(), loc.range),
                         container_name: Some(format!("{}", d.module)),
 
                         tags: None,
@@ -883,7 +1033,7 @@ impl LanguageServer for Backend {
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
         Ok(complete(&state, params))
     }
 
@@ -896,27 +1046,28 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let tree = state.parse(Arc::clone(&uri));
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let tree = crate::parse::parse(&*state, uri);
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(source) = state.source(Arc::clone(&uri)) else {
+        let Some(source) = crate::source(&*state, uri) else {
             return Ok(None);
         };
 
         let location = {
             match node.kind() {
-                "id" => state
-                    .resolve(NodeLocation::from_node(uri, node))
-                    .and_then(|d| {
+                "id" => {
+                    crate::ast::resolve(&*state, NodeLocation::from_node(uri, node)).and_then(|d| {
                         let loc = &d.loc.as_ref()?;
-                        Some(Location::new((*loc.uri).clone(), loc.range))
-                    }),
+                        Some(Location::new((*loc.uri.uri(&*state)).clone(), loc.range))
+                    })
+                }
                 "file" => {
                     let Ok(text) = node.utf8_text(source.as_bytes()).map_err(|e| {
                         error!("could not get source text: {}", e);
@@ -926,11 +1077,20 @@ impl LanguageServer for Backend {
                     };
 
                     let file = PathBuf::from(text);
+                    let files: Vec<_> = state
+                        .file_list()
+                        .map_or_else(Arc::default, |fl| fl.files(&*state))
+                        .iter()
+                        .map(|f| f.uri(&*state))
+                        .collect();
                     load_to_file(
                         &file,
-                        uri.as_ref(),
-                        state.files().as_ref(),
-                        state.prefixes().as_ref(),
+                        uri.uri(&*state).as_ref(),
+                        &files,
+                        state
+                            .workspace_state()
+                            .map_or_else(Arc::default, |ws| ws.prefixes(&*state))
+                            .as_ref(),
                     )
                     .map(|uri| Location::new((*uri).clone(), Range::default()))
                 }
@@ -946,7 +1106,7 @@ impl LanguageServer for Backend {
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
                         .and_then(|(_, d)| d.loc)
-                        .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
+                        .map(|l| Location::new((*l.uri.uri(&*state)).clone(), l.range))
                 }
                 _ => None,
             }
@@ -960,53 +1120,27 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position_params.text_document.uri);
         let position = params.text_document_position_params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let Some(source) = state.source(Arc::clone(&uri)) else {
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let Some(source) = crate::source(&*state, uri) else {
             return Ok(None);
         };
-        let Some(tree) = state.parse(Arc::clone(&uri)) else {
-            return Ok(None);
-        };
-
-        // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-        let Some(line) = source.lines().nth(position.line as usize) else {
+        let Some(tree) = crate::parse::parse(&*state, uri) else {
             return Ok(None);
         };
 
-        let line = if u32::try_from(line.len() + 1).ok() > Some(position.character) {
-            &line[..position.character as usize]
-        } else {
+        let Some((node, active_parameter)) = call_context(&source, position, &tree) else {
             return Ok(None);
         };
-
-        // Search backward in the line for '('. The identifier before that could be a function name.
-        let Some(node) = line
-            .chars()
-            .rev()
-            .enumerate()
-            .filter(|(_, c)| !char::is_whitespace(*c))
-            .skip_while(|(_, c)| c != &'(')
-            .nth(1)
-            .and_then(|(i, _)| {
-                let character = u32::try_from(line.len() - i - 1).ok()?;
-
-                tree.root_node().named_descendant_for_position(Position {
-                    character,
-                    ..position
-                })
-            })
-        else {
-            return Ok(None);
-        };
-
-        let active_parameter = u32::try_from(line.chars().filter(|c| c == &',').count()).ok();
 
         let Ok(id) = node.utf8_text(source.as_bytes()) else {
             return Ok(None);
         };
 
-        let Some(f) = state.resolve_id(id.into(), NodeLocation::from_node(uri, node)) else {
+        let Some(f) =
+            crate::ast::resolve_id(&*state, id.into(), NodeLocation::from_node(uri, node))
+        else {
             return Ok(None);
         };
 
@@ -1022,39 +1156,15 @@ impl LanguageServer for Backend {
 
         // Recompute `tree` and `source` in the context of the function declaration.
         let Some(loc) = &f.loc else { return Ok(None) };
-        let Some(tree) = state.parse(Arc::clone(&loc.uri)) else {
+        let uri = loc.uri;
+        let Some(tree) = crate::parse::parse(&*state, uri) else {
             return Ok(None);
         };
-        let Some(source) = state.source(Arc::clone(&loc.uri)) else {
+        let Some(source) = crate::source(&*state, uri) else {
             return Ok(None);
         };
 
-        let label = format!(
-            "{}({})",
-            f.id,
-            signature
-                .args
-                .iter()
-                .filter_map(|a| {
-                    let loc = &a.loc.as_ref()?;
-                    tree.root_node()
-                        .named_descendant_for_point_range(loc.selection_range)?
-                        .utf8_text(source.as_bytes())
-                        .ok()
-                })
-                .join(", ")
-        );
-
-        let parameters = Some(
-            signature
-                .args
-                .iter()
-                .map(|a| ParameterInformation {
-                    label: ParameterLabel::Simple(a.id.to_string()),
-                    documentation: None,
-                })
-                .collect(),
-        );
+        let (label, parameters) = signature_label(f.id, signature, &tree, &source);
 
         Ok(Some(SignatureHelp {
             signatures: vec![SignatureInformation {
@@ -1064,7 +1174,7 @@ impl LanguageServer for Backend {
                 active_parameter,
             }],
             active_signature: None,
-            active_parameter,
+            active_parameter: None,
         }))
     }
 
@@ -1091,8 +1201,9 @@ impl LanguageServer for Backend {
             folds
         }
 
-        let state = self.state.read().await;
-        let tree = state.parse(Arc::new(params.text_document.uri));
+        let state = self.state.lock().await;
+        let uri = uri_db(&*state, Arc::new(params.text_document.uri));
+        let tree = crate::parse::parse(&*state, uri);
 
         Ok(tree.map(|t| compute_folds(t.root_node(), false)))
     }
@@ -1101,15 +1212,16 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let source = state.source(Arc::clone(&uri));
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let source = crate::source(&*state, uri);
 
         let Some(source) = source else {
             return Ok(None);
         };
 
-        let range = match state.parse(uri) {
+        let range = match crate::parse::parse(&*state, uri) {
             Some(t) => t.root_node().range(),
             None => return Ok(None),
         };
@@ -1131,7 +1243,11 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = self.state.read().await.source(Arc::clone(&uri));
+        let source = {
+            let state = self.state.lock().await;
+            let uri = uri_db(&*state, Arc::clone(&uri));
+            crate::source(&*state, uri)
+        };
 
         let Some(source) = source else {
             return Ok(None);
@@ -1168,9 +1284,10 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let tree = state.parse(Arc::clone(&uri));
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let tree = crate::parse::parse(&*state, uri);
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
@@ -1179,7 +1296,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let Some(decl) = state.resolve(NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = crate::ast::resolve(&*state, NodeLocation::from_node(uri, node)) else {
             return Ok(None);
         };
 
@@ -1190,19 +1307,22 @@ impl LanguageServer for Backend {
                     Some((*decl).clone())
                 }
                 // If we resolved to a definition, look for the declaration.
-                DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => state
-                    .decls(Arc::clone(&uri))
-                    .iter()
-                    .chain(state.implicit_decls().iter())
-                    .chain(state.explicit_decls_recursive(uri).iter())
-                    .filter(|&d| {
-                        matches!(
-                            &d.kind,
-                            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
-                        )
-                    })
-                    .find(|&d| d.id == decl.id)
-                    .cloned(),
+                DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => {
+                    crate::query::decls(&*state, uri)
+                        .iter()
+                        .chain(crate::ast::implicit_decls(&*state).iter())
+                        .chain(crate::ast::explicit_decls_recursive(&*state, uri).iter())
+                        .filter(|&d| {
+                            matches!(
+                                &d.kind,
+                                DeclKind::EventDecl(_)
+                                    | DeclKind::FuncDecl(_)
+                                    | DeclKind::HookDecl(_)
+                            )
+                        })
+                        .find(|&d| d.id == decl.id)
+                        .cloned()
+                }
                 _ => None,
             }
         };
@@ -1210,7 +1330,7 @@ impl LanguageServer for Backend {
         Ok(decl.and_then(|d| {
             let loc = &d.loc.as_ref()?;
             Some(GotoDeclarationResponse::Scalar(Location::new(
-                (*loc.uri).clone(),
+                (*loc.uri.uri(&*state)).clone(),
                 loc.range,
             )))
         }))
@@ -1225,34 +1345,39 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let position = params.position;
 
-        let state = self.state.read().await;
+        let (decl, db) = {
+            let state = self.state.lock().await;
 
-        let tree = state.parse(Arc::clone(&uri));
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
+            let uri = uri_db(&*state, Arc::clone(&uri));
+            let tree = crate::parse::parse(&*state, uri);
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
+
+            let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+                return Ok(None);
+            };
+
+            let Some(decl) = crate::ast::resolve(&*state, NodeLocation::from_node(uri, node))
+            else {
+                return Ok(None);
+            };
+
+            if !matches!(
+                &decl.kind,
+                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
+            ) {
+                return Ok(None);
+            }
+
+            (decl, state.clone())
         };
 
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
-
-        let Some(decl) = state.resolve(NodeLocation::from_node(uri, node)) else {
-            return Ok(None);
-        };
-
-        if !matches!(
-            &decl.kind,
-            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
-        ) {
-            return Ok(None);
-        }
-
-        let response = state
-            .files()
+        let files = db.file_list().map_or_else(Arc::default, |fl| fl.files(&db));
+        let response = files
             .iter()
             .flat_map(|f| {
-                state
-                    .decls(Arc::clone(f))
+                crate::query::decls(&db, *f)
                     .iter()
                     .cloned()
                     .collect::<Vec<_>>()
@@ -1266,7 +1391,7 @@ impl LanguageServer for Backend {
             .filter_map(|d| {
                 let loc = &d.loc.as_ref()?;
                 if d.id == decl.id {
-                    Some(Location::new((*loc.uri).clone(), loc.range))
+                    Some(Location::new((*loc.uri.uri(&db)).clone(), loc.range))
                 } else {
                     None
                 }
@@ -1289,8 +1414,9 @@ impl LanguageServer for Backend {
         };
 
         let uri = Arc::new(params.text_document.uri);
-        let state = self.state.read().await;
-        let Some(missing) = state.parse(Arc::clone(&uri)).and_then(|t| {
+        let state = self.state.lock().await;
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let Some(missing) = crate::parse::parse(&*state, uri).and_then(|t| {
             t.root_node().errors().find_map(|err| {
                 // Filter out `MISSING` nodes at the diagnostic.
                 if err.is_missing() && err.range() == diag.range {
@@ -1306,7 +1432,7 @@ impl LanguageServer for Backend {
 
         let edit = Some(WorkspaceEdit::new(
             [(
-                (*uri).clone(),
+                (*uri.uri(&*state)).clone(),
                 vec![{ TextEdit::new(diag.range, missing.clone()) }],
             )]
             .into_iter()
@@ -1332,20 +1458,26 @@ impl LanguageServer for Backend {
 
         let mut hints = Vec::new();
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
+        let uri = uri_db(&*state, Arc::clone(&uri));
 
-        let params = if state.initialization_options().inlay_hints_parameters {
-            state
-                .function_calls(Arc::clone(&uri))
+        let params = if state
+            .client_state()
+            .map_or_else(InitializationOptions::new, |cs| {
+                cs.initialization_options(&*state)
+            })
+            .inlay_hints_parameters
+        {
+            crate::query::function_calls(&*state, uri)
                 .iter()
                 .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
                 .map(|c| {
-                    let state = state.snapshot();
+                    let state = state.clone();
 
                     let c = c.clone();
 
                     tokio::spawn(async move {
-                        match &state.resolve(c.f.clone())?.kind {
+                        match &crate::ast::resolve(&state, c.f)?.kind {
                             DeclKind::FuncDef(s)
                             | DeclKind::FuncDecl(s)
                             | DeclKind::HookDef(s)
@@ -1359,11 +1491,11 @@ impl LanguageServer for Backend {
                                         // If the argument has the same name as the parameter do
                                         // not set an inlay hint.
                                         let uri = p.uri;
-                                        let tree = state.parse(Arc::clone(&uri))?;
+                                        let tree = crate::parse::parse(&state, uri)?;
                                         let node = tree
                                             .root_node()
                                             .named_descendant_for_point_range(p.range)?;
-                                        let source = state.source(uri)?;
+                                        let source = crate::source(&state, uri)?;
                                         let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
                                         if maybe_id == a.id {
                                             return None;
@@ -1396,9 +1528,14 @@ impl LanguageServer for Backend {
             Vec::default()
         };
 
-        let vars = if state.initialization_options().inlay_hints_variables {
-            state
-                .untyped_var_decls(Arc::clone(&uri))
+        let vars = if state
+            .client_state()
+            .map_or_else(InitializationOptions::new, |cs| {
+                cs.initialization_options(&*state)
+            })
+            .inlay_hints_variables
+        {
+            crate::query::untyped_var_decls(&*state, uri)
                 .iter()
                 .filter(|d| {
                     d.loc
@@ -1406,12 +1543,12 @@ impl LanguageServer for Backend {
                         .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
                 })
                 .map(|d| {
-                    let state = state.snapshot();
+                    let state = state.clone();
 
                     let d = d.clone();
 
                     tokio::spawn(async move {
-                        let t = state.typ(Arc::new(d.clone()))?;
+                        let t = crate::ast::typ(&state, Arc::new(d.clone()))?;
                         Some(InlayHint {
                             position: d.loc.as_ref().map(|l| l.selection_range.end)?,
                             label: InlayHintLabel::String(format!(": {}", t.id)),
@@ -1461,28 +1598,33 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        // TODO(bbannier): respect `params.context.include_declaration`.
+        let include_declaration = params.context.include_declaration;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let tree = state.parse(Arc::clone(&uri));
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let tree = crate::parse::parse(&*state, uri);
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(NodeLocation::from_node(uri, node)) else {
+        let Some(decl) = crate::ast::resolve(&*state, NodeLocation::from_node(uri, node)) else {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references(&state, decl).await;
+        let decl_node_loc = decl
+            .loc
+            .as_ref()
+            .map(|l| NodeLocation::from_range(l.uri, l.selection_range));
+        let references = references(state.clone(), decl).await;
 
         Ok(Some(
             references
                 .into_iter()
-                .map(|l| Location::new(l.uri.as_ref().clone(), l.range))
+                .filter(|l| include_declaration || Some(l) != decl_node_loc.as_ref())
+                .map(|l| Location::new((*l.uri.uri(&*state)).clone(), l.range))
                 .collect::<Vec<_>>(),
         ))
     }
@@ -1492,27 +1634,27 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        let state = self.state.read().await;
+        let state = self.state.lock().await;
 
-        let tree = state.parse(Arc::clone(&uri));
+        let uri = uri_db(&*state, Arc::clone(&uri));
+        let tree = crate::parse::parse(&*state, uri);
         let Some(tree) = tree.as_ref() else {
             return Ok(None);
         };
         let Some(node) = tree.root_node().named_descendant_for_position(position) else {
             return Ok(None);
         };
-        let Some(decl) = state.resolve(NodeLocation::from_node(Arc::clone(&uri), node)) else {
+        let Some(decl) = crate::ast::resolve(&*state, NodeLocation::from_node(uri, node)) else {
             return Ok(None);
         };
 
-        // We hold a lock across an await which is safe here.
-        let references = references(&state, decl).await;
+        let references = references(state.clone(), decl).await;
 
         let new_name = params.new_name;
 
         let changes = references
             .into_iter()
-            .chunk_by(|r| (*r.uri).clone())
+            .chunk_by(|r| (*r.uri.uri(&*state)).clone())
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g
@@ -1534,13 +1676,119 @@ impl LanguageServer for Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
 
-        let Some(source) = self.state.read().await.source(uri.into()) else {
+        let source = {
+            let state = self.state.lock().await;
+            let uri = uri_db(&*state, Arc::new(uri));
+            crate::source(&*state, uri)
+        };
+        let Some(source) = source else {
             return Ok(None);
         };
 
         let legend = semantic_tokens::legend();
         Ok(semantic_tokens::highlight(&source, &legend).map(SemanticTokensResult::Tokens))
     }
+}
+
+fn call_context<'a>(
+    source: &str,
+    position: Position,
+    tree: &'a crate::parse::Tree,
+) -> Option<(crate::query::Node<'a>, Option<u32>)> {
+    // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
+    let line = source.lines().nth(position.line as usize)?;
+    let line = if u32::try_from(line.len() + 1).ok() > Some(position.character) {
+        &line[..position.character as usize]
+    } else {
+        return None;
+    };
+
+    // Search backward for the outermost unclosed '('. Skip balanced paren pairs so that
+    // nested calls like f(g(a, b), c) resolve to f's '(' not g's.
+    let open = line
+        .char_indices()
+        .rev()
+        .scan(0i32, |depth, (i, c)| {
+            Some(match c {
+                ')' => {
+                    *depth += 1;
+                    None
+                }
+                '(' if *depth > 0 => {
+                    *depth -= 1;
+                    None
+                }
+                '(' => Some(i),
+                _ => None,
+            })
+        })
+        .find_map(|x| x)?;
+
+    let before = line[..open].trim_end();
+    let char_pos = before.char_indices().next_back().map(|(i, _)| i)?;
+    let character = u32::try_from(char_pos).ok()?;
+    let node = tree.root_node().named_descendant_for_position(Position {
+        character,
+        ..position
+    })?;
+
+    // Count commas at nesting depth 1 to handle nested calls like f(g(a, b), c).
+    let active_parameter = u32::try_from(
+        line.chars()
+            .scan(0i32, |depth, c| {
+                Some(match c {
+                    '(' => {
+                        *depth += 1;
+                        false
+                    }
+                    ')' => {
+                        *depth -= 1;
+                        false
+                    }
+                    ',' => *depth == 1,
+                    _ => false,
+                })
+            })
+            .filter(|&x| x)
+            .count(),
+    )
+    .ok();
+
+    Some((node, active_parameter))
+}
+
+fn signature_label(
+    id: InternedStr,
+    signature: &query::Signature,
+    tree: &crate::parse::Tree,
+    source: &str,
+) -> (String, Option<Vec<ParameterInformation>>) {
+    let label = format!(
+        "{}({})",
+        id,
+        signature
+            .args
+            .iter()
+            .filter_map(|a| {
+                let loc = &a.loc.as_ref()?;
+                tree.root_node()
+                    .named_descendant_for_point_range(loc.selection_range)?
+                    .utf8_text(source.as_bytes())
+                    .ok()
+            })
+            .join(", ")
+    );
+    let parameters = Some(
+        signature
+            .args
+            .iter()
+            .map(|a| ParameterInformation {
+                label: ParameterLabel::Simple(a.id.to_string()),
+                documentation: None,
+            })
+            .collect(),
+    );
+    (label, parameters)
 }
 
 fn word_at_position(source: &str, position: Position) -> Option<InternedStr> {
@@ -1555,11 +1803,16 @@ fn word_at_position(source: &str, position: Position) -> Option<InternedStr> {
 fn fuzzy_search_symbol(db: &Database, symbol: &str) -> impl Iterator<Item = (f32, Decl)> {
     let symbol = String::from(symbol);
 
-    let files = db.files().iter().cloned().collect_vec();
-    files.into_iter().flat_map(move |uri| {
+    let files = db
+        .file_list()
+        .map_or_else(Arc::default, |fl| fl.files(db))
+        .iter()
+        .copied()
+        .collect_vec();
+    files.into_iter().flat_map(move |f| {
         let symbol = symbol.clone();
 
-        let decls = db.decls(Arc::clone(&uri)).iter().cloned().collect_vec();
+        let decls = crate::query::decls(db, f).iter().cloned().collect_vec();
         decls.into_iter().filter_map(move |d| {
             let rank = rust_fuzzy_search::fuzzy_compare(&symbol, &d.fqid.to_lowercase());
             if rank > 0.0 { Some((rank, d)) } else { None }
@@ -1681,17 +1934,22 @@ fn tree_diagnostics(tree: &query::Node) -> impl Iterator<Item = Diagnostic> {
     })
 }
 
-async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
+async fn references(db: Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     /// Helper to compute all sources reachable from a given file.
-    fn all_sources(f: Arc<Uri>, db: &Database) -> FxHashSet<Arc<Uri>> {
-        let mut loads = FxHashSet::default();
-        loads.extend(db.implicit_loads().iter().cloned());
-        loads.extend(db.loaded_files(f).iter().cloned());
+    fn all_sources(f: InternedUri, db: &Database) -> FxHashSet<InternedUri> {
+        let mut loads: FxHashSet<InternedUri> = FxHashSet::default();
+        loads.extend(crate::ast::implicit_loads(db).iter().copied());
+        loads.extend(crate::ast::loaded_files(db, f).iter().copied());
 
-        let mut recursive_loads = FxHashSet::default();
-        for l in &loads {
-            recursive_loads.extend(db.loaded_files_recursive(Arc::clone(l)).iter().cloned());
-        }
+        let recursive_loads: FxHashSet<InternedUri> = loads
+            .iter()
+            .flat_map(|l| {
+                crate::ast::loaded_files_recursive(db, *l)
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .collect();
         loads.extend(recursive_loads);
 
         loads
@@ -1700,30 +1958,33 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
     let Some(decl_loc) = decl.loc.as_ref() else {
         return FxHashSet::default();
     };
-    let decl_uri = &decl_loc.uri;
+    let decl_uri = decl_loc.uri;
 
     let locs: Vec<_> = {
         let locs: Vec<_> = db
-            .files()
+            .file_list()
+            .map_or_else(Arc::default, |fl| fl.files(&db))
             .iter()
             .filter(|f| {
                 // If the file we look at does not load the file with the decl, no references to it
                 // can exist.
-                f == &decl_uri || all_sources(Arc::clone(f), db).contains(decl_uri)
+                **f == decl_uri || all_sources(**f, &db).contains(&decl_uri)
             })
             .map(|f| {
-                let db = db.snapshot();
+                let db = db.clone();
                 let decl = Arc::clone(&decl);
-                let f = Arc::clone(f);
+                let f = *f;
                 tokio::spawn(async move {
+                    let f = f;
                     Some(
-                        db.ids(f)
+                        crate::query::ids(&db, f)
                             .iter()
                             .filter_map(|loc| {
                                 // Prefilter ids so that they at least somewhere contain the text
                                 // of the decl.
-                                let tree = db.parse(Arc::clone(&loc.uri))?;
-                                let source = db.source(Arc::clone(&loc.uri))?;
+                                let uri = loc.uri;
+                                let tree = crate::parse::parse(&db, uri)?;
+                                let source = crate::source(&db, uri)?;
                                 let txt = tree
                                     .root_node()
                                     .named_descendant_for_point_range(loc.range)?
@@ -1733,12 +1994,12 @@ async fn references(db: &Database, decl: Arc<Decl>) -> FxHashSet<NodeLocation> {
                                     return None;
                                 }
 
-                                db.resolve(loc.clone()).and_then(|resolved| {
+                                crate::ast::resolve(&db, *loc).and_then(|resolved| {
                                     if resolved != decl {
                                         return None;
                                     }
 
-                                    Some(loc.clone())
+                                    Some(*loc)
                                 })
                             })
                             .collect::<Vec<_>>(),
@@ -2012,7 +2273,7 @@ mod semantic_tokens {
     mod test {
         #![allow(clippy::unwrap_used)]
 
-        use insta::assert_debug_snapshot;
+        use crate::test_util::assert_debug_snapshot;
         use tower_lsp_server::ls_types::{Position, SemanticToken, SemanticTokenType};
 
         use crate::lsp::semantic_tokens::{highlight, legend};
@@ -2103,23 +2364,23 @@ pub(crate) mod test {
         sync::Arc,
     };
 
-    use insta::assert_debug_snapshot;
+    use crate::test_util::assert_debug_snapshot;
     use tower_lsp_server::{
         LanguageServer,
         ls_types::{
             ClientCapabilities, CodeActionContext, CodeActionParams, CompletionParams,
-            CompletionResponse, DocumentSymbolParams, DocumentSymbolResponse, FormattingOptions,
-            HoverParams, InlayHintParams, PartialResultParams, Position, Range, ReferenceContext,
-            ReferenceParams, RenameParams, SemanticTokensParams, TextDocumentIdentifier,
-            TextDocumentPositionParams, Uri, WorkDoneProgressParams, WorkspaceSymbolParams,
+            CompletionResponse, DidChangeTextDocumentParams, DocumentSymbolParams,
+            DocumentSymbolResponse, FormattingOptions, HoverParams, InlayHintParams,
+            PartialResultParams, Position, Range, ReferenceContext, ReferenceParams, RenameParams,
+            SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+            TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
+            WorkDoneProgressParams, WorkspaceSymbolParams,
         },
     };
 
     use crate::{
-        Client,
-        ast::Ast,
+        Db,
         lsp::{self, tree_diagnostics},
-        parse::Parse,
         zeek,
     };
 
@@ -2138,19 +2399,29 @@ pub(crate) mod test {
         where
             P: Into<PathBuf>,
         {
-            let mut prefixes: Vec<_> = self.0.prefixes().iter().cloned().collect();
+            let mut prefixes: Vec<_> = self
+                .0
+                .workspace_state()
+                .map_or_else(Arc::default, |ws| ws.prefixes(&self.0))
+                .iter()
+                .cloned()
+                .collect();
             prefixes.push(prefix.into());
             self.0.set_prefixes(Arc::from(prefixes.clone()));
         }
 
-        pub(crate) fn snapshot(self) -> lsp::Database {
-            self.0
+        pub(crate) fn enable_event_log(&mut self) {
+            self.0.enable_event_log();
+        }
+
+        pub(crate) fn take_events(&self) -> Vec<String> {
+            self.0.take_events()
         }
     }
 
     pub(crate) fn serve(database: TestDatabase) -> Backend {
         Backend {
-            state: tokio::sync::RwLock::new(database.0),
+            state: tokio::sync::Mutex::new(database.0),
             ..Backend::default()
         }
     }
@@ -2600,6 +2871,35 @@ global f: function(x: count, y: string): string;
     }
 
     #[tokio::test]
+    async fn signature_help_nested_calls() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "module x;
+global g: function(a: count, b: count): count;
+global f: function(x: count, y: count): count;
+local _ = f(g(1, 2),",
+        );
+        let server = serve(db);
+
+        // Cursor after the outer comma in f(g(1, 2),: f's active parameter is 1; the comma
+        // inside g(...) must not be counted.
+        assert_debug_snapshot!(
+            server
+                .signature_help(super::SignatureHelpParams {
+                    context: None,
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(3, 20),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
     async fn goto_declaration() {
         let mut db = TestDatabase::default();
         let uri = Uri::from_file_path("/x.zeek").unwrap();
@@ -2768,7 +3068,7 @@ event x::foo() {}",
         );
     }
 
-    #[ignore = "requires spicy-format"]
+    #[ignore = "requires zeek-format"]
     #[tokio::test]
     async fn formatting() {
         use super::DocumentFormattingParams;
@@ -2805,7 +3105,7 @@ event x::foo() {}",
         );
     }
 
-    #[ignore = "requires spicy-format"]
+    #[ignore = "requires zeek-format"]
     #[tokio::test]
     async fn range_formatting() {
         use super::DocumentRangeFormattingParams;
@@ -2893,21 +3193,22 @@ event x::foo() {}",
 
         let source = "global x = 42";
         db.add_file((*uri).clone(), source);
+        let uri = crate::uri_db(&db.0, uri);
 
-        let context =
-            db.0.parse(Arc::clone(&uri))
-                .map(|t| CodeActionContext {
-                    diagnostics: tree_diagnostics(&t.root_node()).collect(),
-                    ..CodeActionContext::default()
-                })
-                .unwrap();
+        let context = crate::parse::parse(&db.0, uri)
+            .map(|t| CodeActionContext {
+                diagnostics: tree_diagnostics(&t.root_node()).collect(),
+                ..CodeActionContext::default()
+            })
+            .unwrap();
 
+        let text_document_uri = (*uri.uri(&db.0)).clone();
         let server = serve(db);
 
         assert_debug_snapshot!(
             server
                 .code_action(CodeActionParams {
-                    text_document: TextDocumentIdentifier::new((*uri).clone()),
+                    text_document: TextDocumentIdentifier::new(text_document_uri),
                     range: Range::new(Position::new(0, 1), Position::new(0, 2)),
                     context,
                     work_done_progress_params: WorkDoneProgressParams::default(),
@@ -3007,7 +3308,7 @@ option x = T;
         for options in opts {
             let mut db = TestDatabase::default();
             let uri = Arc::new(Uri::from_file_path("/x.zeek").unwrap());
-            db.0.set_initialization_options(Arc::new(options));
+            db.0.set_initialization_options(options);
 
             let source = "
 global f: function(x: count);
@@ -3181,6 +3482,23 @@ levenshtein_distance("", "");
                 })
                 .await
         );
+
+        // With include_declaration: false the declaration site of `x` must be absent.
+        assert_debug_snapshot!(
+            server
+                .references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new((*uri).clone()),
+                        Position::new(4, 6), // On first `x`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: false,
+                    },
+                })
+                .await
+        );
     }
 
     #[tokio::test]
@@ -3245,5 +3563,146 @@ const z = x;
                 })
                 .await
         );
+    }
+
+    #[test]
+    fn incremental_unrelated_file_not_reexecuted() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        let b = Arc::new(Uri::from_file_path("/b.zeek").unwrap());
+        db.add_file((*a).clone(), "global A: count;");
+        db.add_file((*b).clone(), "global B: count;");
+        let a = crate::uri_db(&db.0, a);
+        let b = crate::uri_db(&db.0, b);
+
+        // Prime Salsa's memo cache.
+        let _ = crate::parse::parse(&db.0, b);
+        let _ = crate::query::decls(&db.0, b);
+
+        db.enable_event_log();
+        db.add_file((*a.uri(&db.0)).clone(), "global A: string;");
+
+        let _ = crate::parse::parse(&db.0, b);
+        let _ = crate::query::decls(&db.0, b);
+
+        let events = db.take_events();
+        assert!(
+            events.iter().all(|e| !e.contains("/b.zeek")),
+            "modifying /a.zeek should not re-execute queries for /b.zeek, got: {events:?}"
+        );
+    }
+
+    #[test]
+    fn incremental_changed_file_reexecuted() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        db.add_file((*a).clone(), "global A: count;");
+        let a = crate::uri_db(&db.0, a);
+
+        // Prime Salsa's memo cache.
+        let _ = crate::query::decls(&db.0, a);
+
+        db.enable_event_log();
+        db.add_file((*a.uri(&db.0)).clone(), "global A: string;");
+        let _ = crate::query::decls(&db.0, a);
+
+        let events = db.take_events();
+        assert!(
+            !events.is_empty(),
+            "modifying /a.zeek should re-execute queries for it, got: {events:?}"
+        );
+    }
+
+    #[test]
+    fn incremental_loaded_file_change_invalidates_resolver() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        let b = Arc::new(Uri::from_file_path("/b.zeek").unwrap());
+        db.add_file((*b).clone(), "module b; export { global VAL: count; }");
+        db.add_file(
+            (*a).clone(),
+            "@load ./b
+b::VAL;",
+        );
+        let a = crate::uri_db(&db.0, a);
+        let b = crate::uri_db(&db.0, b);
+
+        // Prime Salsa's memo cache.
+        let _ = crate::query::decls(&db.0, b);
+        let _ = crate::query::decls(&db.0, a);
+
+        db.enable_event_log();
+        db.add_file(
+            (*b.uri(&db.0)).clone(),
+            "module b; export { global VAL: string; }",
+        );
+        let _ = crate::query::decls(&db.0, b);
+        let _ = crate::query::decls(&db.0, a);
+
+        let events = db.take_events();
+        assert!(
+            !events.is_empty(),
+            "modifying a @loaded file should trigger re-execution, got: {events:?}"
+        );
+    }
+
+    // Each file's source is now a separate salsa input, so adding a new file does not
+    // invalidate queries for existing files.
+    #[test]
+    fn incremental_new_file_does_not_invalidate_existing() {
+        let mut db = TestDatabase::default();
+        let a = Arc::new(Uri::from_file_path("/a.zeek").unwrap());
+        let b = Arc::new(Uri::from_file_path("/b.zeek").unwrap());
+        db.add_file((*a).clone(), "global A: count;");
+        let a = crate::uri_db(&db.0, a);
+
+        // Prime Salsa's memo cache.
+        let _ = crate::parse::parse(&db.0, a);
+        let _ = crate::query::decls(&db.0, a);
+
+        db.enable_event_log();
+        db.add_file((*b).clone(), "global B: count;");
+        let _ = crate::parse::parse(&db.0, a);
+        let _ = crate::query::decls(&db.0, a);
+
+        let events = db.take_events();
+        assert!(
+            events.iter().all(|e| !e.contains("/a.zeek")),
+            "adding /b.zeek should not re-execute queries for /a.zeek, got: {events:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_did_change_and_hover() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(uri.clone(), "global x: count;");
+        let server = Arc::new(serve(db));
+
+        let hover_params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier::new(uri.clone()),
+                Position::new(0, 7),
+            ),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+        let change_params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier { uri, version: 1 },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "global x: string;".into(),
+            }],
+        };
+
+        let s1 = Arc::clone(&server);
+        let s2 = Arc::clone(&server);
+        let ((), hover) = tokio::join!(
+            async move { s1.did_change(change_params).await },
+            async move { s2.hover(hover_params).await },
+        );
+
+        // Either result (pre- or post-change type) is valid; what matters is no panic.
+        assert!(hover.is_ok());
     }
 }

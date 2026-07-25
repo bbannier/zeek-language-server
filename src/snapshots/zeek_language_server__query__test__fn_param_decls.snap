@@ -31,24 +31,7 @@ expression: decls
                         character: 20,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/tmp/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\nx: count\n```"),
@@ -81,24 +64,7 @@ expression: decls
                         character: 31,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/tmp/x.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\ny: string\n```"),

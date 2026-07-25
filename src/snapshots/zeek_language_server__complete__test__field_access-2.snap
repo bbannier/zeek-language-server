@@ -1,6 +1,6 @@
 ---
 source: src/complete.rs
-expression: "complete(&db.0,\n    CompletionParams {\n        context: Some(CompletionContext {\n                trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,\n                trigger_character: Some(\"$\".into()),\n            }),\n        ..params\n    })"
+expression: "complete(&db.0, CompletionParams\n{\n    context:\n    Some(CompletionContext\n    {\n        trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,\n        trigger_character: Some(\"$\".into()),\n    },), ..params\n})"
 ---
 Some(
     Array(

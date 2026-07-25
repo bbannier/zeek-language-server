@@ -1,6 +1,6 @@
 ---
 source: src/ast.rs
-expression: "db.resolve(NodeLocation::from_node(uri, x2))"
+expression: "crate::ast::resolve(&db.0, NodeLocation::from_node(uri, x2))"
 ---
 Some(
     Decl {
@@ -33,24 +33,7 @@ Some(
                         character: 25,
                     },
                 },
-                uri: Uri(
-                    Uri {
-                        scheme: "file",
-                        authority: Some(
-                            Authority {
-                                userinfo: None,
-                                host: "",
-                                host_parsed: RegName(
-                                    "",
-                                ),
-                                port: None,
-                            },
-                        ),
-                        path: "/y.zeek",
-                        query: None,
-                        fragment: None,
-                    },
-                ),
+                uri: InternedUri(Id(_)),
             },
         ),
         documentation: u!("```zeek\n# In x::X\nx2: count;\n```"),

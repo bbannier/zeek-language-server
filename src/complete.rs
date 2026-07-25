@@ -408,6 +408,28 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
         })
 }
 
+/// Scan `line` backwards for an unbalanced `(` or `[` and return the type name before it.
+/// For `X($` the type is named before `(`; for `[$` it comes from the variable's type annotation.
+fn initializer_type_name(line: &str) -> Option<&str> {
+    let mut depth = 0i32;
+    for (i, ch) in line.char_indices().rev() {
+        match ch {
+            ')' | ']' => depth += 1,
+            '(' | '[' if depth > 0 => depth -= 1,
+            '(' => return line[..i].split_whitespace().last(),
+            '[' => {
+                let before = line[..i].trim().trim_end_matches('=').trim();
+                return before
+                    .split_whitespace()
+                    .next_back()
+                    .and_then(|s| s.split(':').next_back());
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn complete_record_initializer(
     state: &Database,
     node: Node,
@@ -427,23 +449,9 @@ fn complete_record_initializer(
         .nth(usize::try_from(node.range().start.line).ok()?)
         .map(|line| line.trim_end_matches(id).trim_end_matches('$').trim())?;
 
-    let type_ = if line.ends_with('(') {
-        line.trim_end_matches('(').split_whitespace().last()
-    } else if line.ends_with('[') {
-        let line = line.trim_end_matches('[').trim();
-        if line.ends_with('=') {
-            line.trim_end_matches('=')
-                .split_whitespace()
-                .next_back()
-                .and_then(|id| id.split(':').next_back())
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    let type_ = crate::ast::resolve_id(state, type_?.into(), NodeLocation::from_node(uri, node))?;
+    let type_name = initializer_type_name(line)?;
+    let type_ =
+        crate::ast::resolve_id(state, type_name.into(), NodeLocation::from_node(uri, node))?;
 
     let DeclKind::Type(fields) = &type_.kind else {
         return None;

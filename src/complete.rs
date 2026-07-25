@@ -143,13 +143,11 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
                     // For each completion item compute a similarity score compare to a possibly
                     // given input text. We convert to `u64` since `f64` does not implement `Ord`.
                     // The score is negative so that good matches sort before worse ones.
-                    use conv::ConvUtil;
-
                     let score = text.and_then(|t| {
+                        use az::CheckedCast;
                         (rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t)
                             * -100_000_000.)
-                            .approx_as::<i64>()
-                            .ok()
+                            .checked_cast()
                     });
                     if score == Some(0) {
                         // Drop items with no relation to input text.

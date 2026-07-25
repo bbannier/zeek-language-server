@@ -19,8 +19,8 @@ default = []
 telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp"]
 
 [dependencies]
+az = { workspace = true }
 clap = { workspace = true }
-conv = { workspace = true }
 dashmap = { workspace = true }
 eyre = { workspace = true }
 futures = { workspace = true }
@@ -61,6 +61,7 @@ walkdir = { workspace = true }
 members = [".", "crates/tree-sitter-zeek"]
 
 [workspace.dependencies]
+az = { version = "1.3.0", default-features = false }
 cc = "1.4.0"
 clap = { version = "4.6.4", features = ["std", "derive", "help"], default-features = false }
 conv = { version = "0.3.3", default-features = false }

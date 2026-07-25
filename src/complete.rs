@@ -679,13 +679,16 @@ fn completion_text<'a>(node: Node, source: &'a str, reject_top_level: bool) -> O
         return None;
     }
 
-    node.utf8_text(source.as_bytes())
-        .ok()?
-        // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
-        .lines()
-        .next()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
+    let text = node.utf8_text(source.as_bytes()).ok()?;
+    // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
+    let text = text.lines().next().map(str::trim)?;
+    // Nodes that contain only `$`/`?` carry no meaningful completion text.
+    let stripped = text.replace(['$', '?'], "");
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 #[cfg(test)]

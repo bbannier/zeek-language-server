@@ -501,16 +501,16 @@ fn complete_record_initializer(
         })
         .collect();
 
-    // Only emit a full constructor snippet at the opening delimiter, not mid-initializer.
     let terminator = match open_delim {
         '(' => ')',
         '[' => ']',
         _ => unreachable!(),
     };
-    if id.is_empty() && args.trim().is_empty() {
+    if id.is_empty() {
         let dd = "\\$";
         let field_inits = fields
             .iter()
+            .filter(|f| !used.contains(&*f.id))
             .enumerate()
             .filter_map(|(i, f)| {
                 let DeclKind::Field(attrs) = &f.kind else {
@@ -528,16 +528,18 @@ fn complete_record_initializer(
                 }
             })
             .join(", ");
-        let code = format!("{field_inits}{terminator}")
-            .trim_start_matches(dd)
-            .into();
-        completion.push(CompletionItem {
-            label: type_.id.to_string(),
-            insert_text: Some(code),
-            kind: Some(CompletionItemKind::SNIPPET),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..CompletionItem::default()
-        });
+        if !field_inits.is_empty() {
+            let code = format!("{field_inits}{terminator}")
+                .trim_start_matches(dd)
+                .into();
+            completion.push(CompletionItem {
+                label: type_.id.to_string(),
+                insert_text: Some(code),
+                kind: Some(CompletionItemKind::SNIPPET),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                ..CompletionItem::default()
+            });
+        }
     }
 
     if completion.is_empty() {
@@ -1424,6 +1426,10 @@ type X: record {
     y: count &optional;
     z: count &default=0;
 };
+type Y: record {
+    ya: count;
+    yb: count;
+};
             ",
         );
 
@@ -1473,6 +1479,26 @@ global x = X($
             uri.clone(),
             "@load ./decls
 global x = X($xa=1, $
+        ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(1, 20),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        db.add_file(
+            uri.clone(),
+            "@load ./decls
+global x = Y($ya=1, $
         ",
         );
 

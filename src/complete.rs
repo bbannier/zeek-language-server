@@ -408,22 +408,26 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
         })
 }
 
-/// Scan `line` backwards for an unbalanced `(` or `[` and return the type name before it.
-/// For `X($` the type is named before `(`; for `[$` it comes from the variable's type
-/// annotation before `=`.
-fn initializer_type_name(line: &str) -> Option<&str> {
+/// Scan `line` backwards for an unbalanced `(` or `[`.
+/// Returns `(type_name, args_text)` where `args_text` is the slice of `line` after the delimiter.
+/// For `X($` the type is named before `(`; for `[$` it comes from the variable's type annotation.
+fn initializer_type_name(line: &str) -> Option<(&str, &str)> {
     let mut depth = 0i32;
     for (i, ch) in line.char_indices().rev() {
         match ch {
             ')' | ']' => depth += 1,
             '(' | '[' if depth > 0 => depth -= 1,
-            '(' => return line[..i].split_whitespace().last(),
+            '(' => {
+                let name = line[..i].split_whitespace().last()?;
+                return Some((name, &line[i + 1..]));
+            }
             '[' => {
                 let before = line[..i].trim().trim_end_matches('=').trim();
-                return before
+                let name = before
                     .split_whitespace()
                     .next_back()
-                    .and_then(|s| s.split(':').next_back());
+                    .and_then(|s| s.split(':').next_back())?;
+                return Some((name, &line[i + 1..]));
             }
             _ => {}
         }
@@ -449,7 +453,7 @@ fn complete_record_initializer(
         .nth(usize::try_from(line_nr).ok()?)
         .map(|line| line.trim_end_matches(id).trim_end_matches('$').trim())?;
 
-    let type_name = initializer_type_name(line)?;
+    let (type_name, args) = initializer_type_name(line)?;
     let pos = Position::new(line_nr, 0);
     let loc = NodeLocation::from_range(uri, tower_lsp_server::ls_types::Range::new(pos, pos));
     let type_ = crate::ast::resolve_id(state, type_name.into(), loc)?;
@@ -458,9 +462,17 @@ fn complete_record_initializer(
         return None;
     };
 
+    // Collect field names already present in the initializer so we don't offer them again.
+    let used: rustc_hash::FxHashSet<&str> = args
+        .split('$')
+        .skip(1)
+        .filter_map(|s| s.split('=').next())
+        .collect();
+
     let mut completion: Vec<_> = fields
         .iter()
         .filter(|x| matches!(x.kind, DeclKind::Field(_)))
+        .filter(|d| !used.contains(&*d.id))
         .filter(|d| id.is_empty() || rust_fuzzy_search::fuzzy_compare(id, &d.id) > 0.0)
         .map(|d| {
             // Complete record fields.

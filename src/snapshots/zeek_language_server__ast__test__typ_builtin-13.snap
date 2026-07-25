@@ -3,18 +3,18 @@ source: src/ast.rs
 expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\nRange::new(pos, pos))).and_then(|d| crate::ast::typ(&db.0, d)))"
 ---
 (
-    "            global f = 0.1234;",
+    "            global b2 = F;",
     Some(
         Decl {
             module: Global,
-            id: u!("double"),
-            fqid: u!("double"),
+            id: u!("bool"),
+            fqid: u!("bool"),
             kind: Builtin(
-                Double,
+                Bool,
             ),
             is_export: None,
             loc: None,
-            documentation: u!("Builtin type 'double'"),
+            documentation: u!("Builtin type 'bool'"),
         },
     ),
 )

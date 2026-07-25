@@ -3,7 +3,7 @@ source: src/ast.rs
 expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\nRange::new(pos, pos))).and_then(|d| crate::ast::typ(&db.0, d)))"
 ---
 (
-    "            global b2 = F;",
+    "            global b1 = T;",
     Some(
         Decl {
             module: Global,

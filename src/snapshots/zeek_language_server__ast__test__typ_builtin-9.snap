@@ -3,18 +3,18 @@ source: src/ast.rs
 expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\nRange::new(pos, pos))).and_then(|d| crate::ast::typ(&db.0, d)))"
 ---
 (
-    "            global s = \"str\";",
+    "            global i3 = 10 mins;",
     Some(
         Decl {
             module: Global,
-            id: u!("string"),
-            fqid: u!("string"),
+            id: u!("interval"),
+            fqid: u!("interval"),
             kind: Builtin(
-                String,
+                Interval,
             ),
             is_export: None,
             loc: None,
-            documentation: u!("Builtin type 'string'"),
+            documentation: u!("Builtin type 'interval'"),
         },
     ),
 )

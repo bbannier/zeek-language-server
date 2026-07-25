@@ -7,16 +7,14 @@ expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\n
     Some(
         Decl {
             module: Global,
-            id: u!("<integer>"),
-            fqid: u!("<integer>"),
+            id: u!("count"),
+            fqid: u!("count"),
             kind: Builtin(
-                Id(
-                    u!("<integer>"),
-                ),
+                Count,
             ),
             is_export: None,
             loc: None,
-            documentation: u!("Builtin type '<integer>'"),
+            documentation: u!("Builtin type 'count'"),
         },
     ),
 )

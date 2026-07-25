@@ -408,14 +408,10 @@ fn resolve_impl(
         // Builtin types.
         // NOTE: This is driven by what types the parser exposes, extend as possible.
 
-        // TODO(bbannier): the parser doesn't cleanly expose whether an integer is an `int` or a
-        // `count`, use a dummy type until we resolve it
+        // Negative integer literals never reach here; they are intercepted as unary-minus
+        // `expr` nodes one level up. Any `integer` node is therefore non-negative: `count`.
         "integer" => {
-            return resolve_type(
-                db,
-                Type::Id(format!("<{}>", node.kind()).into()),
-                Some(location),
-            );
+            return resolve_type(db, Type::Count, Some(location));
         }
 
         "hostname" => {
@@ -445,6 +441,22 @@ fn resolve_impl(
             // Try to interpret expr as a cast `_ as @type`.
             if let Some(typ) = query::typ_from_cast(node, source.as_bytes()) {
                 return resolve_type(db, typ, Some(location));
+            }
+
+            // Unary negation of an integer literal: expr["-", expr[constant[integer]]].
+            // Zeek types this as `int`. Detect structurally so `integer` can return `count`
+            // unconditionally without callers needing to patch up the result.
+            let is_neg_integer = node
+                .utf8_text(source.as_bytes())
+                .ok()
+                .is_some_and(|t| t.starts_with('-'))
+                && node
+                    .named_child_not("nl")
+                    .and_then(|inner| inner.named_child_not("nl")) // constant
+                    .and_then(|c| c.named_child_not("nl")) // integer
+                    .is_some_and(|n| n.kind() == "integer");
+            if is_neg_integer {
+                return resolve_type(db, Type::Int, Some(location));
             }
 
             return node
@@ -1583,6 +1595,7 @@ global x2 = f2();
             "
             global x = 1;
             global y = x + 1;
+            global z = -1;
 
             global i1 = 1.1.1.1;
             global i2 = [dada:beef::ffff:ffff:ffff:ffff];

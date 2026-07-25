@@ -1,5 +1,6 @@
 ---
 source: src/lsp.rs
+assertion_line: 3337
 expression: "server.inlay_hint(InlayHintParams\n{\n    text_document: TextDocumentIdentifier::new((*uri).clone()), range:\n    Range::new(Position::new(5, 0), Position::new(7, 0)),\n    work_done_progress_params: WorkDoneProgressParams::default(),\n}).await"
 ---
 Ok(
@@ -11,7 +12,7 @@ Ok(
                     character: 7,
                 },
                 label: String(
-                    ": <integer>",
+                    ": count",
                 ),
                 kind: Some(
                     Type,
@@ -28,7 +29,7 @@ Ok(
                     character: 8,
                 },
                 label: String(
-                    ": <integer>",
+                    ": count",
                 ),
                 kind: Some(
                     Type,

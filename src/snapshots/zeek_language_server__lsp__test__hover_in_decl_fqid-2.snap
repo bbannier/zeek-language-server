@@ -1,5 +1,6 @@
 ---
 source: src/lsp.rs
+assertion_line: 2704
 expression: "server.hover(HoverParams\n{\n    text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(3, 15)), work_done_progress_params:\n    WorkDoneProgressParams::default()\n}).await"
 ---
 Ok(
@@ -11,7 +12,7 @@ Ok(
                         "### constant `foo::X`",
                     ),
                     String(
-                        "Type: `<integer>`",
+                        "Type: `count`",
                     ),
                     String(
                         "```zeek\nconst X = 47;\n```",

@@ -3,18 +3,18 @@ source: src/ast.rs
 expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\nRange::new(pos, pos))).and_then(|d| crate::ast::typ(&db.0, d)))"
 ---
 (
-    "            global p = 8080/tcp;",
+    "            global he = 0x1234;",
     Some(
         Decl {
             module: Global,
-            id: u!("port"),
-            fqid: u!("port"),
+            id: u!("count"),
+            fqid: u!("count"),
             kind: Builtin(
-                Port,
+                Count,
             ),
             is_export: None,
             loc: None,
-            documentation: u!("Builtin type 'port'"),
+            documentation: u!("Builtin type 'count'"),
         },
     ),
 )

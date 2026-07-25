@@ -3,18 +3,18 @@ source: src/ast.rs
 expression: "(line,\ncrate::ast::resolve(&db.0,\nNodeLocation::from_range(uri,\nRange::new(pos, pos))).and_then(|d| crate::ast::typ(&db.0, d)))"
 ---
 (
-    "            global i1 = 1.1.1.1;",
+    "            global z = -1;",
     Some(
         Decl {
             module: Global,
-            id: u!("addr"),
-            fqid: u!("addr"),
+            id: u!("int"),
+            fqid: u!("int"),
             kind: Builtin(
-                Addr,
+                Int,
             ),
             is_export: None,
             loc: None,
-            documentation: u!("Builtin type 'addr'"),
+            documentation: u!("Builtin type 'int'"),
         },
     ),
 )

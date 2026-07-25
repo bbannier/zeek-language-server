@@ -2,7 +2,7 @@ use crate::Str;
 pub(crate) use crate::{
     Db, InternedStr, InternedUri,
     ast::load_to_file,
-    complete::complete,
+    complete::{complete, source_up_to},
     query::{self, Decl, DeclKind, ModuleId, NodeLocation},
     uri_db, zeek,
 };
@@ -1697,22 +1697,7 @@ fn call_context<'a>(
     position: Position,
     tree: &'a crate::parse::Tree,
 ) -> Option<(crate::query::Node<'a>, Option<u32>)> {
-    // Join all source lines up to the cursor into one string so that multi-line calls like
-    //   f(
-    //     arg1,
-    //     arg2
-    // are handled the same as single-line ones.
-    let text: String = source
-        .lines()
-        .take(position.line as usize)
-        .chain(std::iter::once(
-            source
-                .lines()
-                .nth(position.line as usize)
-                .map_or("", |l| &l[..l.len().min(position.character as usize)]),
-        ))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let text = source_up_to(source, position);
 
     // Search backward for the outermost unclosed '('. Skip balanced paren pairs so that
     // nested calls like f(g(a, b), c) resolve to f's '(' not g's.

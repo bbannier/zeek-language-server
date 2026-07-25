@@ -15,6 +15,21 @@ use tower_lsp_server::ls_types::{
 };
 use tree_sitter_zeek::KEYWORDS;
 
+/// Join all source lines up to and including the cursor column into one `\n`-joined string.
+pub(crate) fn source_up_to(source: &str, position: Position) -> String {
+    source
+        .lines()
+        .take(position.line as usize)
+        .chain(std::iter::once(
+            source
+                .lines()
+                .nth(position.line as usize)
+                .map_or("", |l| &l[..l.len().min(position.character as usize)]),
+        ))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[allow(clippy::too_many_lines)]
 pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<CompletionResponse> {
     let uri = Arc::new(params.text_document_position.text_document.uri);

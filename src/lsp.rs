@@ -1697,17 +1697,26 @@ fn call_context<'a>(
     position: Position,
     tree: &'a crate::parse::Tree,
 ) -> Option<(crate::query::Node<'a>, Option<u32>)> {
-    // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-    let line = source.lines().nth(position.line as usize)?;
-    let line = if u32::try_from(line.len() + 1).ok() > Some(position.character) {
-        &line[..position.character as usize]
-    } else {
-        return None;
-    };
+    // Join all source lines up to the cursor into one string so that multi-line calls like
+    //   f(
+    //     arg1,
+    //     arg2
+    // are handled the same as single-line ones.
+    let text: String = source
+        .lines()
+        .take(position.line as usize)
+        .chain(std::iter::once(
+            source
+                .lines()
+                .nth(position.line as usize)
+                .map_or("", |l| &l[..l.len().min(position.character as usize)]),
+        ))
+        .collect::<Vec<_>>()
+        .join("\n");
 
     // Search backward for the outermost unclosed '('. Skip balanced paren pairs so that
     // nested calls like f(g(a, b), c) resolve to f's '(' not g's.
-    let open = line
+    let open = text
         .char_indices()
         .rev()
         .scan(0i32, |depth, (i, c)| {
@@ -1726,17 +1735,37 @@ fn call_context<'a>(
         })
         .find_map(|x| x)?;
 
-    let before = line[..open].trim_end();
+    // Find the function name: last non-whitespace character before the '('.
+    let before = text[..open].trim_end();
     let char_pos = before.char_indices().next_back().map(|(i, _)| i)?;
-    let character = u32::try_from(char_pos).ok()?;
-    let node = tree.root_node().named_descendant_for_position(Position {
-        character,
-        ..position
-    })?;
 
-    // Count commas at nesting depth 1 to handle nested calls like f(g(a, b), c).
+    // Map byte offset back to line/character for the node lookup.
+    let (callee_line, callee_char) = {
+        let mut line = 0u32;
+        let mut col = 0u32;
+        for (i, c) in before.char_indices() {
+            if i == char_pos {
+                break;
+            }
+            if c == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+        (line, col)
+    };
+
+    let callee = tree
+        .root_node()
+        .named_descendant_for_position(Position::new(callee_line, callee_char))?;
+
+    // Count top-level commas (depth 1) from the '(' to the cursor.
+    let after_open = &text[open..];
     let active_parameter = u32::try_from(
-        line.chars()
+        after_open
+            .chars()
             .scan(0i32, |depth, c| {
                 Some(match c {
                     '(' => {
@@ -1756,7 +1785,7 @@ fn call_context<'a>(
     )
     .ok();
 
-    Some((node, active_parameter))
+    Some((callee, active_parameter))
 }
 
 fn signature_label(
@@ -2894,6 +2923,35 @@ local _ = f(g(1, 2),",
                     text_document_position_params: TextDocumentPositionParams::new(
                         TextDocumentIdentifier::new(uri.clone()),
                         Position::new(3, 20),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn signature_help_multiline() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "module x;
+global f: function(x: count, y: string): string;
+local _ = f(
+    1,
+    ",
+        );
+        let server = serve(db);
+
+        // Cursor on the second argument line: active parameter should be 1.
+        assert_debug_snapshot!(
+            server
+                .signature_help(super::SignatureHelpParams {
+                    context: None,
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri),
+                        Position::new(4, 4),
                     ),
                     work_done_progress_params: WorkDoneProgressParams::default(),
                 })

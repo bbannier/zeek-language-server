@@ -382,7 +382,6 @@ impl<'a> Node<'a> {
             tree_sitter::Point::new(range.start.line as usize, range.start.character as usize);
         let end = tree_sitter::Point::new(range.end.line as usize, range.end.character as usize);
 
-        // TODO(bbannier): this can still return a `nl` node :/
         self.0
             .named_descendant_for_point_range(start, end)
             .map(Into::into)
@@ -391,8 +390,6 @@ impl<'a> Node<'a> {
     #[must_use]
     pub fn descendant_for_position(&self, position: Position) -> Option<Self> {
         let start = tree_sitter::Point::new(position.line as usize, position.character as usize);
-
-        // TODO(bbannier): this can still return a `nl` node :/
 
         self.0
             .descendant_for_point_range(start, start)

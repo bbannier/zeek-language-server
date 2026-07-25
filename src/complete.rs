@@ -122,7 +122,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         } else {
             None
         }
-    ).or_else(|| complete_record_initializer(state, node, uri)
+    ).or_else(|| complete_record_initializer(state, node, uri, position)
     ).or_else(||
         // If we are completing a function/event/hook definition complete from declarations.
         if node.kind() == "id" {
@@ -424,9 +424,10 @@ fn complete_snippet(text: &str) -> impl Iterator<Item = CompletionItem> {
 }
 
 /// Scan `line` backwards for an unbalanced `(` or `[`.
-/// Returns `(type_name, args_text)` where `args_text` is the slice of `line` after the delimiter.
+/// Returns `(type_name, delimiter, args_text)` where `delimiter` is `(` or `[` and `args_text`
+/// is the slice of `line` after the delimiter.
 /// For `X($` the type is named before `(`; for `[$` it comes from the variable's type annotation.
-fn initializer_type_name(line: &str) -> Option<(&str, &str)> {
+fn initializer_type_name(line: &str) -> Option<(&str, char, &str)> {
     let mut depth = 0i32;
     for (i, ch) in line.char_indices().rev() {
         match ch {
@@ -434,7 +435,7 @@ fn initializer_type_name(line: &str) -> Option<(&str, &str)> {
             '(' | '[' if depth > 0 => depth -= 1,
             '(' => {
                 let name = line[..i].split_whitespace().last()?;
-                return Some((name, &line[i + 1..]));
+                return Some((name, '(', &line[i + 1..]));
             }
             '[' => {
                 let before = line[..i].trim().trim_end_matches('=').trim();
@@ -442,7 +443,7 @@ fn initializer_type_name(line: &str) -> Option<(&str, &str)> {
                     .split_whitespace()
                     .next_back()
                     .and_then(|s| s.split(':').next_back())?;
-                return Some((name, &line[i + 1..]));
+                return Some((name, '[', &line[i + 1..]));
             }
             _ => {}
         }
@@ -454,6 +455,7 @@ fn complete_record_initializer(
     state: &Database,
     node: Node,
     uri: InternedUri,
+    position: Position,
 ) -> Option<Vec<CompletionItem>> {
     let source = crate::source(state, uri)?;
 
@@ -462,13 +464,11 @@ fn complete_record_initializer(
         _ => "",
     };
 
-    let line_nr = node.range().start.line;
-    let line = source
-        .lines()
-        .nth(usize::try_from(line_nr).ok()?)
-        .map(|line| line.trim_end_matches(id).trim_end_matches('$').trim())?;
+    let text = source_up_to(&source, position);
+    let line = text.trim_end_matches(id).trim_end_matches('$').trim();
 
-    let (type_name, args) = initializer_type_name(line)?;
+    let (type_name, open_delim, args) = initializer_type_name(line)?;
+    let line_nr = node.range().start.line;
     let pos = Position::new(line_nr, 0);
     let loc = NodeLocation::from_range(uri, tower_lsp_server::ls_types::Range::new(pos, pos));
     let type_ = crate::ast::resolve_id(state, type_name.into(), loc)?;
@@ -502,13 +502,12 @@ fn complete_record_initializer(
         .collect();
 
     // Only emit a full constructor snippet at the opening delimiter, not mid-initializer.
-    if id.is_empty()
-        && let Some(terminator) = match line.chars().last() {
-            Some('[') => Some(']'),
-            Some('(') => Some(')'),
-            _ => None,
-        }
-    {
+    let terminator = match open_delim {
+        '(' => ')',
+        '[' => ']',
+        _ => unreachable!(),
+    };
+    if id.is_empty() && args.trim().is_empty() {
         let dd = "\\$";
         let field_inits = fields
             .iter()
@@ -1483,6 +1482,66 @@ global x = X($xa=1, $
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier::new(uri),
                     Position::new(1, 20),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn record_initializer_multiline() {
+        let mut db = TestDatabase::default();
+        db.add_file(
+            Uri::from_file_path("/decls.zeek").unwrap(),
+            "
+type X: record {
+    xa: count;
+    xb: count &optional;
+};
+            ",
+        );
+
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+
+        // Multiline `[` initializer: cursor on the second line after `$`.
+        db.add_file(
+            uri.clone(),
+            "@load ./decls
+global x: X = [
+    $
+        ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri.clone()),
+                    Position::new(2, 5),
+                ),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: None,
+            },
+        ));
+
+        // Multiline `(` initializer.
+        db.add_file(
+            uri.clone(),
+            "@load ./decls
+global x = X(
+    $
+        ",
+        );
+
+        assert_debug_snapshot!(complete(
+            &db.0,
+            CompletionParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier::new(uri),
+                    Position::new(2, 5),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),

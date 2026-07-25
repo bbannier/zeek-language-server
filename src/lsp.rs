@@ -1598,7 +1598,7 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document_position.text_document.uri);
         let position = params.text_document_position.position;
 
-        // TODO(bbannier): respect `params.context.include_declaration`.
+        let include_declaration = params.context.include_declaration;
 
         let state = self.state.lock().await;
 
@@ -1614,11 +1614,16 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        let decl_node_loc = decl
+            .loc
+            .as_ref()
+            .map(|l| NodeLocation::from_range(l.uri, l.selection_range));
         let references = references(state.clone(), decl).await;
 
         Ok(Some(
             references
                 .into_iter()
+                .filter(|l| include_declaration || Some(l) != decl_node_loc.as_ref())
                 .map(|l| Location::new((*l.uri.uri(&*state)).clone(), l.range))
                 .collect::<Vec<_>>(),
         ))
@@ -3473,6 +3478,23 @@ levenshtein_distance("", "");
                     partial_result_params: PartialResultParams::default(),
                     context: ReferenceContext {
                         include_declaration: true,
+                    },
+                })
+                .await
+        );
+
+        // With include_declaration: false the declaration site of `x` must be absent.
+        assert_debug_snapshot!(
+            server
+                .references(ReferenceParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new((*uri).clone()),
+                        Position::new(4, 6), // On first `x`.
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                    context: ReferenceContext {
+                        include_declaration: false,
                     },
                 })
                 .await

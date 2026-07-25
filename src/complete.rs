@@ -136,10 +136,80 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         } else {
             None
         }
-    ).or_else(||
+    ).or_else(|| {
         // We are just completing some arbitrary identifier at this point.
-        Some(complete_any(state, root, node, uri))
-    );
+        let decls = complete_any(state, root, node, uri);
+
+        let text_at_completion = completion_text(node, &source, true);
+
+        let decl_items = decls.iter().map(to_completion_item);
+
+        let keyword_items = KEYWORDS.iter().filter_map(|kw| {
+            let should_include = text_at_completion.is_none_or(|text|
+                text.is_empty()
+                    || rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &kw.to_lowercase())
+                        > 0.0
+                );
+            if should_include {
+                Some(CompletionItem {
+                    kind: Some(CompletionItemKind::KEYWORD),
+                    label: (*kw).to_string(),
+                    ..CompletionItem::default()
+                })
+            } else {
+                None
+            }
+        });
+
+        let items: Vec<CompletionItem> = decl_items
+            .chain(keyword_items)
+            .filter_map(|item| {
+                // Filter down items so for `ns::id`-type identifiers we get more natural completions.
+
+                // If there is no text to complete just return all results.
+                let Some(text) = text_at_completion else {
+                    return Some(item);
+                };
+                if text.is_empty() {
+                    return Some(item);
+                }
+
+                let label = &item.label;
+
+                // The completion text contains a `::` -- interpret it as a namespace and only show
+                // completions from that namespace. The namespace needs to match exactly, but we
+                // fuzzy match items from the namespace.
+                if let Some((t1, t2)) = text.split_once("::") {
+                    let (l1, l2) = label.split_once("::")?;
+
+                    return (t1 == l1
+                        && (t2.is_empty()
+                            || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0))
+                        .then(|| CompletionItem {
+                            insert_text: if t2.is_empty() {
+                                Some(l2.to_string())
+                            } else {
+                                None
+                            },
+                            ..item.clone()
+                        });
+                }
+
+                // Require completion text and item to either both be namespaced or none. This
+                // e.g., removes a lot of identifiers in modules if we just want to complete a
+                // keyword.
+                (text.contains("::") == label.contains("::")
+                    // Else just fuzzymatch.
+                    && rust_fuzzy_search::fuzzy_compare(
+                        &text.to_lowercase(),
+                        &label.to_lowercase(),
+                    ) > 0.0)
+                    .then_some(item)
+            })
+            .collect();
+
+        Some(items)
+    });
 
     // Snippet completions are always added.
     if let Some(text) = completion_text(node, &source, false) {
@@ -549,13 +619,7 @@ fn complete_record_initializer(
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn complete_any(
-    state: &Database,
-    root: Node,
-    mut node: Node,
-    uri: InternedUri,
-) -> Vec<CompletionItem> {
+fn complete_any(state: &Database, root: Node, mut node: Node, uri: InternedUri) -> Vec<Decl> {
     let Some(source) = crate::source(state, uri) else {
         return Vec::new();
     };
@@ -566,8 +630,6 @@ fn complete_any(
         .named_child("module_decl")
         .and_then(|m| m.named_child("id"))
         .and_then(|id| id.utf8_text(source.as_bytes()).ok());
-
-    let text_at_completion = completion_text(node, &source, true);
 
     loop {
         for d in query::decls_(state, node, uri, source.as_bytes()) {
@@ -601,74 +663,7 @@ fn complete_any(
             !ast::is_redef(i)
         });
 
-    items
-        .iter()
-        .chain(other_decls)
-        .unique()
-        .map(to_completion_item)
-        // Also send filtered down keywords to the client.
-        .chain(KEYWORDS.iter().filter_map(|kw| {
-            let should_include = if let Some(text) = text_at_completion {
-                text.is_empty()
-                    || rust_fuzzy_search::fuzzy_compare(&text.to_lowercase(), &kw.to_lowercase())
-                        > 0.0
-            } else {
-                true
-            };
-
-            if should_include {
-                Some(CompletionItem {
-                    kind: Some(CompletionItemKind::KEYWORD),
-                    label: (*kw).to_string(),
-                    ..CompletionItem::default()
-                })
-            } else {
-                None
-            }
-        }))
-        .filter_map(|item| {
-            // Filter down items so for `ns::id`-type identifiers we get more natural completions.
-
-            // If there is no text to complete just return all results.
-            let Some(text) = text_at_completion else {
-                return Some(item);
-            };
-            if text.is_empty() {
-                return Some(item);
-            }
-
-            let label = &item.label;
-
-            // The the completion text contains a `::` interpret it as a namespace and only show
-            // completions from that namespace. The namespace needs to match exactly, but we fuzzy
-            // match items from the namespace.
-            if let Some((t1, t2)) = text.split_once("::") {
-                let (l1, l2) = label.split_once("::")?;
-
-                return (t1 == l1
-                    && (t2.is_empty() || rust_fuzzy_search::fuzzy_compare(t2, l2) > 0.0))
-                    .then(|| CompletionItem {
-                        insert_text: if t2.is_empty() {
-                            Some(l2.to_string())
-                        } else {
-                            None
-                        },
-                        ..item.clone()
-                    });
-            }
-
-            // Require completion text and item to either both be namespaced or none. This
-            // e.g., removes a lot of identifiers in modules if we just want to complete a
-            // keyword.
-            (text.contains("::") == label.contains("::")
-                         // Else just fuzzymatch.
-                         && rust_fuzzy_search::fuzzy_compare(
-                             &text.to_lowercase(),
-                             &label.to_lowercase(),
-                             ) > 0.0)
-                .then_some(item)
-        })
-        .collect::<Vec<_>>()
+    items.iter().chain(other_decls).unique().cloned().collect()
 }
 
 fn to_completion_item(d: &Decl) -> CompletionItem {

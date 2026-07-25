@@ -31,9 +31,7 @@ Ok(
                 },
             ],
             active_signature: None,
-            active_parameter: Some(
-                0,
-            ),
+            active_parameter: None,
         },
     ),
 )

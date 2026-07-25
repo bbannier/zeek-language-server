@@ -1232,7 +1232,7 @@ impl LanguageServer for Backend {
                 active_parameter,
             }],
             active_signature: None,
-            active_parameter,
+            active_parameter: None,
         }))
     }
 

@@ -958,9 +958,9 @@ impl LanguageServer for Backend {
             let db = self.state.lock().await;
 
             // Even though a valid source file can only contain a single module, one can still make
-            // declarations in other modules. Sort declarations by module so users get a clean view.
-            // Then show declarations under their module, or at the top-level if they aren't exported
-            // into a module.
+            // declarations in other modules. Preserve file order so that if a module is reopened
+            // each contiguous block gets its own namespace symbol with a correct range.
+            // Show declarations under their module, or at the top-level if they aren't in a module.
             let uri = uri_db(&*db, Arc::clone(&uri));
             let decls = crate::query::decls(&*db, uri);
             let mut decls = decls
@@ -968,7 +968,7 @@ impl LanguageServer for Backend {
                 // Filter out top-level enum members since they are also exposed inside their enum here.
                 .filter(|d| d.kind != DeclKind::EnumMember)
                 .collect::<Vec<_>>();
-            decls.sort_by_key(|d| format!("{}", d.module));
+            decls.sort_by_key(|d| d.loc.as_ref().map(|l| l.range.start));
             let (decls_with_mod, decls_without_mod): (Vec<_>, _) =
                 decls.into_iter().partition(|d| d.module != ModuleId::None);
 
@@ -977,18 +977,20 @@ impl LanguageServer for Backend {
                 .chunk_by(|d| &d.module)
                 .into_iter()
                 .map(|(m, decls)| {
+                    let children: Vec<_> = decls.filter_map(symbol).collect();
+                    let range = children
+                        .iter()
+                        .map(|s| s.range)
+                        .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
+                        .unwrap_or_default();
                     #[allow(deprecated)]
                     DocumentSymbol {
                         name: format!("{m}"),
                         kind: SymbolKind::NAMESPACE,
-                        children: Some(decls.filter_map(symbol).collect()),
-
-                        // FIXME(bbannier): Weird ranges.
-                        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-                        selection_range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-
+                        children: Some(children),
+                        range,
+                        selection_range: range,
                         deprecated: None,
-
                         detail: None,
                         tags: None,
                     }
@@ -3158,6 +3160,12 @@ event x::foo() {}",
 
             module foo;
             global y = 4711;
+
+            module bar;
+            global z = 1;
+
+            module foo;
+            global w = 2;
             ",
         );
         let server = serve(db);

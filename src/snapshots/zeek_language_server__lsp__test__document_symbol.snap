@@ -1,5 +1,6 @@
 ---
 source: src/lsp.rs
+assertion_line: 3186
 expression: "server.document_symbol(DocumentSymbolParams\n{\n    text_document: TextDocumentIdentifier::new(uri),\n    work_done_progress_params: WorkDoneProgressParams::default(),\n    partial_result_params: PartialResultParams::default(),\n}).await"
 ---
 Ok(
@@ -14,22 +15,22 @@ Ok(
                     deprecated: None,
                     range: Range {
                         start: Position {
-                            line: 0,
-                            character: 0,
+                            line: 4,
+                            character: 12,
                         },
                         end: Position {
-                            line: 0,
-                            character: 0,
+                            line: 4,
+                            character: 28,
                         },
                     },
                     selection_range: Range {
                         start: Position {
-                            line: 0,
-                            character: 0,
+                            line: 4,
+                            character: 12,
                         },
                         end: Position {
-                            line: 0,
-                            character: 0,
+                            line: 4,
+                            character: 28,
                         },
                     },
                     children: Some(
@@ -57,6 +58,124 @@ Ok(
                                     },
                                     end: Position {
                                         line: 4,
+                                        character: 20,
+                                    },
+                                },
+                                children: None,
+                            },
+                        ],
+                    ),
+                },
+                DocumentSymbol {
+                    name: "bar",
+                    detail: None,
+                    kind: Namespace,
+                    tags: None,
+                    deprecated: None,
+                    range: Range {
+                        start: Position {
+                            line: 7,
+                            character: 12,
+                        },
+                        end: Position {
+                            line: 7,
+                            character: 25,
+                        },
+                    },
+                    selection_range: Range {
+                        start: Position {
+                            line: 7,
+                            character: 12,
+                        },
+                        end: Position {
+                            line: 7,
+                            character: 25,
+                        },
+                    },
+                    children: Some(
+                        [
+                            DocumentSymbol {
+                                name: "z",
+                                detail: None,
+                                kind: Variable,
+                                tags: None,
+                                deprecated: None,
+                                range: Range {
+                                    start: Position {
+                                        line: 7,
+                                        character: 12,
+                                    },
+                                    end: Position {
+                                        line: 7,
+                                        character: 25,
+                                    },
+                                },
+                                selection_range: Range {
+                                    start: Position {
+                                        line: 7,
+                                        character: 19,
+                                    },
+                                    end: Position {
+                                        line: 7,
+                                        character: 20,
+                                    },
+                                },
+                                children: None,
+                            },
+                        ],
+                    ),
+                },
+                DocumentSymbol {
+                    name: "foo",
+                    detail: None,
+                    kind: Namespace,
+                    tags: None,
+                    deprecated: None,
+                    range: Range {
+                        start: Position {
+                            line: 10,
+                            character: 12,
+                        },
+                        end: Position {
+                            line: 10,
+                            character: 25,
+                        },
+                    },
+                    selection_range: Range {
+                        start: Position {
+                            line: 10,
+                            character: 12,
+                        },
+                        end: Position {
+                            line: 10,
+                            character: 25,
+                        },
+                    },
+                    children: Some(
+                        [
+                            DocumentSymbol {
+                                name: "w",
+                                detail: None,
+                                kind: Variable,
+                                tags: None,
+                                deprecated: None,
+                                range: Range {
+                                    start: Position {
+                                        line: 10,
+                                        character: 12,
+                                    },
+                                    end: Position {
+                                        line: 10,
+                                        character: 25,
+                                    },
+                                },
+                                selection_range: Range {
+                                    start: Position {
+                                        line: 10,
+                                        character: 19,
+                                    },
+                                    end: Position {
+                                        line: 10,
                                         character: 20,
                                     },
                                 },

@@ -661,18 +661,14 @@ impl LanguageServer for Backend {
 
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
-        let files = {
-            let state = self.state.lock().await;
-            state
-                .file_list()
-                .map_or_else(Arc::default, |fl| fl.files(&*state))
-        };
-
         let preloaded_decls = {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
             let state = self.state.lock().await;
+            let files = state
+                .file_list()
+                .map_or_else(Arc::default, |fl| fl.files(&*state));
 
             files
                 .iter()
@@ -1134,38 +1130,9 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
-        let Some(line) = source.lines().nth(position.line as usize) else {
+        let Some((node, active_parameter)) = call_context(&source, position, &tree) else {
             return Ok(None);
         };
-
-        let line = if u32::try_from(line.len() + 1).ok() > Some(position.character) {
-            &line[..position.character as usize]
-        } else {
-            return Ok(None);
-        };
-
-        // Search backward in the line for '('. The identifier before that could be a function name.
-        let Some(node) = line
-            .chars()
-            .rev()
-            .enumerate()
-            .filter(|(_, c)| !char::is_whitespace(*c))
-            .skip_while(|(_, c)| c != &'(')
-            .nth(1)
-            .and_then(|(i, _)| {
-                let character = u32::try_from(line.len() - i - 1).ok()?;
-
-                tree.root_node().named_descendant_for_position(Position {
-                    character,
-                    ..position
-                })
-            })
-        else {
-            return Ok(None);
-        };
-
-        let active_parameter = u32::try_from(line.chars().filter(|c| c == &',').count()).ok();
 
         let Ok(id) = node.utf8_text(source.as_bytes()) else {
             return Ok(None);
@@ -1197,32 +1164,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let label = format!(
-            "{}({})",
-            f.id,
-            signature
-                .args
-                .iter()
-                .filter_map(|a| {
-                    let loc = &a.loc.as_ref()?;
-                    tree.root_node()
-                        .named_descendant_for_point_range(loc.selection_range)?
-                        .utf8_text(source.as_bytes())
-                        .ok()
-                })
-                .join(", ")
-        );
-
-        let parameters = Some(
-            signature
-                .args
-                .iter()
-                .map(|a| ParameterInformation {
-                    label: ParameterLabel::Simple(a.id.to_string()),
-                    documentation: None,
-                })
-                .collect(),
-        );
+        let (label, parameters) = signature_label(f.id, signature, &tree, &source);
 
         Ok(Some(SignatureHelp {
             signatures: vec![SignatureInformation {
@@ -1741,6 +1683,107 @@ impl LanguageServer for Backend {
         let legend = semantic_tokens::legend();
         Ok(semantic_tokens::highlight(&source, &legend).map(SemanticTokensResult::Tokens))
     }
+}
+
+fn call_context<'a>(
+    source: &str,
+    position: Position,
+    tree: &'a crate::parse::Tree,
+) -> Option<(crate::query::Node<'a>, Option<u32>)> {
+    // TODO(bbannier): We do not handle newlines between the function name and any ultimate parameter.
+    let line = source.lines().nth(position.line as usize)?;
+    let line = if u32::try_from(line.len() + 1).ok() > Some(position.character) {
+        &line[..position.character as usize]
+    } else {
+        return None;
+    };
+
+    // Search backward for the outermost unclosed '('. Skip balanced paren pairs so that
+    // nested calls like f(g(a, b), c) resolve to f's '(' not g's.
+    let open = line
+        .char_indices()
+        .rev()
+        .scan(0i32, |depth, (i, c)| {
+            Some(match c {
+                ')' => {
+                    *depth += 1;
+                    None
+                }
+                '(' if *depth > 0 => {
+                    *depth -= 1;
+                    None
+                }
+                '(' => Some(i),
+                _ => None,
+            })
+        })
+        .find_map(|x| x)?;
+
+    let before = line[..open].trim_end();
+    let char_pos = before.char_indices().next_back().map(|(i, _)| i)?;
+    let character = u32::try_from(char_pos).ok()?;
+    let node = tree.root_node().named_descendant_for_position(Position {
+        character,
+        ..position
+    })?;
+
+    // Count commas at nesting depth 1 to handle nested calls like f(g(a, b), c).
+    let active_parameter = u32::try_from(
+        line.chars()
+            .scan(0i32, |depth, c| {
+                Some(match c {
+                    '(' => {
+                        *depth += 1;
+                        false
+                    }
+                    ')' => {
+                        *depth -= 1;
+                        false
+                    }
+                    ',' => *depth == 1,
+                    _ => false,
+                })
+            })
+            .filter(|&x| x)
+            .count(),
+    )
+    .ok();
+
+    Some((node, active_parameter))
+}
+
+fn signature_label(
+    id: InternedStr,
+    signature: &query::Signature,
+    tree: &crate::parse::Tree,
+    source: &str,
+) -> (String, Option<Vec<ParameterInformation>>) {
+    let label = format!(
+        "{}({})",
+        id,
+        signature
+            .args
+            .iter()
+            .filter_map(|a| {
+                let loc = &a.loc.as_ref()?;
+                tree.root_node()
+                    .named_descendant_for_point_range(loc.selection_range)?
+                    .utf8_text(source.as_bytes())
+                    .ok()
+            })
+            .join(", ")
+    );
+    let parameters = Some(
+        signature
+            .args
+            .iter()
+            .map(|a| ParameterInformation {
+                label: ParameterLabel::Simple(a.id.to_string()),
+                documentation: None,
+            })
+            .collect(),
+    );
+    (label, parameters)
 }
 
 fn word_at_position(source: &str, position: Position) -> Option<InternedStr> {
@@ -2820,6 +2863,35 @@ global f: function(x: count, y: string): string;
             work_done_progress_params: WorkDoneProgressParams::default(),
         };
         assert_debug_snapshot!(server.signature_help(params).await);
+    }
+
+    #[tokio::test]
+    async fn signature_help_nested_calls() {
+        let mut db = TestDatabase::default();
+        let uri = Uri::from_file_path("/x.zeek").unwrap();
+        db.add_file(
+            uri.clone(),
+            "module x;
+global g: function(a: count, b: count): count;
+global f: function(x: count, y: count): count;
+local _ = f(g(1, 2),",
+        );
+        let server = serve(db);
+
+        // Cursor after the outer comma in f(g(1, 2),: f's active parameter is 1; the comma
+        // inside g(...) must not be counted.
+        assert_debug_snapshot!(
+            server
+                .signature_help(super::SignatureHelpParams {
+                    context: None,
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier::new(uri.clone()),
+                        Position::new(3, 20),
+                    ),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                })
+                .await
+        );
     }
 
     #[tokio::test]

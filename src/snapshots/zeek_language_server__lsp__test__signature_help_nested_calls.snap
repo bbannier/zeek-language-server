@@ -1,0 +1,38 @@
+---
+source: src/lsp.rs
+assertion_line: 2878
+expression: "server.signature_help(super::SignatureHelpParams\n{\n    context: None, text_document_position_params:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(3, 20),), work_done_progress_params:\n    WorkDoneProgressParams::default(),\n}).await"
+---
+Ok(
+    Some(
+        SignatureHelp {
+            signatures: [
+                SignatureInformation {
+                    label: "f(x: count, y: count)",
+                    documentation: None,
+                    parameters: Some(
+                        [
+                            ParameterInformation {
+                                label: Simple(
+                                    "x",
+                                ),
+                                documentation: None,
+                            },
+                            ParameterInformation {
+                                label: Simple(
+                                    "y",
+                                ),
+                                documentation: None,
+                            },
+                        ],
+                    ),
+                    active_parameter: Some(
+                        1,
+                    ),
+                },
+            ],
+            active_signature: None,
+            active_parameter: None,
+        },
+    ),
+)

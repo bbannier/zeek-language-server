@@ -1,6 +1,5 @@
 ---
 source: src/complete.rs
-assertion_line: 1034
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri),\n    Position::new(7, 15)), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n}).map(|response|\n{\n    let CompletionResponse::Array(xs) = response else\n    { unreachable!(\"expected response with array\"); };\n    xs.into_iter().filter(|x|\n    x.kind.is_some_and(|k| k !=\n    CompletionItemKind::KEYWORD)).collect::<Vec<_>>()\n})"
 ---
 Some(
@@ -17,6 +16,35 @@ Some(
                     MarkupContent {
                         kind: Markdown,
                         value: "```zeek\nconst FOO = 0;\n```",
+                    },
+                ),
+            ),
+            deprecated: None,
+            preselect: None,
+            sort_text: None,
+            filter_text: None,
+            insert_text: None,
+            insert_text_format: None,
+            insert_text_mode: None,
+            text_edit: None,
+            additional_text_edits: None,
+            command: None,
+            commit_characters: None,
+            data: None,
+            tags: None,
+        },
+        CompletionItem {
+            label: "foo",
+            label_details: None,
+            kind: Some(
+                Module,
+            ),
+            detail: None,
+            documentation: Some(
+                MarkupContent(
+                    MarkupContent {
+                        kind: Markdown,
+                        value: "```zeek\nfoo\n```",
                     },
                 ),
             ),

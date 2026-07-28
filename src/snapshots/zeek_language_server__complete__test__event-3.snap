@@ -1,5 +1,6 @@
 ---
 source: src/complete.rs
+assertion_line: 1208
 expression: "complete(&db.0, CompletionParams\n{\n    text_document_position:\n    TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri.clone()),\n    Position::new(9, 6),), work_done_progress_params:\n    WorkDoneProgressParams::default(), partial_result_params:\n    PartialResultParams::default(), context: None,\n})"
 ---
 Some(
@@ -33,110 +34,6 @@ Some(
                 filter_text: None,
                 insert_text: Some(
                     "hok(c: count, s: string)\n\t{\n\t${0}\n\t}",
-                ),
-                insert_text_format: Some(
-                    Snippet,
-                ),
-                insert_text_mode: None,
-                text_edit: None,
-                additional_text_edits: None,
-                command: None,
-                commit_characters: None,
-                data: None,
-                tags: None,
-            },
-            CompletionItem {
-                label: "switch",
-                label_details: None,
-                kind: Some(
-                    Snippet,
-                ),
-                detail: None,
-                documentation: None,
-                deprecated: None,
-                preselect: None,
-                sort_text: None,
-                filter_text: None,
-                insert_text: Some(
-                    "switch ( ${1:var} )\n\t{\n\tcase ${2:case1}:\n\t\t${3:#code}\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n\t}",
-                ),
-                insert_text_format: Some(
-                    Snippet,
-                ),
-                insert_text_mode: None,
-                text_edit: None,
-                additional_text_edits: None,
-                command: None,
-                commit_characters: None,
-                data: None,
-                tags: None,
-            },
-            CompletionItem {
-                label: "while",
-                label_details: None,
-                kind: Some(
-                    Snippet,
-                ),
-                detail: None,
-                documentation: None,
-                deprecated: None,
-                preselect: None,
-                sort_text: None,
-                filter_text: None,
-                insert_text: Some(
-                    "while ( ${1:cond} )\n\t{\n\t${0:#code}\n\t}",
-                ),
-                insert_text_format: Some(
-                    Snippet,
-                ),
-                insert_text_mode: None,
-                text_edit: None,
-                additional_text_edits: None,
-                command: None,
-                commit_characters: None,
-                data: None,
-                tags: None,
-            },
-            CompletionItem {
-                label: "when",
-                label_details: None,
-                kind: Some(
-                    Snippet,
-                ),
-                detail: None,
-                documentation: None,
-                deprecated: None,
-                preselect: None,
-                sort_text: None,
-                filter_text: None,
-                insert_text: Some(
-                    "when ( ${1:cond} )\n\t{\n\t${2:#code}\n\t}\ntimeout ${3:duration}\n\t{\n\t${4:#code}\n\t}",
-                ),
-                insert_text_format: Some(
-                    Snippet,
-                ),
-                insert_text_mode: None,
-                text_edit: None,
-                additional_text_edits: None,
-                command: None,
-                commit_characters: None,
-                data: None,
-                tags: None,
-            },
-            CompletionItem {
-                label: "schedule",
-                label_details: None,
-                kind: Some(
-                    Snippet,
-                ),
-                detail: None,
-                documentation: None,
-                deprecated: None,
-                preselect: None,
-                sort_text: None,
-                filter_text: None,
-                insert_text: Some(
-                    "schedule ${1:10secs} { ${2:my_event}(${3:}) };",
                 ),
                 insert_text_format: Some(
                     Snippet,

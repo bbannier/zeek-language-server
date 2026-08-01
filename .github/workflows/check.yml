@@ -79,7 +79,7 @@ jobs:
       - uses: moonrepo/setup-rust@v1
         with:
           components: clippy,rustfmt
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
       - uses: pre-commit/action@v3.0.1
 
   vscode:

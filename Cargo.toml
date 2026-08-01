@@ -68,7 +68,7 @@ conv = { version = "0.3.3", default-features = false }
 dashmap = "6.2.1"
 eyre = { default-features = false, version = "0.6.12", features = ["auto-install"] }
 futures = { default-features = false, version = "0.3.33" }
-itertools = "0.14.0"
+itertools = "0.15.0"
 line-index = { version = "0.1.2", default-features = false }
 opentelemetry = { version = "0.26.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.26.0", features = ["grpc-tonic", "trace"], default-features = false }

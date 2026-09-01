@@ -448,8 +448,7 @@ fn resolve_impl(
             // unconditionally without callers needing to patch up the result.
             let is_neg_integer = node
                 .utf8_text(source.as_bytes())
-                .ok()
-                .is_some_and(|t| t.starts_with('-'))
+                .is_ok_and(|t| t.starts_with('-'))
                 && node
                     .named_child_not("nl")
                     .and_then(|inner| inner.named_child_not("nl")) // constant

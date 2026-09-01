@@ -46,31 +46,33 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 
     let text = completion_text(node, &source, true);
 
-    // If the node has no interesting text try to find an earlier node with text.
-    while node
-        .utf8_text(source.as_bytes())
-        .ok()
-        // The grammar might expose newlines as AST nodes. Such nodes should be ignored for completion.
-        .map(str::trim)
-        // The grammar might expose `$` or `?$` in a node. Strip it away. This also takes care of
-        // explicit nodes for just the field access or check.
-        .map(|s| s.replace(['$', '?'], ""))
-        .map_or(0, |s| s.len())
-        == 0
+    // If the node has no interesting text try to find an earlier node with text. The same
+    // applies when the node is too broad to be useful (e.g., the root node when the cursor is
+    // past the last token).
+    while node.kind() == "source_file"
+        || node
+            .utf8_text(source.as_bytes())
+            .ok()
+            .map(str::trim)
+            .map(|s| s.replace(['$', '?'], ""))
+            .map_or(0, |s| s.len())
+            == 0
     {
-        // If we are completing at the end of a line the end of the node will be on the next
-        // line. Instead search the next node _before the_start_ of the current node.
-        let start = node.range().start.character;
-        if start == 0 {
+        let col = if node.kind() == "source_file" {
+            position.character
+        } else {
+            node.range().start.character
+        };
+        if col == 0 {
             break;
         }
 
         node = match root.descendant_for_position(Position {
-            character: start - 1,
+            character: col - 1,
             ..position
         }) {
-            Some(n) => n,
-            None => break,
+            Some(n) if n.kind() != "source_file" => n,
+            _ => break,
         };
     }
 

@@ -1091,30 +1091,37 @@ mod test {
     #[test]
     fn event() {
         let mut db = TestDatabase::default();
-        let uri = Uri::from_file_path("/x.zeek").unwrap();
+
+        let evt = Uri::from_file_path("/evt.zeek").unwrap();
         db.add_file(
-            uri.clone(),
-            "
-export {
-    global evt: event(c: count, s: string);
-    global fct: function(c: count, s: string);
-    global hok: hook(c: count, s: string);
-}
+            evt.clone(),
+            "global evt: event(c: count, s: string);\nevent e",
+        );
 
-event e
-function f
-hook h
+        let fct = Uri::from_file_path("/fct.zeek").unwrap();
+        db.add_file(
+            fct.clone(),
+            "global fct: function(c: count, s: string);\nfunction f",
+        );
 
-  event e
-",
+        let hok = Uri::from_file_path("/hok.zeek").unwrap();
+        db.add_file(
+            hok.clone(),
+            "global hok: hook(c: count, s: string);\nhook h",
+        );
+
+        let indented = Uri::from_file_path("/indented.zeek").unwrap();
+        db.add_file(
+            indented.clone(),
+            "global evt: event(c: count, s: string);\n  event e",
         );
 
         assert_debug_snapshot!(complete(
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.clone()),
-                    Position::new(7, 6),
+                    TextDocumentIdentifier::new(evt),
+                    Position::new(1, 6),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
@@ -1126,8 +1133,8 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.clone()),
-                    Position::new(8, 10),
+                    TextDocumentIdentifier::new(fct),
+                    Position::new(1, 10),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
@@ -1139,8 +1146,8 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri.clone()),
-                    Position::new(9, 6),
+                    TextDocumentIdentifier::new(hok),
+                    Position::new(1, 6),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
@@ -1152,8 +1159,8 @@ hook h
             &db.0,
             CompletionParams {
                 text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier::new(uri),
-                    Position::new(11, 8),
+                    TextDocumentIdentifier::new(indented),
+                    Position::new(1, 8),
                 ),
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),

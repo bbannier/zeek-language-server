@@ -552,7 +552,7 @@ fn complete_record_initializer(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn complete_any(state: &Database, mut node: Node, uri: InternedUri) -> Vec<CompletionItem> {
+fn complete_any(state: &Database, node: Node, uri: InternedUri) -> Vec<CompletionItem> {
     let Some(source) = crate::source(state, uri) else {
         return Vec::new();
     };
@@ -564,23 +564,16 @@ fn complete_any(state: &Database, mut node: Node, uri: InternedUri) -> Vec<Compl
 
     let text_at_completion = completion_text(node, &source, true);
 
-    loop {
-        for d in query::decls_(state, node, uri, source.as_bytes(), Some(graph.modules())) {
-            // Strip the current module prefix from fqids so completions show short names.
-            let fqid = if let query::ModuleId::String(m) = &current_module {
-                let prefix = format!("{m}::");
-                d.fqid.strip_prefix(&*prefix).unwrap_or(&d.fqid)
-            } else {
-                &d.fqid
-            }
-            .into();
-            items.insert(Decl { fqid, ..d });
+    for d in graph.all_local_decls(node.range().start) {
+        // Strip the current module prefix from fqids so completions show short names.
+        let fqid = if let query::ModuleId::String(m) = &current_module {
+            let prefix = format!("{m}::");
+            d.fqid.strip_prefix(&*prefix).unwrap_or(&d.fqid)
+        } else {
+            &d.fqid
         }
-
-        node = match node.parent() {
-            Some(n) => n,
-            None => break,
-        };
+        .into();
+        items.insert(Decl { fqid, ..d.clone() });
     }
 
     let loaded_decls = crate::ast::explicit_decls_recursive(state, uri);

@@ -68,6 +68,24 @@ impl ScopeGraph {
     }
 
     #[must_use]
+    pub fn all_local_decls(&self, pos: Position) -> Vec<&Decl> {
+        let Some(scope) = self.scope_at(pos) else {
+            return Vec::new();
+        };
+
+        let mut result = Vec::new();
+        let mut current = Some(scope);
+
+        while let Some(s) = current {
+            let data = &self.scopes[s.0];
+            result.extend(&data.decls);
+            current = data.parent;
+        }
+
+        result
+    }
+
+    #[must_use]
     pub fn resolve_local(&self, id: InternedStr, pos: Position) -> Vec<&Decl> {
         let Some(scope) = self.scope_at(pos) else {
             return Vec::new();

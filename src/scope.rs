@@ -189,3 +189,123 @@ fn walk(
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    #![allow(clippy::unwrap_used)]
+
+    use std::sync::Arc;
+
+    use tower_lsp_server::ls_types::{Position, Uri};
+
+    use crate::lsp::TestDatabase;
+    use crate::query::ModuleId;
+
+    fn graph(source: &str) -> (TestDatabase, Arc<super::ScopeGraph>) {
+        let mut db = TestDatabase::default();
+        let uri = Arc::new(Uri::from_file_path("/test.zeek").unwrap());
+        db.add_file((*uri).clone(), source);
+        let uri = crate::uri_db(&db.0, uri);
+        let graph = super::scope_graph(&db.0, uri);
+        (db, graph)
+    }
+
+    #[test]
+    fn scope_nesting() {
+        let (_, g) = graph(
+            "global x = 0;
+             event e() { local y = 1; }",
+        );
+        assert!(
+            g.scopes.len() >= 2,
+            "expected at least file and function scopes"
+        );
+
+        let file_pos = Position::new(0, 0);
+        let func_pos = Position::new(1, 25);
+
+        let file_decls: Vec<_> = g.all_local_decls(file_pos).iter().map(|d| d.id).collect();
+        assert!(file_decls.iter().any(|id| id.as_str() == "x"));
+
+        let func_decls: Vec<_> = g.all_local_decls(func_pos).iter().map(|d| d.id).collect();
+        assert!(func_decls.iter().any(|id| id.as_str() == "y"));
+        assert!(func_decls.iter().any(|id| id.as_str() == "x"));
+    }
+
+    #[test]
+    fn module_transitions() {
+        let (_, g) = graph(
+            "module foo;
+             global x = 0;
+             module bar;
+             global y = 0;",
+        );
+        assert_eq!(g.module_at(Position::new(0, 0)), ModuleId::None);
+        assert_eq!(
+            g.module_at(Position::new(1, 0)),
+            ModuleId::String("foo".into())
+        );
+        assert_eq!(
+            g.module_at(Position::new(3, 0)),
+            ModuleId::String("bar".into())
+        );
+    }
+
+    #[test]
+    fn resolve_local_filters_by_name_and_position() {
+        let (_, g) = graph(
+            "global x = 0;
+             global y = 1;",
+        );
+
+        let pos = Position::new(1, 14);
+        let results: Vec<_> = g
+            .resolve_local("x".into(), pos)
+            .iter()
+            .map(|d| d.id.as_str())
+            .collect();
+        assert_eq!(results, vec!["x"]);
+    }
+
+    #[test]
+    fn func_params_in_scope() {
+        let (_, g) = graph("event e(x: count) { local y = x; }");
+
+        let body_pos = Position::new(0, 25);
+        let decls: Vec<_> = g.all_local_decls(body_pos).iter().map(|d| d.id).collect();
+        assert!(
+            decls.iter().any(|id| id.as_str() == "x"),
+            "param x should be visible"
+        );
+        assert!(
+            decls.iter().any(|id| id.as_str() == "y"),
+            "local y should be visible"
+        );
+    }
+
+    #[test]
+    fn for_loop_params() {
+        let (_, g) = graph(
+            "event e() {
+                 local t: table[string] of count;
+                 for (k, v in t) { }
+             }",
+        );
+
+        let loop_pos = Position::new(2, 35);
+        let decls: Vec<_> = g.all_local_decls(loop_pos).iter().map(|d| d.id).collect();
+        assert!(
+            decls.iter().any(|id| id.as_str() == "k"),
+            "loop key should be visible"
+        );
+    }
+
+    #[test]
+    fn empty_file() {
+        let (_, g) = graph("");
+        assert!(g.scopes.is_empty());
+        assert!(g.module_transitions.is_empty());
+        assert!(g.all_local_decls(Position::new(0, 0)).is_empty());
+        assert_eq!(g.module_at(Position::new(0, 0)), ModuleId::None);
+    }
+}

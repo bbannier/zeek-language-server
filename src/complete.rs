@@ -140,7 +140,7 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
         }
     ).or_else(||
         // We are just completing some arbitrary identifier at this point.
-        Some(complete_any(state, root, node, uri))
+        Some(complete_any(state, node, uri))
     );
 
     // Snippet completions are always added.
@@ -552,12 +552,7 @@ fn complete_record_initializer(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn complete_any(
-    state: &Database,
-    root: Node,
-    mut node: Node,
-    uri: InternedUri,
-) -> Vec<CompletionItem> {
+fn complete_any(state: &Database, mut node: Node, uri: InternedUri) -> Vec<CompletionItem> {
     let Some(source) = crate::source(state, uri) else {
         return Vec::new();
     };
@@ -565,24 +560,18 @@ fn complete_any(
     let mut items = FxHashSet::default();
 
     let graph = crate::scope::scope_graph(state, uri);
-
-    let current_module = root
-        .named_child("module_decl")
-        .and_then(|m| m.named_child("id"))
-        .and_then(|id| id.utf8_text(source.as_bytes()).ok());
+    let current_module = graph.module_at(node.range().start);
 
     let text_at_completion = completion_text(node, &source, true);
 
     loop {
         for d in query::decls_(state, node, uri, source.as_bytes(), Some(graph.modules())) {
-            // Slightly fudge the ID we use for local declarations by removing the current
-            // module from the FQID.
-            let fqid = match current_module {
-                Some(mid) => {
-                    let id = &*d.fqid;
-                    id.strip_prefix(&format!("{mid}::")).unwrap_or(id)
-                }
-                None => &d.fqid,
+            // Strip the current module prefix from fqids so completions show short names.
+            let fqid = if let query::ModuleId::String(m) = &current_module {
+                let prefix = format!("{m}::");
+                d.fqid.strip_prefix(&*prefix).unwrap_or(&d.fqid)
+            } else {
+                &d.fqid
             }
             .into();
             items.insert(Decl { fqid, ..d });

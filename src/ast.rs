@@ -535,15 +535,14 @@ fn resolve_impl(
     // If we arrive here and the identifier does not contain `::` it could also refer to a
     // declaration in the same module, but defined in a different file. Try to find it by
     // searching for it by its fully-qualified name.
-    if !id.contains("::")
-        && let Some(module) = tree
-            .root_node()
-            .named_child("module_decl")
-            .and_then(|d| d.named_child("id"))
-            .and_then(|id| id.utf8_text(source.as_bytes()).ok())
-        && let Some(r) = resolve_id(db, format!("{module}::{id}").as_str().into(), location)
-    {
-        return Some(r);
+    if !id.contains("::") {
+        let graph = crate::scope::scope_graph(db, uri);
+        let module = graph.module_at(range.start);
+        if let query::ModuleId::String(m) = module
+            && let Some(r) = resolve_id(db, format!("{m}::{id}").as_str().into(), location)
+        {
+            return Some(r);
+        }
     }
     None
 }

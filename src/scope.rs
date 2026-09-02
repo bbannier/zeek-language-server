@@ -5,7 +5,7 @@ use tower_lsp_server::ls_types::{Position, Range};
 use crate::{
     Db, InternedStr, InternedUri,
     ast::is_redef,
-    query::{self, Decl, Node},
+    query::{self, Decl, ModuleId, Node},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +21,7 @@ struct ScopeData {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ScopeGraph {
     scopes: Vec<ScopeData>,
+    module_transitions: Vec<(Position, ModuleId)>,
 }
 
 impl ScopeGraph {
@@ -50,6 +51,15 @@ impl ScopeGraph {
                     .then(b.range.end.cmp(&a.range.end))
             })
             .map(|(i, _)| ScopeId(i))
+    }
+
+    #[must_use]
+    pub fn module_at(&self, pos: Position) -> ModuleId {
+        self.module_transitions
+            .iter()
+            .rev()
+            .find(|(start, _)| *start <= pos)
+            .map_or(ModuleId::None, |(_, m)| m.clone())
     }
 
     #[must_use]
@@ -102,6 +112,11 @@ pub fn scope_graph(db: &dyn Db, uri: InternedUri) -> Arc<ScopeGraph> {
     Arc::new(graph)
 }
 
+fn module_from_decl(node: Node, source: &[u8]) -> Option<ModuleId> {
+    let name = node.named_child_not("nl")?.utf8_text(source).ok()?;
+    Some(query::compute_module_id(name))
+}
+
 fn walk(
     db: &dyn Db,
     node: Node,
@@ -126,6 +141,12 @@ fn walk(
 
     let mut cursor = node.0.walk();
     for child in node.0.children(&mut cursor) {
-        walk(db, child.into(), uri, source, current_scope, graph);
+        let child: Node = child.into();
+        if child.kind() == "module_decl"
+            && let Some(module) = module_from_decl(child, source)
+        {
+            graph.module_transitions.push((child.range().end, module));
+        }
+        walk(db, child, uri, source, current_scope, graph);
     }
 }

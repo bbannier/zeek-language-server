@@ -961,7 +961,7 @@ fn modules(_db: &dyn Db, node: Node, _uri: InternedUri, source: &[u8]) -> FxHash
 }
 
 /// Helper to compute a module ID from a given string.
-fn compute_module_id(id: &str) -> ModuleId {
+pub(crate) fn compute_module_id(id: &str) -> ModuleId {
     match id {
         "GLOBAL" => ModuleId::Global,
         "" => ModuleId::None,

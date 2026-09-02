@@ -18,13 +18,6 @@ use crate::{
 #[instrument(skip(db))]
 pub fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> Option<Arc<Decl>> {
     let uri = scope.uri;
-    let tree = crate::parse::parse(db, uri)?;
-    let scope = tree
-        .root_node()
-        .named_descendant_for_point_range(scope.range)?;
-    let source = crate::source(db, uri)?;
-
-    let node = scope;
 
     let combined_decl_with_redefs = |decls: Vec<Decl>| -> Option<Decl> {
         let (decl, redefs): (Vec<_>, Vec<_>) = decls.into_iter().partition(|d| !is_redef(d));
@@ -51,39 +44,18 @@ pub fn resolve_id(db: &dyn Db, id: InternedStr, scope: NodeLocation) -> Option<A
         }
     };
 
-    let mut decls = Vec::new();
-    let mut scope = scope;
-    loop {
-        decls.extend(
-            // Find all decls with this name, defined before the node. We do this so that e.g.,
-            // redefs in the same file are only in effect after they have been declared.
-            query::decls_(db, scope, uri, source.as_bytes())
-                .into_iter()
-                .filter(|d| d.id == id || d.fqid == id)
-                .filter(|d| {
-                    let Some(loc) = &d.loc else { return false };
-                    loc.range.start <= node.range().start
-                }),
-        );
+    let graph = crate::scope::scope_graph(db, uri);
+    let local_decls: Vec<Decl> = graph
+        .resolve_local(id, scope.range.start)
+        .into_iter()
+        .cloned()
+        .collect();
 
-        if decls.iter().any(|d| !is_redef(d)) {
-            break;
-        }
-
-        if let Some(p) = scope.parent() {
-            scope = p;
-        } else {
-            break;
-        }
+    if local_decls.iter().any(|d| !is_redef(d)) {
+        return combined_decl_with_redefs(local_decls).map(Arc::new);
     }
 
-    // If we have found something that isn't a redef this is the decl which should be visible at
-    // this point. Combine it with all redefs visible up to this point.
-    if decls.iter().any(|d| !is_redef(d)) {
-        return combined_decl_with_redefs(decls).map(Arc::new);
-    }
-
-    let result = decls.into_iter().next();
+    let result = local_decls.into_iter().next();
 
     if let Some(r) = &result {
         // If we have found a non-redef decl this is the final decl visible at this point as redefs

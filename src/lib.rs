@@ -8,6 +8,7 @@ pub mod lsp;
 pub mod parse;
 pub mod query;
 pub mod rst;
+pub mod scope;
 #[cfg(test)]
 pub(crate) mod test_util;
 pub mod zeek;

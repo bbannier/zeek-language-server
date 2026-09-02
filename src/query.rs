@@ -1047,7 +1047,12 @@ pub fn fn_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) 
 
 /// Extract for loop parameters on the given node.
 #[instrument(skip(db))]
-fn loop_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
+pub(crate) fn loop_param_decls(
+    db: &dyn Db,
+    node: Node,
+    uri: InternedUri,
+    source: &[u8],
+) -> FxHashSet<Decl> {
     let _ = db;
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(

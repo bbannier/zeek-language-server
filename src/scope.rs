@@ -169,21 +169,23 @@ fn walk(
 ) {
     let mut current_scope = parent_scope;
 
-    let modules = &graph.module_transitions;
-    let decls: Vec<Decl> = query::decls_(db, node, uri, source, Some(modules))
-        .into_iter()
-        .chain(query::fn_param_decls(db, node, uri, source))
-        .chain(query::loop_param_decls(db, node, uri, source))
-        .collect();
+    if node.0.child_count() > 0 {
+        let modules = &graph.module_transitions;
+        let decls: Vec<Decl> = query::decls_(db, node, uri, source, Some(modules))
+            .into_iter()
+            .chain(query::fn_param_decls(db, node, uri, source))
+            .chain(query::loop_param_decls(db, node, uri, source))
+            .collect();
 
-    if !decls.is_empty() {
-        let scope = graph.add_scope(node.range(), parent_scope);
-        graph.add_decls(scope, decls);
-        current_scope = Some(scope);
-    }
+        if !decls.is_empty() {
+            let scope = graph.add_scope(node.range(), parent_scope);
+            graph.add_decls(scope, decls);
+            current_scope = Some(scope);
+        }
 
-    let mut cursor = node.0.walk();
-    for child in node.0.children(&mut cursor) {
-        walk(db, child.into(), uri, source, current_scope, graph);
+        let mut cursor = node.0.walk();
+        for child in node.0.children(&mut cursor) {
+            walk(db, child.into(), uri, source, current_scope, graph);
+        }
     }
 }

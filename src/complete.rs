@@ -564,6 +564,8 @@ fn complete_any(
 
     let mut items = FxHashSet::default();
 
+    let graph = crate::scope::scope_graph(state, uri);
+
     let current_module = root
         .named_child("module_decl")
         .and_then(|m| m.named_child("id"))
@@ -572,7 +574,7 @@ fn complete_any(
     let text_at_completion = completion_text(node, &source, true);
 
     loop {
-        for d in query::decls_(state, node, uri, source.as_bytes()) {
+        for d in query::decls_(state, node, uri, source.as_bytes(), Some(graph.modules())) {
             // Slightly fudge the ID we use for local declarations by removing the current
             // module from the FQID.
             let fqid = match current_module {

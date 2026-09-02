@@ -440,9 +440,15 @@ fn in_export(mut node: Node) -> bool {
 }
 
 #[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
-#[instrument(skip(db))]
+#[instrument(skip(db, modules))]
 #[must_use]
-pub fn decls_(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
+pub fn decls_(
+    db: &dyn Db,
+    node: Node,
+    uri: InternedUri,
+    source: &[u8],
+    modules: Option<&[(Position, ModuleId)]>,
+) -> FxHashSet<Decl> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         let signature = "((formal_args)? (type)?@fn_result)@signature";
         let signature = format!("[{signature} (func_params ({signature}))]");
@@ -482,6 +488,25 @@ pub fn decls_(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHas
         .capture_index_for_name("outer_node")
         .expect("outer node should be captured");
 
+    let computed_modules;
+    let modules = if let Some(m) = modules {
+        m
+    } else {
+        let mut root = node;
+        while let Some(p) = root.parent() {
+            root = p;
+        }
+        computed_modules = root
+            .named_children("module_decl")
+            .into_iter()
+            .filter_map(|child| {
+                let text = child.named_child_not("nl")?.utf8_text(source).ok()?;
+                Some((child.range().end, compute_module_id(text)))
+            })
+            .collect::<Vec<_>>();
+        &computed_modules
+    };
+
     tree_sitter::QueryCursor::new()
         .matches(&QUERY, node.0, source)
         .filter_map(|c| {
@@ -501,7 +526,11 @@ pub fn decls_(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHas
             }
 
             // Figure out the module this decl is for.
-            let mut module = parent_module(decl, source)?;
+            let mut module = modules
+                .iter()
+                .rev()
+                .find(|(start, _)| *start <= decl.range().start)
+                .map_or(ModuleId::None, |(_, m)| m.clone());
             let module_name = module.clone();
 
             let id: Node = c.nodes_for_capture_index(c_id).next()?.into();
@@ -969,37 +998,6 @@ pub(crate) fn compute_module_id(id: &str) -> ModuleId {
     }
 }
 
-/// Compute the module a node is in.
-#[must_use]
-fn parent_module(node: Node, source: &[u8]) -> Option<ModuleId> {
-    let Some(n) = node.parent() else {
-        return Some(ModuleId::None);
-    };
-
-    // Go one level higher.
-    if n.kind() != "source_file" {
-        return parent_module(n, source);
-    }
-
-    // Found a source file. Now find the most recent
-    // module decl when looking backwards from `node`.
-    let Some(m) = n
-        .named_children("module_decl")
-        .into_iter()
-        .filter(|m| m.range().end < node.range().start)
-        .min_by_key(|m| node.0.range().start_byte - m.0.range().end_byte)
-        .and_then(|m| {
-            Some(compute_module_id(
-                m.named_child_not("nl")?.utf8_text(source).ok()?,
-            ))
-        })
-    else {
-        return Some(ModuleId::None);
-    };
-
-    Some(m)
-}
-
 /// Extract declarations for function parameters on the given node.
 #[instrument(skip(db))]
 pub fn fn_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
@@ -1180,7 +1178,14 @@ pub fn decls(db: &dyn Db, uri: InternedUri) -> Arc<[Decl]> {
         return Arc::default();
     };
 
-    let decls = decls_(db, tree.root_node(), uri, source.as_bytes());
+    let transitions = crate::scope::module_transitions(db, uri);
+    let decls = decls_(
+        db,
+        tree.root_node(),
+        uri,
+        source.as_bytes(),
+        Some(&transitions),
+    );
     let modules = modules(db, tree.root_node(), uri, source.as_bytes());
 
     Arc::from(
@@ -1474,7 +1479,7 @@ mod test {
         let uri = crate::uri_db(&db.0, uri);
         let tree = crate::parse::parse(&db.0, uri).expect("cannot parse");
 
-        let decls_ = |n: Node| super::decls_(&db.0, n, uri, SOURCE.as_bytes());
+        let decls_ = |n: Node| super::decls_(&db.0, n, uri, SOURCE.as_bytes(), None);
 
         // Test decls reachable from the root node. This is used e.g., to figure out what decls are
         // available in a module. This should not contain e.g., function-scope decls.
@@ -1591,7 +1596,7 @@ global hk: hook(info: Info, s: Seen, items: set[Item]);",
         let root = tree.root_node();
         let source = crate::source(&db.0, uri).unwrap();
 
-        assert_debug_snapshot!(super::decls_(&db.0, root, uri, source.as_bytes()));
+        assert_debug_snapshot!(super::decls_(&db.0, root, uri, source.as_bytes(), None));
     }
 
     #[test]
@@ -1609,7 +1614,7 @@ function f() {}",
         let root = tree.root_node();
         let source = crate::source(&db.0, uri).unwrap();
 
-        let decls = super::decls_(&db.0, root, uri, source.as_bytes());
+        let decls = super::decls_(&db.0, root, uri, source.as_bytes(), None);
         assert_eq!(decls.len(), 1);
         let d = decls.iter().next().unwrap();
         assert_eq!(d.id, "f");

@@ -28,43 +28,72 @@ struct Args {
     /// Valid levels are: trace, debug, info, warn, error.
     #[clap(short, long, value_enum, default_value = "error")]
     filter: tracing::Level,
+
+    /// Emit a trace log to the temp directory.
+    #[clap(long)]
+    trace: bool,
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn init_logging(args: &Args) -> Result<WorkerGuard> {
-    let (writer, guard) = tracing_appender::non_blocking(std::io::stderr());
+fn init_logging(args: &Args) -> Result<Vec<WorkerGuard>> {
+    let mut guards = Vec::new();
 
-    let fmt = tracing_subscriber::fmt::layer()
-        .with_writer(writer.with_max_level(args.filter))
+    let (stderr_writer, stderr_guard) = tracing_appender::non_blocking(std::io::stderr());
+
+    let stderr_layer = tracing_subscriber::fmt::layer()
+        .with_writer(stderr_writer.with_max_level(args.filter))
         .with_ansi(false)
         .with_target(false)
         .with_file(true);
 
-    {
-        let registry = tracing_subscriber::registry().with(fmt);
+    let registry = tracing_subscriber::registry().with(stderr_layer);
+    guards.push(stderr_guard);
 
-        #[cfg(feature = "telemetry")]
-        let registry = registry.with(
-            tracing_opentelemetry::layer().with_tracer(
-                opentelemetry_otlp::new_pipeline()
-                    .tracing()
-                    .with_exporter(
-                        opentelemetry_otlp::new_exporter()
-                            .tonic()
-                            .with_endpoint(&args.collector_endpoint),
-                    )
-                    .with_trace_config(trace::Config::default().with_resource(Resource::new([
-                        KeyValue::new(SERVICE_NAME, env!("CARGO_BIN_NAME")),
-                    ])))
-                    .install_batch(opentelemetry_sdk::runtime::Tokio)?
-                    .tracer(""),
-            ),
+    let trace_dir = std::env::temp_dir();
+    let trace_file = env!("CARGO_PKG_NAME");
+
+    let (trace_layer, trace_guard) = if args.trace {
+        let (trace_writer, trace_guard) = tracing_appender::non_blocking(
+            tracing_appender::rolling::never(&trace_dir, trace_file),
         );
+        let trace_layer = tracing_subscriber::fmt::layer()
+            .with_writer(trace_writer.with_max_level(tracing::Level::TRACE))
+            .with_ansi(false)
+            .with_target(false)
+            .with_file(true);
 
-        registry.init();
+        (Some(trace_layer), Some(trace_guard))
+    } else {
+        (None, None)
+    };
+    let registry = registry.with(trace_layer);
+    guards.extend(trace_guard);
+
+    #[cfg(feature = "telemetry")]
+    let registry = registry.with(
+        tracing_opentelemetry::layer().with_tracer(
+            opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(
+                    opentelemetry_otlp::new_exporter()
+                        .tonic()
+                        .with_endpoint(&args.collector_endpoint),
+                )
+                .with_trace_config(trace::Config::default().with_resource(Resource::new([
+                    KeyValue::new(SERVICE_NAME, env!("CARGO_BIN_NAME")),
+                ])))
+                .install_batch(opentelemetry_sdk::runtime::Tokio)?
+                .tracer(""),
+        ),
+    );
+
+    registry.init();
+
+    if args.trace {
+        info!("Writing trace to {}", trace_dir.join(trace_file).display());
     }
 
-    Ok(guard)
+    Ok(guards)
 }
 
 #[tokio::main]

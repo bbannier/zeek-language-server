@@ -1,6 +1,7 @@
 use {
     clap::Parser,
     eyre::Result,
+    std::path::PathBuf,
     tracing::info,
     tracing_appender::non_blocking::WorkerGuard,
     tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt},
@@ -29,9 +30,9 @@ struct Args {
     #[clap(short, long, value_enum, default_value = "error")]
     filter: tracing::Level,
 
-    /// Emit a trace log to the temp directory.
+    /// Emit a trace log to the given directory.
     #[clap(long)]
-    trace: bool,
+    trace: Option<PathBuf>,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -49,10 +50,9 @@ fn init_logging(args: &Args) -> Result<Vec<WorkerGuard>> {
     let registry = tracing_subscriber::registry().with(stderr_layer);
     guards.push(stderr_guard);
 
-    let trace_dir = std::env::temp_dir();
     let trace_file = env!("CARGO_PKG_NAME");
 
-    let (trace_layer, trace_guard) = if args.trace {
+    let (trace_layer, trace_guard) = if let Some(trace_dir) = &args.trace {
         let (trace_writer, trace_guard) = tracing_appender::non_blocking(
             tracing_appender::rolling::never(&trace_dir, trace_file),
         );
@@ -88,10 +88,6 @@ fn init_logging(args: &Args) -> Result<Vec<WorkerGuard>> {
     );
 
     registry.init();
-
-    if args.trace {
-        info!("Writing trace to {}", trace_dir.join(trace_file).display());
-    }
 
     Ok(guards)
 }

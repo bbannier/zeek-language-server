@@ -53,9 +53,8 @@ fn init_logging(args: &Args) -> Result<Vec<WorkerGuard>> {
     let trace_file = env!("CARGO_PKG_NAME");
 
     let (trace_layer, trace_guard) = if let Some(trace_dir) = &args.trace {
-        let (trace_writer, trace_guard) = tracing_appender::non_blocking(
-            tracing_appender::rolling::never(&trace_dir, trace_file),
-        );
+        let (trace_writer, trace_guard) =
+            tracing_appender::non_blocking(tracing_appender::rolling::never(trace_dir, trace_file));
         let trace_layer = tracing_subscriber::fmt::layer()
             .with_writer(trace_writer.with_max_level(tracing::Level::TRACE))
             .with_ansi(false)

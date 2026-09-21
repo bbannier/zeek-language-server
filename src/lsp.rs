@@ -102,7 +102,10 @@ pub enum SourceUpdate {
 }
 
 impl Database {
-    pub fn update_sources(&mut self, updates: &[SourceUpdate]) {
+    // Unsafe to call while background tasks hold Database clones -- Salsa's
+    // cancellation mechanism uses `resume_unwind` which aborts under `panic = "abort"`.
+    // Production code should use `Backend::update_sources` which handles this.
+    fn update_sources(&mut self, updates: &[SourceUpdate]) {
         let mut needs_files_update = false;
         let mut files: FxHashSet<_> = self
             .file_list()
@@ -257,6 +260,19 @@ impl Debug for Database {
 pub struct Backend {
     pub client: Option<tower_lsp_server::Client>,
     state: tokio::sync::Mutex<Database>,
+    /// Background tasks hold a shared (read) guard; mutations acquire an
+    /// exclusive (write) guard, blocking until all clones are dropped. This
+    /// prevents Salsa's panic-based cancellation from aborting the process
+    /// under `panic = "abort"`.
+    query_lock: Arc<tokio::sync::RwLock<()>>,
+}
+
+impl Backend {
+    /// Waits for background queries to finish before mutating sources.
+    async fn update_sources(&self, updates: &[SourceUpdate]) {
+        let _exclusive = self.query_lock.write().await;
+        self.state.lock().await.update_sources(updates);
+    }
 }
 
 enum ParseResult {
@@ -649,8 +665,7 @@ impl LanguageServer for Backend {
             let changes = removals.chain(updates).collect::<Vec<_>>();
 
             // Update files.
-            let mut state = self.state.lock().await;
-            state.update_sources(&changes);
+            self.update_sources(&changes).await;
         }
 
         // Preload expensive information. Ultimately we want to be able to load implicit
@@ -675,7 +690,9 @@ impl LanguageServer for Backend {
                 .map(|f| {
                     let f = *f;
                     let db = state.clone();
+                    let guard = Arc::clone(&self.query_lock).try_read_owned().ok();
                     tokio::spawn(async move {
+                        let _guard = guard;
                         let _x = crate::query::decls(&db, f);
                         let _x = crate::ast::loaded_files(&db, f);
                     })
@@ -699,14 +716,11 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = Arc::new(params.text_document.uri.clone());
 
-        // Update source.
-        self.state
-            .lock()
-            .await
-            .update_sources(&[SourceUpdate::Update(
-                Arc::clone(&uri),
-                params.text_document.text.into(),
-            )]);
+        self.update_sources(&[SourceUpdate::Update(
+            Arc::clone(&uri),
+            params.text_document.text.into(),
+        )])
+        .await;
 
         // Reload implicit declarations since their result depends on the list of known files and
         // is on the critical path for e.g., completion.
@@ -742,14 +756,11 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
 
-        // Update source.
-        self.state
-            .lock()
-            .await
-            .update_sources(&[SourceUpdate::Update(
-                Arc::clone(&uri),
-                changes.text.as_str().into(),
-            )]);
+        self.update_sources(&[SourceUpdate::Update(
+            Arc::clone(&uri),
+            changes.text.as_str().into(),
+        )])
+        .await;
 
         // Diagnostics are already triggered from `file_changed`.
         if let Err(e) = self.file_changed(uri).await {
@@ -1567,8 +1578,6 @@ impl LanguageServer for Backend {
         } else {
             Vec::default()
         };
-
-        drop(state);
 
         let (params, vars) = futures::future::join(
             async {
@@ -3767,6 +3776,7 @@ b::VAL;",
             );
         }
 
+        let lock = Arc::new(tokio::sync::RwLock::new(()));
         let files: Vec<_> =
             db.0.file_list()
                 .unwrap()
@@ -3779,13 +3789,16 @@ b::VAL;",
             .iter()
             .map(|&f| {
                 let db = db.0.clone();
+                let guard = Arc::clone(&lock).try_read_owned().ok();
                 tokio::spawn(async move {
+                    let _guard = guard;
                     let _x = crate::query::decls(&db, f);
                     let _x = crate::ast::loaded_files(&db, f);
                 })
             })
             .collect();
 
+        let _exclusive = lock.write().await;
         db.0.update_sources(&[super::SourceUpdate::Update(
             Arc::new(Uri::from_file_path("/f0.zeek").unwrap()),
             "module F0_modified;\n".into(),

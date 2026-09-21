@@ -350,7 +350,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
 	if (Object.keys(env).length > 0) {
 		log.info(env);
-		serverExecutable.options = { env };
+		serverExecutable.options = { env: { ...process.env, ...env } };
 	}
 
 	const inlay_hints_variables = configuration.get<boolean>(

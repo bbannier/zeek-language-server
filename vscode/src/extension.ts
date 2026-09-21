@@ -324,11 +324,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
 	const configuration = workspace.getConfiguration("zeekLanguageServer");
 
 	const cfg_path = configuration.get<string>("zeekBinaryDirectory");
-	const path = process.env.PATH;
+	const currentPath = process.env.PATH;
 	if (cfg_path) {
-		env.PATH = `${cfg_path}:${path}`;
-	} else if (path) {
-		env.PATH = path;
+		env.PATH = `${cfg_path}:${currentPath}`;
+	} else if (currentPath) {
+		env.PATH = currentPath;
 	}
 
 	const zeekpath = configuration.get<string>("ZEEKPATH");

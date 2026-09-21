@@ -3756,4 +3756,44 @@ b::VAL;",
         // Either result (pre- or post-change type) is valid; what matters is no panic.
         assert!(hover.is_ok());
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mutation_during_background_queries() {
+        let mut db = TestDatabase::default();
+        for i in 0..50 {
+            db.add_file(
+                Uri::from_file_path(format!("/f{i}.zeek")).unwrap(),
+                format!("module F{i};\nexport {{ global x{i}: count; }}\n"),
+            );
+        }
+
+        let files: Vec<_> =
+            db.0.file_list()
+                .unwrap()
+                .files(&db.0)
+                .iter()
+                .copied()
+                .collect();
+
+        let tasks: Vec<_> = files
+            .iter()
+            .map(|&f| {
+                let db = db.0.clone();
+                tokio::spawn(async move {
+                    let _x = crate::query::decls(&db, f);
+                    let _x = crate::ast::loaded_files(&db, f);
+                })
+            })
+            .collect();
+
+        db.0.update_sources(&[super::SourceUpdate::Update(
+            Arc::new(Uri::from_file_path("/f0.zeek").unwrap()),
+            "module F0_modified;\n".into(),
+        )]);
+
+        for task in tasks {
+            task.await
+                .expect("background query panicked from Salsa cancellation");
+        }
+    }
 }

@@ -142,6 +142,11 @@ class ZeekLanguageServer {
 			},
 			async (progressHandle, cancellationHandle) => {
 				const response = await fetch(url);
+				if (!response.ok) {
+					throw new Error(
+						`Download failed: ${response.status} ${response.statusText}`,
+					);
+				}
 				const content = new XzReadableStream(
 					response.body as ReadableStream<Uint8Array>,
 				);

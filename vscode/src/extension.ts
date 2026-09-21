@@ -246,7 +246,8 @@ async function tryZeek(): Promise<void> {
 	// the main content unless the file is already called `main.zeek`.
 	const sources: Source[] = [{ name, content }];
 	if (name !== "main.zeek") {
-		sources.push({ name: "main.zeek", content: `@load ${name}` });
+		const base = name.replace(/\.zeek$/, "");
+		sources.push({ name: "main.zeek", content: `@load ./${base}` });
 	}
 
 	const query: Query = {

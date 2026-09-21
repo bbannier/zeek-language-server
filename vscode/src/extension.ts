@@ -141,45 +141,37 @@ class ZeekLanguageServer {
 				cancellable: true,
 			},
 			async (progressHandle, cancellationHandle) => {
-				const response = await fetch(url);
+				const abort = new AbortController();
+				cancellationHandle.onCancellationRequested(() => abort.abort());
+
+				const response = await fetch(url, { signal: abort.signal });
 				if (!response.ok) {
 					throw new Error(
 						`Download failed: ${response.status} ${response.statusText}`,
 					);
 				}
-				const content = new XzReadableStream(
-					response.body as ReadableStream<Uint8Array>,
+
+				const totalBytes = Number(response.headers.get("Content-Length") ?? 0);
+				const tracked = (
+					response.body as ReadableStream<Uint8Array>
+				).pipeThrough(
+					new TransformStream<Uint8Array, Uint8Array>({
+						transform(chunk, controller) {
+							if (totalBytes > 0) {
+								progressHandle.report({
+									increment: (chunk.length / totalBytes) * 100,
+								});
+							}
+							controller.enqueue(chunk);
+						},
+					}),
 				);
-				const reader = content.getReader();
 
-				cancellationHandle.onCancellationRequested(() => {
-					reader.cancel("cancelled by user");
-				});
-
-				let receivedLength = 0;
-				const chunks = []; // array of received binary chunks (comprises the body)
-				for (;;) {
-					const { done, value } = await reader.read();
-
-					if (done) {
-						break;
-					}
-
-					chunks.push(value);
-					receivedLength += value.length;
-
-					progressHandle.report({ increment: 0 });
-				}
-
-				const chunksAll = new Uint8Array(receivedLength);
-				let position = 0;
-				for (const chunk of chunks) {
-					chunksAll.set(chunk, position);
-					position += chunk.length;
-				}
+				const decompressed = new XzReadableStream(tracked);
+				const tarData = await new Response(decompressed).arrayBuffer();
 
 				const tar_file = `${dest}.tmp.tar`;
-				fs.writeFileSync(tar_file, chunksAll);
+				fs.writeFileSync(tar_file, new Uint8Array(tarData));
 
 				await tar.extract({
 					file: tar_file,

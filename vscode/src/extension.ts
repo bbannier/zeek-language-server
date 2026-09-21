@@ -279,7 +279,7 @@ async function tryZeek(): Promise<void> {
 	);
 }
 
-let CLIENT: LanguageClient;
+let CLIENT: LanguageClient | undefined;
 
 async function checkDependencies(): Promise<void> {
 	// Check for `zeek-format`.

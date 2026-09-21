@@ -12,7 +12,7 @@ use {
 use {
     opentelemetry::{KeyValue, trace::TracerProvider},
     opentelemetry_otlp::WithExportConfig,
-    opentelemetry_sdk::{Resource, trace},
+    opentelemetry_sdk::Resource,
     opentelemetry_semantic_conventions::resource::SERVICE_NAME,
 };
 
@@ -69,22 +69,22 @@ fn init_logging(args: &Args) -> Result<Vec<WorkerGuard>> {
     guards.extend(trace_guard);
 
     #[cfg(feature = "telemetry")]
-    let registry = registry.with(
-        tracing_opentelemetry::layer().with_tracer(
-            opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .tonic()
-                        .with_endpoint(&args.collector_endpoint),
-                )
-                .with_trace_config(trace::Config::default().with_resource(Resource::new([
-                    KeyValue::new(SERVICE_NAME, env!("CARGO_BIN_NAME")),
-                ])))
-                .install_batch(opentelemetry_sdk::runtime::Tokio)?
-                .tracer(""),
-        ),
-    );
+    let registry = registry.with({
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_resource(
+                Resource::builder()
+                    .with_attributes([KeyValue::new(SERVICE_NAME, env!("CARGO_BIN_NAME"))])
+                    .build(),
+            )
+            .with_batch_exporter(
+                opentelemetry_otlp::SpanExporter::builder()
+                    .with_tonic()
+                    .with_endpoint(&args.collector_endpoint)
+                    .build()?,
+            )
+            .build();
+        tracing_opentelemetry::layer().with_tracer(provider.tracer(""))
+    });
 
     registry.init();
 

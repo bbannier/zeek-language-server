@@ -70,10 +70,10 @@ eyre = { default-features = false, version = "0.6.12", features = ["auto-install
 futures = { default-features = false, version = "0.3.33" }
 itertools = "0.15.0"
 line-index = { version = "0.1.2", default-features = false }
-opentelemetry = { version = "0.26.0", features = ["trace"] }
-opentelemetry-otlp = { version = "0.26.0", features = ["grpc-tonic", "trace"], default-features = false }
-opentelemetry-semantic-conventions = { version = "0.32.1", default-features = false }
-opentelemetry_sdk = { version = "0.26.0", features = ["rt-tokio", "trace"], default-features = false }
+opentelemetry = { version = "0.32.0", features = ["trace"] }
+opentelemetry-otlp = { version = "0.32.0", features = ["grpc-tonic", "trace"], default-features = false }
+opentelemetry-semantic-conventions = { version = "0.32.0", default-features = false }
+opentelemetry_sdk = { version = "0.32.1", features = ["trace"], default-features = false }
 path-clean = "1.0.1"
 rayon = "1.12.0"
 regex = { default-features = false, version = "1.13.1" }
@@ -88,7 +88,7 @@ tokio = { version = "1.53.1", features = ["fs", "io-std", "io-util", "rt-multi-t
 tower-lsp-server = { version = "0.23.0", features = ["runtime-tokio"], default-features = false }
 tracing = { features = ["attributes"], default-features = false, version = "0.1.44" }
 tracing-appender = { version = "0.2.5", default-features = false }
-tracing-opentelemetry = { version = "0.27.0" }
+tracing-opentelemetry = { version = "0.33.0" }
 tracing-subscriber = { version = "0.3.23", features = ["tracing-log", "registry", "std"], default-features = false }
 tree-sitter = "0.26.11"
 tree-sitter-bash = "0.25.1"

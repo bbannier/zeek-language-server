@@ -440,7 +440,7 @@ fn in_export(mut node: Node) -> bool {
 }
 
 #[allow(clippy::missing_panics_doc, clippy::too_many_lines)]
-#[instrument(skip(db, modules))]
+#[instrument(skip(db, source, modules))]
 #[must_use]
 pub fn decls_(
     db: &dyn Db,
@@ -866,7 +866,7 @@ pub fn decls_(
         .collect()
 }
 
-#[instrument]
+#[instrument(skip(source))]
 #[must_use]
 pub fn typ(n: Node, source: &[u8]) -> Option<Type> {
     let typ: Node = n.0.child(0).unwrap_or(n.0).into();
@@ -999,7 +999,7 @@ pub(crate) fn compute_module_id(id: &str) -> ModuleId {
 }
 
 /// Extract declarations for function parameters on the given node.
-#[instrument(skip(db))]
+#[instrument(skip(db, source))]
 pub fn fn_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) -> FxHashSet<Decl> {
     let _ = db;
     match node.kind() {
@@ -1044,7 +1044,7 @@ pub fn fn_param_decls(db: &dyn Db, node: Node, uri: InternedUri, source: &[u8]) 
 }
 
 /// Extract for loop parameters on the given node.
-#[instrument(skip(db))]
+#[instrument(skip(db, source))]
 pub(crate) fn loop_param_decls(
     db: &dyn Db,
     node: Node,
@@ -1148,7 +1148,7 @@ pub(crate) fn loop_param_decls(
         .unwrap_or_default()
 }
 
-#[instrument]
+#[instrument(skip(source))]
 fn loads_raw<'a>(node: Node, source: &'a str) -> Vec<&'a str> {
     static QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         tree_sitter::Query::new(&language_zeek(), "(\"@load\") (file)@file").expect("invalid query")

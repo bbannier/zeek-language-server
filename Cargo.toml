@@ -123,7 +123,8 @@ harness = false
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 unwrap_used = "deny"
-missing_errors_doc = "allow"
 ignored_unit_patterns = "deny"
 clone_on_ref_ptr = "deny"
 redundant_clone = "deny"
+missing_errors_doc = "allow"
+assert_is_empty = "allow"

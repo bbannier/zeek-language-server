@@ -79,8 +79,7 @@ jobs:
       - uses: moonrepo/setup-rust@v1
         with:
           components: clippy,rustfmt
-      - uses: actions/setup-python@v7
-      - uses: pre-commit/action@v3.0.1
+      - uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
 
   vscode:
     name: Build vscode extension

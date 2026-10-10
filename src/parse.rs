@@ -12,6 +12,11 @@ impl Tree {
     pub fn root_node(&self) -> Node<'_> {
         self.0.root_node().into()
     }
+
+    #[must_use]
+    pub fn inner(&self) -> &tree_sitter::Tree {
+        &self.0
+    }
 }
 
 impl PartialEq for Tree {

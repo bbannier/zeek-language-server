@@ -1,5 +1,5 @@
 use rustc_hash::FxHashSet;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use crate::{
     InternedStr, InternedUri, ast,
@@ -13,21 +13,126 @@ use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionParams,
     CompletionResponse, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position,
 };
-use tree_sitter_zeek::KEYWORDS;
+use tree_sitter::Parser;
+use tree_sitter_zeek::{KEYWORDS, language_zeek};
 
-/// Join all source lines up to and including the cursor column into one `\n`-joined string.
-pub(crate) fn source_up_to(source: &str, position: Position) -> String {
-    source
+const COMPLETION_MARKER: &str = "__ZEEK_LANGUAGE_SERVER_COMPLETION__";
+
+fn byte_offset_of(source: &str, position: Position) -> usize {
+    let line_start: usize = source
         .lines()
         .take(position.line as usize)
-        .chain(std::iter::once(
-            source
-                .lines()
-                .nth(position.line as usize)
-                .map_or("", |l| &l[..l.len().min(position.character as usize)]),
+        .map(|l| l.len() + 1)
+        .sum();
+    let line_len = source[line_start..].lines().next().map_or(0, str::len);
+    line_start + (position.character as usize).min(line_len)
+}
+
+/// Extract the text the user is completing from the marker node.
+///
+/// The marker node's text in the patched source contains `COMPLETION_MARKER`
+/// surrounded by whatever the user has typed. We return the non-marker portion.
+fn marker_text<'a>(marker: tree_sitter::Node<'_>, patched: &'a str) -> Option<&'a str> {
+    let full = &patched[marker.start_byte()..marker.end_byte()];
+    let (pre, post) = full.split_once(COMPLETION_MARKER)?;
+    let text = if pre.is_empty() { post } else { pre };
+    (!text.is_empty()).then_some(text)
+}
+
+fn find_ancestor<'a>(
+    node: tree_sitter::Node<'a>,
+    pred: impl Fn(tree_sitter::Node<'a>) -> bool,
+) -> Option<tree_sitter::Node<'a>> {
+    let mut cur = Some(node);
+    while let Some(n) = cur {
+        if pred(n) {
+            return Some(n);
+        }
+        cur = n.parent();
+    }
+    None
+}
+
+/// Check whether the marker is in the name position of a declaration.
+///
+/// For complete declarations (`event_decl`, `func_decl`, `hook_decl`) the marker
+/// must be the `id` child that is the declaration's name. For incomplete
+/// declarations tree-sitter produces an `ERROR` node with the keyword as an
+/// anonymous sibling preceding the marker.
+fn completing_decl_name(marker: tree_sitter::Node<'_>) -> Option<&'static str> {
+    let parent = marker.parent()?;
+
+    // Complete declaration: marker is the name `id` directly under the decl node.
+    if marker.kind() == "id"
+        && parent
+            .named_child(0)
+            .is_some_and(|first| first.id() == marker.id())
+    {
+        match parent.kind() {
+            kind @ ("event_decl" | "func_decl" | "hook_decl") => return Some(kind),
+            "event_hdr" => return Some("event_decl"),
+            _ => {}
+        }
+    }
+
+    // Incomplete declaration: `event name` produces `(ERROR "event" (id))`.
+    // With a line break between keyword and name there may be intervening `nl` nodes.
+    if parent.kind() == "ERROR" {
+        let mut prev = marker.prev_sibling();
+        while prev.is_some_and(|n| n.kind() == "nl") {
+            prev = prev.and_then(|n| n.prev_sibling());
+        }
+        return match prev?.kind() {
+            "event" => Some("event_decl"),
+            "function" => Some("func_decl"),
+            "hook" => Some("hook_decl"),
+            _ => None,
+        };
+    }
+
+    None
+}
+
+/// Return the source text up to (but not including) the cursor position.
+pub(crate) fn source_up_to(source: &str, position: Position) -> &str {
+    &source[..byte_offset_of(source, position)]
+}
+
+enum CompletionKind<'a> {
+    FieldAccess { stem: Node<'a> },
+    Load,
+    DeclName { kind: &'static str },
+    General,
+}
+
+fn classify<'a>(marker: tree_sitter::Node<'_>, root: Node<'a>) -> CompletionKind<'a> {
+    if let Some(fa) = find_ancestor(marker, |n| {
+        matches!(n.kind(), "field_access" | "field_check")
+    }) && let Some(stem) = fa.named_child(0).and_then(|s| {
+        let r = s.range();
+        root.named_descendant_for_point_range(tower_lsp_server::ls_types::Range::new(
+            Position::new(
+                u32::try_from(r.start_point.row).ok()?,
+                u32::try_from(r.start_point.column).ok()?,
+            ),
+            Position::new(
+                u32::try_from(r.end_point.row).ok()?,
+                u32::try_from(r.end_point.column).ok()?,
+            ),
         ))
-        .collect::<Vec<_>>()
-        .join("\n")
+    }) {
+        return CompletionKind::FieldAccess { stem };
+    }
+
+    if find_ancestor(marker, |n| matches!(n.kind(), "file" | "string_directive")).is_some() {
+        return CompletionKind::Load;
+    }
+
+    if let Some(kind) = completing_decl_name(marker) {
+        return CompletionKind::DeclName { kind };
+    }
+
+    CompletionKind::General
 }
 
 #[allow(clippy::too_many_lines)]
@@ -39,169 +144,123 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
     let source = crate::source(state, uri)?;
 
     let tree = crate::parse::parse(state, uri)?;
-
-    // Get the node directly under the cursor as a starting point.
     let root = tree.root_node();
-    let mut node = root.descendant_for_position(position)?;
 
-    let text = completion_text(node, &source, true);
-
-    // If the node has no interesting text try to find an earlier node with text. The same
-    // applies when the node is too broad to be useful (e.g., the root node when the cursor is
-    // past the last token).
-    while node.kind() == "source_file"
-        || node
-            .utf8_text(source.as_bytes())
-            .ok()
-            .map(str::trim)
-            .map(|s| s.replace(['$', '?'], ""))
-            .map_or(0, |s| s.len())
-            == 0
-    {
-        let col = if node.kind() == "source_file" {
-            position.character
-        } else {
-            node.range().start.character
-        };
-        if col == 0 {
-            break;
-        }
-
-        node = match root.descendant_for_position(Position {
-            character: col - 1,
-            ..position
-        }) {
-            Some(n) if n.kind() != "source_file" => n,
-            _ => break,
-        };
-    }
-
-    let mut items = None.or_else(|| {
-        // If we are completing after `$` try to return all fields for client-side filtering.
-        // TODO(bbannier): we should also handle `$` in record initializations.
-
-        let dd_triggered = params
-            .context
-            .and_then(|ctx| ctx.trigger_character)
-            .is_some_and(|c| c == "$");
-
-        let ends_in_dd = root
-            .descendant_for_position(node.range().end)
-            .and_then(|next_node| next_node.utf8_text(source.as_bytes()).ok())
-            .is_some_and(|text| text.ends_with('$'));
-
-        let is_partial = !dd_triggered && !ends_in_dd;
-
-        if dd_triggered
-            || ends_in_dd
-            || node.parent().is_some_and(|p| {
-                matches!(p.kind() , "field_access" | "field_check")
-            }) {
-            complete_field(state, node, uri, is_partial)
-        } else {
-            None
-        }
-    }).or_else(|| {
-        // If we are completing some identifier from a module got to the node containing the full
-        // identifier.
-        while node.utf8_text(source.as_bytes()) == Ok(":") {
-            let p = node.parent()?;
-            node = p;
-        }
-
-        None
-    }).or_else(||
-        // If we are completing a file return valid load patterns.
-        if node.kind() == "file" {
-            Some(crate::ast::possible_loads(state, uri)
-                .iter()
-                .map(|load| CompletionItem {
-                    label: load.to_string(),
-                    kind: Some(CompletionItemKind::FILE),
-                    ..CompletionItem::default()
-                })
-                .collect::<Vec<_>>())
-        } else {
-            None
-        }
-    ).or_else(|| complete_record_initializer(state, node, uri, position)
-    ).or_else(||
-        // If we are completing a function/event/hook definition complete from declarations.
-        if node.kind() == "id" {
-            source
-                .lines()
-                .nth(usize::try_from(node.range().start.line).expect("too many lines"))
-                .and_then(|line| {
-                    static RE: LazyLock<regex::Regex> = LazyLock::new(|| { regex::Regex::new(r"^\s*(\w+)\s+\w*").expect("invalid regexp") });
-                    Some(RE.captures(line)?.get(1)?.as_str())
-                }).map(|kind| complete_from_decls(state, uri, kind))
-        } else {
-            None
-        }
-    ).or_else(||
-        // We are just completing some arbitrary identifier at this point.
-        Some(complete_any(state, node, uri))
+    // Reparse with a marker inserted at the cursor for structural context.
+    let marker_offset = byte_offset_of(&source, position);
+    let patched = format!(
+        "{}{COMPLETION_MARKER}{}",
+        &source[..marker_offset],
+        &source[marker_offset..]
     );
+    let mut edited = tree.inner().clone();
+    let point = tree_sitter::Point::new(position.line as usize, position.character as usize);
+    edited.edit(&tree_sitter::InputEdit {
+        start_byte: marker_offset,
+        old_end_byte: marker_offset,
+        new_end_byte: marker_offset + COMPLETION_MARKER.len(),
+        start_position: point,
+        old_end_position: point,
+        new_end_position: tree_sitter::Point::new(
+            point.row,
+            point.column + COMPLETION_MARKER.len(),
+        ),
+    });
+    let mut parser = Parser::new();
+    parser
+        .set_language(&language_zeek())
+        .expect("cannot set parser language");
+    let marker_tree = parser.parse(patched.as_bytes(), Some(&edited))?;
+    let marker = marker_tree
+        .root_node()
+        .descendant_for_byte_range(marker_offset, marker_offset + COMPLETION_MARKER.len())?;
 
-    // Snippet completions are always added.
-    if let Some(text) = completion_text(node, &source, false) {
-        let snippets = complete_snippet(text);
-        items = items.map(|mut xs| {
-            xs.extend(snippets);
-            xs
-        });
+    // For Salsa queries and completion text we need a node from the original tree.
+    // Walk back from the cursor until we find a token, skipping whitespace and newlines.
+    let node = {
+        let mut col = position.character;
+        loop {
+            let n = root.descendant_for_position(Position {
+                character: col,
+                ..position
+            });
+            match n {
+                Some(n) if !matches!(n.kind(), "source_file" | "nl") => break n,
+                _ if col > 0 => col -= 1,
+                _ => break root,
+            }
+        }
+    };
+
+    let text = marker_text(marker, &patched);
+    let kind = classify(marker, root);
+
+    let mut items: Vec<CompletionItem> = match kind {
+        CompletionKind::FieldAccess { stem } => {
+            complete_field(state, stem, uri).unwrap_or_default()
+        }
+        CompletionKind::Load => crate::ast::possible_loads(state, uri)
+            .iter()
+            .map(|load| CompletionItem {
+                label: load.to_string(),
+                kind: Some(CompletionItemKind::FILE),
+                ..CompletionItem::default()
+            })
+            .collect(),
+        CompletionKind::DeclName { kind } => complete_from_decls(state, uri, kind),
+        CompletionKind::General => complete_record_initializer(state, node, uri, position)
+            .unwrap_or_else(|| complete_any(state, node, uri, text)),
+    };
+
+    if let Some(text) = text {
+        items.extend(complete_snippet(text));
     }
 
-    items
-        .map(|items| {
-            items
-                .into_iter()
-                .filter_map(|i| {
-                    // For each completion item compute a similarity score compare to a possibly
-                    // given input text. We convert to `u64` since `f64` does not implement `Ord`.
-                    // The score is negative so that good matches sort before worse ones.
-                    let score = text.and_then(|t| {
-                        use az::CheckedCast;
-                        (rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t)
-                            * -100_000_000.)
-                            .checked_cast()
-                    });
-                    if score == Some(0) {
-                        // Drop items with no relation to input text.
-                        None
-                    } else {
-                        Some((i, score))
-                    }
-                })
-                // Prioritize items with good match, i.e. lower score.
-                .sorted_by_key(|(_, score)| *score)
-                .map(|(i, _)| i)
-                // For similar completions prefer to return the one with more docs (more likely to
-                // include the full documentation since we always include the source). This prevents us
-                // from emitting completions for implementations if we would also complete the
-                // declaration (likely with docs).
-                //
-                // Items with same kind and label should refer to the same underlying entity.
-                .chunk_by(|i| (i.kind, i.label.clone()))
-                .into_iter()
-                // Select the element with the longest documentation.
-                .map(|(_, x)| x)
-                .filter_map(|items| {
-                    items.max_by_key(|completion_item| {
-                        completion_item
-                            .documentation
-                            .as_ref()
-                            .map_or(0, |d| match d {
-                                Documentation::String(value)
-                                | Documentation::MarkupContent(MarkupContent { value, .. }) => {
-                                    value.len()
-                                }
-                            })
-                    })
-                })
-                .collect::<Vec<_>>()
+    let items = items
+        .into_iter()
+        .filter_map(|i| {
+            // For each completion item compute a similarity score compare to a possibly
+            // given input text. We convert to `u64` since `f64` does not implement `Ord`.
+            // The score is negative so that good matches sort before worse ones.
+            let score = text.and_then(|t| {
+                use az::CheckedCast;
+                (rust_fuzzy_search::fuzzy_compare(&i.label.to_lowercase(), t) * -100_000_000.)
+                    .checked_cast()
+            });
+            if score == Some(0) {
+                // Drop items with no relation to input text.
+                None
+            } else {
+                Some((i, score))
+            }
         })
-        .map(CompletionResponse::from)
+        // Prioritize items with good match, i.e. lower score.
+        .sorted_by_key(|(_, score)| *score)
+        .map(|(i, _)| i)
+        // For similar completions prefer to return the one with more docs (more likely to
+        // include the full documentation since we always include the source). This prevents us
+        // from emitting completions for implementations if we would also complete the
+        // declaration (likely with docs).
+        //
+        // Items with same kind and label should refer to the same underlying entity.
+        .chunk_by(|i| (i.kind, i.label.clone()))
+        .into_iter()
+        // Select the element with the longest documentation.
+        .map(|(_, x)| x)
+        .filter_map(|items| {
+            items.max_by_key(|completion_item| {
+                completion_item
+                    .documentation
+                    .as_ref()
+                    .map_or(0, |d| match d {
+                        Documentation::String(value)
+                        | Documentation::MarkupContent(MarkupContent { value, .. }) => value.len(),
+                    })
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Some(CompletionResponse::from(items))
 }
 
 /// Complete a field after `$` or `?$`
@@ -209,59 +268,34 @@ pub(crate) fn complete(state: &Database, params: CompletionParams) -> Option<Com
 /// # Arguments
 ///
 /// * `state` - global database
-/// * `node` - node to complete
+/// * `stem` - the expression node before `$` (e.g., `foo` in `foo$abc`)
 /// * `uri` - document URI
-/// * `is_partial` - whether the field identifier is already partial present
-fn complete_field(
-    state: &Database,
-    mut node: Node,
-    uri: InternedUri,
-    is_partial: bool,
-) -> Option<Vec<CompletionItem>> {
-    // If we are completing with something after the `$` (e.g., `foo$a`), instead
-    // obtain the stem (`foo`) for resolving.
-    if is_partial {
-        let stem = node
-            .parent()
-            .filter(|p| matches!(p.kind(), "field_access" | "field_check"))
-            .and_then(|p| p.named_child("expr"));
+fn complete_field(state: &Database, stem: Node, uri: InternedUri) -> Option<Vec<CompletionItem>> {
+    let r = crate::ast::resolve(state, NodeLocation::from_node(uri, stem))?;
+    let decl = crate::ast::typ(state, r).and_then(|d| match &d.kind {
+        // If the decl refers to a field get the decl for underlying its type instead.
+        DeclKind::Field(_) => crate::ast::typ(state, d),
+        _ => Some(d),
+    })?;
+    let DeclKind::Type(fields) = &decl.kind else {
+        return None;
+    };
 
-        // If we have a stem, perform any resolving with it; else use the original node.
-        node = stem.unwrap_or(node);
-    }
-
-    if let Some(r) = crate::ast::resolve(state, NodeLocation::from_node(uri, node)) {
-        let decl = crate::ast::typ(state, r).and_then(|d| match &d.kind {
-            // If the decl refers to a field get the decl for underlying its type instead.
-            DeclKind::Field(_) => crate::ast::typ(state, d),
-            _ => Some(d),
-        });
-
-        // Compute completion.
-        if let Some(decl) = decl
-            && let DeclKind::Type(fields) = &decl.kind
-        {
-            return Some(
-                fields
-                    .iter()
-                    .map(to_completion_item)
-                    .filter_map(|item| {
-                        // By default we use FQIDs for completion labels. Since for
-                        // record fields this would be e.g., `mod::rec::field` where we
-                        // want just `field`, rework them slightly.
-                        let label = item.label.split("::").last()?.to_string();
-                        Some(CompletionItem { label, ..item })
-                    })
-                    .collect::<Vec<_>>(),
-            );
-        }
-    }
-
-    None
+    Some(
+        fields
+            .iter()
+            .map(to_completion_item)
+            .filter_map(|item| {
+                // Record field FQIDs are e.g. `mod::rec::field`; we want just `field`.
+                let label = item.label.split("::").last()?.to_string();
+                Some(CompletionItem { label, ..item })
+            })
+            .collect(),
+    )
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn complete_from_decls(state: &Database, uri: InternedUri, kind: &str) -> Vec<CompletionItem> {
+fn complete_from_decls(state: &Database, uri: InternedUri, node_kind: &str) -> Vec<CompletionItem> {
     let implicit_decls = crate::ast::implicit_decls(state);
     let explicit_decls_recursive = crate::ast::explicit_decls_recursive(state, uri);
 
@@ -270,9 +304,9 @@ fn complete_from_decls(state: &Database, uri: InternedUri, kind: &str) -> Vec<Co
         .chain(implicit_decls.iter())
         .chain(explicit_decls_recursive.iter())
         .filter(|d| match &d.kind {
-            DeclKind::EventDecl(_) => kind == "event",
-            DeclKind::FuncDecl(_) => kind == "function",
-            DeclKind::HookDecl(_) => kind == "hook",
+            DeclKind::EventDecl(_) => node_kind == "event_decl",
+            DeclKind::FuncDecl(_) => node_kind == "func_decl",
+            DeclKind::HookDecl(_) => node_kind == "hook_decl",
             _ => false,
         })
         .unique()
@@ -552,17 +586,16 @@ fn complete_record_initializer(
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn complete_any(state: &Database, node: Node, uri: InternedUri) -> Vec<CompletionItem> {
-    let Some(source) = crate::source(state, uri) else {
-        return Vec::new();
-    };
-
+fn complete_any(
+    state: &Database,
+    node: Node,
+    uri: InternedUri,
+    text_at_completion: Option<&str>,
+) -> Vec<CompletionItem> {
     let mut items = FxHashSet::default();
 
     let graph = crate::scope::scope_graph(state, uri);
     let current_module = graph.module_at(node.range().start);
-
-    let text_at_completion = completion_text(node, &source, true);
 
     for d in graph.all_local_decls(node.range().start) {
         // Strip the current module prefix from fqids so completions show short names.
@@ -685,23 +718,6 @@ fn to_completion_item_kind(kind: &DeclKind) -> CompletionItemKind {
         DeclKind::EnumMember => CompletionItemKind::ENUM_MEMBER,
         DeclKind::Module => CompletionItemKind::MODULE,
         DeclKind::Builtin(_) => CompletionItemKind::KEYWORD,
-    }
-}
-
-fn completion_text<'a>(node: Node, source: &'a str, reject_top_level: bool) -> Option<&'a str> {
-    if reject_top_level && node.kind() == "source_file" {
-        return None;
-    }
-
-    let text = node.utf8_text(source.as_bytes()).ok()?;
-    // This shouldn't happen; if we cannot get the node text there is some UTF-8 error.
-    let text = text.lines().next().map(str::trim)?;
-    // Nodes that contain only `$`/`?` carry no meaningful completion text.
-    let stripped = text.replace(['$', '?'], "");
-    if stripped.is_empty() {
-        None
-    } else {
-        Some(text)
     }
 }
 

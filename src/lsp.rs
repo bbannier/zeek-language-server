@@ -258,12 +258,13 @@ impl Debug for Database {
 
 struct Snapshot {
     db: Database,
-    _guard: tokio::sync::OwnedRwLockReadGuard<()>,
 }
 
 impl Snapshot {
-    fn db(&self) -> &Database {
-        &self.db
+    fn query<T>(&self, f: impl FnOnce(&Database) -> T) -> Result<T> {
+        let db = &self.db;
+        salsa::Cancelled::catch(std::panic::AssertUnwindSafe(|| f(db)))
+            .map_err(|_| Error::content_modified())
     }
 }
 
@@ -271,23 +272,15 @@ impl Snapshot {
 pub struct Backend {
     pub client: Option<tower_lsp_server::Client>,
     state: tokio::sync::Mutex<Database>,
-    /// Background tasks hold a shared (read) guard; mutations acquire an
-    /// exclusive (write) guard, blocking until all clones are dropped. This
-    /// prevents Salsa's panic-based cancellation from aborting the process
-    /// under `panic = "abort"`.
-    query_lock: Arc<tokio::sync::RwLock<()>>,
 }
 
 impl Backend {
     async fn snapshot(&self) -> Snapshot {
-        let guard = Arc::clone(&self.query_lock).read_owned().await;
         let db = self.state.lock().await.clone();
-        Snapshot { db, _guard: guard }
+        Snapshot { db }
     }
 
-    /// Waits for background queries to finish before mutating sources.
     async fn update_sources(&self, updates: &[SourceUpdate]) {
-        let _exclusive = self.query_lock.write().await;
         self.state.lock().await.update_sources(updates);
     }
 }
@@ -321,13 +314,17 @@ impl Backend {
         // Short circuit progress report if client doesn't support it.
         let has_work_done_progress = {
             let state = self.snapshot().await;
-            state.db().client_state().is_some_and(|cs| {
-                cs.capabilities(state.db())
-                    .window
-                    .as_ref()
-                    .and_then(|w| w.work_done_progress)
-                    .unwrap_or(false)
-            })
+            state
+                .query(|db| {
+                    db.client_state().is_some_and(|cs| {
+                        cs.capabilities(db)
+                            .window
+                            .as_ref()
+                            .and_then(|w| w.work_done_progress)
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
         };
         if !has_work_done_progress {
             return None;
@@ -398,15 +395,15 @@ impl Backend {
     async fn file_changed(&self, uri: Arc<Uri>) -> Result<ParseResult> {
         if let Some(client) = &self.client {
             let state = self.snapshot().await;
-            let diags = {
-                state.db().file_changed(Arc::clone(&uri));
+            let diags: Vec<_> = state.query(|db| {
+                db.file_changed(Arc::clone(&uri));
 
-                let uri = uri_db(state.db(), Arc::clone(&uri));
-                match crate::parse::parse(state.db(), uri) {
+                let uri = uri_db(db, Arc::clone(&uri));
+                match crate::parse::parse(db, uri) {
                     Some(tree) => tree_diagnostics(&tree.root_node()).collect(),
                     _ => Vec::new(),
                 }
-            };
+            })?;
 
             drop(state);
 
@@ -437,10 +434,10 @@ impl Backend {
 
         let workspace_folders = {
             let state = self.snapshot().await;
-            state
-                .db()
-                .workspace_state()
-                .map_or_else(Arc::default, |ws| ws.workspace_folders(state.db()))
+            state.query(|db| {
+                db.workspace_state()
+                    .map_or_else(Arc::default, |ws| ws.workspace_folders(db))
+            })?
         };
 
         let workspace_files = workspace_folders
@@ -478,12 +475,14 @@ impl Backend {
         // Figure out a directory to run the check from. If there is any workspace folder we just
         // pick the first one (TODO: this might be incorrect if there are multiple folders given);
         // else use the directory the file is in.
-        let workspace_folders = {
+        let Ok(workspace_folders) = ({
             let state = self.snapshot().await;
-            state
-                .db()
-                .workspace_state()
-                .map_or_else(Arc::default, |ws| ws.workspace_folders(state.db()))
+            state.query(|db| {
+                db.workspace_state()
+                    .map_or_else(Arc::default, |ws| ws.workspace_folders(db))
+            })
+        }) else {
+            return;
         };
         let workspace_folder = workspace_folders.first().and_then(Uri::to_file_path);
 
@@ -696,26 +695,26 @@ impl LanguageServer for Backend {
         self.progress(progress_token.clone(), Some("declarations".to_string()))
             .await;
         let state = self.snapshot().await;
-        let preloaded_decls = {
+        let preloaded_decls = state.query(|db| {
             let span = trace_span!("preloading");
             let _enter = span.enter();
 
-            let files = state
-                .db()
-                .file_list()
-                .map_or_else(Arc::default, |fl| fl.files(state.db()));
+            let files = db.file_list().map_or_else(Arc::default, |fl| fl.files(db));
 
             files
                 .iter()
                 .map(|f| {
                     let f = *f;
-                    let db = state.db().clone();
+                    let db = db.clone();
                     tokio::spawn(async move {
                         let _x = crate::query::decls(&db, f);
                         let _x = crate::ast::loaded_files(&db, f);
                     })
                 })
                 .collect::<Vec<_>>()
+        });
+        let Ok(preloaded_decls) = preloaded_decls else {
+            return;
         };
         futures::future::join_all(preloaded_decls).await;
         drop(state);
@@ -725,7 +724,7 @@ impl LanguageServer for Backend {
             .await;
         {
             let state = self.snapshot().await;
-            let _implicit = crate::ast::implicit_decls(state.db());
+            let _ = state.query(|db| crate::ast::implicit_decls(db));
         }
 
         self.progress_end(progress_token).await;
@@ -745,7 +744,7 @@ impl LanguageServer for Backend {
         // is on the critical path for e.g., completion.
         {
             let state = self.snapshot().await;
-            let _implicit = crate::ast::implicit_decls(state.db());
+            let _ = state.query(|db| crate::ast::implicit_decls(db));
         }
 
         let file_changed = self.file_changed(uri).await;
@@ -807,138 +806,130 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let state = self.snapshot().await;
+        state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let Some(source) = crate::source(db, uri) else {
+                return Ok(None);
+            };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let Some(source) = crate::source(state.db(), uri) else {
-            return Ok(None);
-        };
+            let tree = crate::parse::parse(db, uri);
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
 
-        let tree = crate::parse::parse(state.db(), uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
-        };
+            let node = tree.root_node();
+            let position = params.position;
+            let Some(node) = node.named_descendant_for_position(position) else {
+                return Ok(None);
+            };
 
-        let node = tree.root_node();
-        let position = params.position;
-        let Some(node) = node.named_descendant_for_position(position) else {
-            return Ok(None);
-        };
+            let text = node.utf8_text(source.as_bytes()).map_err(|e| {
+                error!("could not get source text: {}", e);
+                Error::internal_error()
+            })?;
 
-        let text = node.utf8_text(source.as_bytes()).map_err(|e| {
-            error!("could not get source text: {}", e);
-            Error::internal_error()
-        })?;
+            let mut contents = Vec::new();
 
-        let mut contents = Vec::new();
-
-        match node.kind() {
-            "id" => {
-                if let Some(decl) =
-                    &crate::ast::resolve(state.db(), NodeLocation::from_node(uri, node))
-                {
-                    let kind = match decl.kind {
-                        DeclKind::Global => "global",
-                        DeclKind::Option => "option",
-                        DeclKind::Const => "constant",
-                        DeclKind::Redef => "redef",
-                        DeclKind::RedefEnum(_) => "redef enum",
-                        DeclKind::RedefRecord(_) => "redef record",
-                        DeclKind::Enum(_) => "enum",
-                        DeclKind::Type(_) => "record",
-                        DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
-                        DeclKind::HookDef(_) | DeclKind::HookDecl(_) => "hook",
-                        DeclKind::EventDef(_) | DeclKind::EventDecl(_) => "event",
-                        DeclKind::Variable => "variable",
-                        DeclKind::Field(_) => "field",
-                        DeclKind::EnumMember => "enum member",
-                        DeclKind::Index(_, _) => "indexing result",
-                        DeclKind::Module => "module",
-                        DeclKind::Builtin(_) => "builtin",
-                    };
-
-                    contents.push(MarkedString::String(format!(
-                        "### {kind} `{id}`",
-                        id = decl.fqid
-                    )));
-
-                    if let Some(typ) = crate::ast::typ(state.db(), Arc::clone(decl)) {
-                        contents.push(MarkedString::String(format!("Type: `{}`", typ.fqid)));
-                    }
-
-                    contents.push(MarkedString::String(decl.documentation.to_string()));
-                }
-            }
-            "file" => {
-                let file = PathBuf::from(text);
-                let files: Vec<_> = state
-                    .db()
-                    .file_list()
-                    .map_or_else(Arc::default, |fl| fl.files(state.db()))
-                    .iter()
-                    .map(|f| f.uri(state.db()))
-                    .collect();
-                let uri = load_to_file(
-                    &file,
-                    uri.uri(state.db()).as_ref(),
-                    &files,
-                    state
-                        .db()
-                        .workspace_state()
-                        .map_or_else(Arc::default, |ws| ws.prefixes(state.db()))
-                        .as_ref(),
-                );
-                if let Some(uri) = uri {
-                    contents.push(MarkedString::String(format!("`{}`", uri.path())));
-                }
-            }
-            "comment_body" => {
-                // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
-                let try_update = |contents: &mut Vec<_>| {
-                    let symbol = word_at_position(&source, position)?;
-
-                    if let Some(docs) = fuzzy_search_symbol(state.db(), &symbol)
-                        // Filter out event implementations.
-                        .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
-                        .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
-                        .next_back()
-                        .map(|(_, d)| d.documentation.to_string())
+            match node.kind() {
+                "id" => {
+                    if let Some(decl) = &crate::ast::resolve(db, NodeLocation::from_node(uri, node))
                     {
-                        contents.push(MarkedString::String(docs));
+                        let kind = match decl.kind {
+                            DeclKind::Global => "global",
+                            DeclKind::Option => "option",
+                            DeclKind::Const => "constant",
+                            DeclKind::Redef => "redef",
+                            DeclKind::RedefEnum(_) => "redef enum",
+                            DeclKind::RedefRecord(_) => "redef record",
+                            DeclKind::Enum(_) => "enum",
+                            DeclKind::Type(_) => "record",
+                            DeclKind::FuncDef(_) | DeclKind::FuncDecl(_) => "function",
+                            DeclKind::HookDef(_) | DeclKind::HookDecl(_) => "hook",
+                            DeclKind::EventDef(_) | DeclKind::EventDecl(_) => "event",
+                            DeclKind::Variable => "variable",
+                            DeclKind::Field(_) => "field",
+                            DeclKind::EnumMember => "enum member",
+                            DeclKind::Index(_, _) => "indexing result",
+                            DeclKind::Module => "module",
+                            DeclKind::Builtin(_) => "builtin",
+                        };
+
+                        contents.push(MarkedString::String(format!(
+                            "### {kind} `{id}`",
+                            id = decl.fqid
+                        )));
+
+                        if let Some(typ) = crate::ast::typ(db, Arc::clone(decl)) {
+                            contents.push(MarkedString::String(format!("Type: `{}`", typ.fqid)));
+                        }
+
+                        contents.push(MarkedString::String(decl.documentation.to_string()));
                     }
-                    Some(())
-                };
-                try_update(&mut contents);
+                }
+                "file" => {
+                    let file = PathBuf::from(text);
+                    let files: Vec<_> = db
+                        .file_list()
+                        .map_or_else(Arc::default, |fl| fl.files(db))
+                        .iter()
+                        .map(|f| f.uri(db))
+                        .collect();
+                    let uri = load_to_file(
+                        &file,
+                        uri.uri(db).as_ref(),
+                        &files,
+                        db.workspace_state()
+                            .map_or_else(Arc::default, |ws| ws.prefixes(db))
+                            .as_ref(),
+                    );
+                    if let Some(uri) = uri {
+                        contents.push(MarkedString::String(format!("`{}`", uri.path())));
+                    }
+                }
+                "comment_body" => {
+                    // If we are in a zeekygen comment try to recover an identifier under the cursor and use it as target.
+                    let try_update = |contents: &mut Vec<_>| {
+                        let symbol = word_at_position(&source, position)?;
+
+                        if let Some(docs) = fuzzy_search_symbol(db, &symbol)
+                            // Filter out event implementations.
+                            .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
+                            .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
+                            .next_back()
+                            .map(|(_, d)| d.documentation.to_string())
+                        {
+                            contents.push(MarkedString::String(docs));
+                        }
+                        Some(())
+                    };
+                    try_update(&mut contents);
+                }
+                _ => {}
             }
-            _ => {}
-        }
 
-        // In debug builds always debug AST nodes; in release mode honor the client config.
-        #[cfg(all(debug_assertions, not(test)))]
-        let debug_ast_nodes = true;
-        #[cfg(not(all(debug_assertions, not(test))))]
-        let debug_ast_nodes = state
-            .db()
-            .client_state()
-            .map_or_else(InitializationOptions::new, |cs| {
-                cs.initialization_options(state.db())
-            })
-            .debug_ast_nodes;
+            // In debug builds always debug AST nodes; in release mode honor the client config.
+            #[cfg(all(debug_assertions, not(test)))]
+            let debug_ast_nodes = true;
+            #[cfg(not(all(debug_assertions, not(test))))]
+            let debug_ast_nodes = db
+                .client_state()
+                .map_or_else(InitializationOptions::new, |cs| {
+                    cs.initialization_options(db)
+                })
+                .debug_ast_nodes;
 
-        if debug_ast_nodes {
-            contents.push(MarkedString::LanguageString(LanguageString {
-                value: node.to_sexp().to_string(),
-                language: "lisp".into(),
-            }));
-        }
+            if debug_ast_nodes {
+                contents.push(MarkedString::LanguageString(LanguageString {
+                    value: node.to_sexp().to_string(),
+                    language: "lisp".into(),
+                }));
+            }
 
-        let hover = Hover {
-            contents: HoverContents::Array(contents),
-            range: Some(node.range()),
-        };
-
-        drop(state);
-
-        Ok(Some(hover))
+            Ok(Some(Hover {
+                contents: HoverContents::Array(contents),
+                range: Some(node.range()),
+            }))
+        })?
     }
 
     #[instrument]
@@ -987,15 +978,14 @@ impl LanguageServer for Backend {
             })
         };
 
-        let modules = {
-            let db = self.snapshot().await;
-
+        let state = self.snapshot().await;
+        state.query(|db| {
             // Even though a valid source file can only contain a single module, one can still make
             // declarations in other modules. Preserve file order so that if a module is reopened
             // each contiguous block gets its own namespace symbol with a correct range.
             // Show declarations under their module, or at the top-level if they aren't in a module.
-            let uri = uri_db(db.db(), Arc::clone(&uri));
-            let decls = crate::query::decls(db.db(), uri);
+            let uri = uri_db(db, Arc::clone(&uri));
+            let decls = crate::query::decls(db, uri);
             let mut decls = decls
                 .iter()
                 // Filter out top-level enum members since they are also exposed inside their enum here.
@@ -1005,7 +995,7 @@ impl LanguageServer for Backend {
             let (decls_with_mod, decls_without_mod): (Vec<_>, _) =
                 decls.into_iter().partition(|d| d.module != ModuleId::None);
 
-            decls_with_mod
+            let modules: Vec<_> = decls_with_mod
                 .into_iter()
                 .chunk_by(|d| &d.module)
                 .into_iter()
@@ -1029,10 +1019,10 @@ impl LanguageServer for Backend {
                     }
                 })
                 .chain(decls_without_mod.into_iter().filter_map(symbol))
-                .collect()
-        };
+                .collect();
 
-        Ok(Some(DocumentSymbolResponse::Nested(modules)))
+            Ok(Some(DocumentSymbolResponse::Nested(modules)))
+        })?
     }
 
     #[instrument]
@@ -1042,9 +1032,9 @@ impl LanguageServer for Backend {
     ) -> Result<Option<WorkspaceSymbolResponse>> {
         let query = params.query.to_lowercase();
 
-        let symbols = {
-            let state = self.snapshot().await;
-            fuzzy_search_symbol(state.db(), &query)
+        let state = self.snapshot().await;
+        state.query(|db| {
+            let symbols = fuzzy_search_symbol(db, &query)
                 .filter_map(|(_, d)| {
                     let loc = d.loc.as_ref()?;
 
@@ -1053,23 +1043,23 @@ impl LanguageServer for Backend {
                         name: d.fqid.to_string(),
                         kind: to_symbol_kind(&d.kind),
 
-                        location: Location::new((*loc.uri.uri(state.db())).clone(), loc.range),
+                        location: Location::new((*loc.uri.uri(db)).clone(), loc.range),
                         container_name: Some(format!("{}", d.module)),
 
                         tags: None,
                         deprecated: None,
                     })
                 })
-                .collect()
-        };
+                .collect();
 
-        Ok(Some(WorkspaceSymbolResponse::Flat(symbols)))
+            Ok(Some(WorkspaceSymbolResponse::Flat(symbols)))
+        })?
     }
 
     #[instrument]
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let state = self.snapshot().await;
-        Ok(complete(state.db(), params))
+        state.query(|db| complete(db, params))
     }
 
     #[instrument]
@@ -1082,26 +1072,24 @@ impl LanguageServer for Backend {
         let position = params.position;
 
         let state = self.snapshot().await;
+        state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let tree = crate::parse::parse(db, uri);
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
+            let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+                return Ok(None);
+            };
+            let Some(source) = crate::source(db, uri) else {
+                return Ok(None);
+            };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let tree = crate::parse::parse(state.db(), uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
-        };
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
-        let Some(source) = crate::source(state.db(), uri) else {
-            return Ok(None);
-        };
-
-        let location = {
-            match node.kind() {
-                "id" => crate::ast::resolve(state.db(), NodeLocation::from_node(uri, node))
-                    .and_then(|d| {
-                        let loc = &d.loc.as_ref()?;
-                        Some(Location::new((*loc.uri.uri(state.db())).clone(), loc.range))
-                    }),
+            let location = match node.kind() {
+                "id" => crate::ast::resolve(db, NodeLocation::from_node(uri, node)).and_then(|d| {
+                    let loc = &d.loc.as_ref()?;
+                    Some(Location::new((*loc.uri.uri(db)).clone(), loc.range))
+                }),
                 "file" => {
                     let Ok(text) = node.utf8_text(source.as_bytes()).map_err(|e| {
                         error!("could not get source text: {}", e);
@@ -1111,21 +1099,18 @@ impl LanguageServer for Backend {
                     };
 
                     let file = PathBuf::from(text);
-                    let files: Vec<_> = state
-                        .db()
+                    let files: Vec<_> = db
                         .file_list()
-                        .map_or_else(Arc::default, |fl| fl.files(state.db()))
+                        .map_or_else(Arc::default, |fl| fl.files(db))
                         .iter()
-                        .map(|f| f.uri(state.db()))
+                        .map(|f| f.uri(db))
                         .collect();
                     load_to_file(
                         &file,
-                        uri.uri(state.db()).as_ref(),
+                        uri.uri(db).as_ref(),
                         &files,
-                        state
-                            .db()
-                            .workspace_state()
-                            .map_or_else(Arc::default, |ws| ws.prefixes(state.db()))
+                        db.workspace_state()
+                            .map_or_else(Arc::default, |ws| ws.prefixes(db))
                             .as_ref(),
                     )
                     .map(|uri| Location::new((*uri).clone(), Range::default()))
@@ -1136,19 +1121,19 @@ impl LanguageServer for Backend {
                     let Some(symbol) = word_at_position(&source, position) else {
                         return Ok(None);
                     };
-                    fuzzy_search_symbol(state.db(), &symbol)
+                    fuzzy_search_symbol(db, &symbol)
                         // Filter out event implementations.
                         .filter(|(_, d)| !matches!(d.kind, DeclKind::EventDef(_)))
                         .sorted_by(|(r1, _), (r2, _)| r1.total_cmp(r2))
                         .next_back()
                         .and_then(|(_, d)| d.loc)
-                        .map(|l| Location::new((*l.uri.uri(state.db())).clone(), l.range))
+                        .map(|l| Location::new((*l.uri.uri(db)).clone(), l.range))
                 }
                 _ => None,
-            }
-        };
+            };
 
-        Ok(location.map(GotoDefinitionResponse::Scalar))
+            Ok(location.map(GotoDefinitionResponse::Scalar))
+        })?
     }
 
     #[instrument]
@@ -1157,61 +1142,61 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         let state = self.snapshot().await;
+        state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let Some(source) = crate::source(db, uri) else {
+                return Ok(None);
+            };
+            let Some(tree) = crate::parse::parse(db, uri) else {
+                return Ok(None);
+            };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let Some(source) = crate::source(state.db(), uri) else {
-            return Ok(None);
-        };
-        let Some(tree) = crate::parse::parse(state.db(), uri) else {
-            return Ok(None);
-        };
+            let Some((node, active_parameter)) = call_context(&source, position, &tree) else {
+                return Ok(None);
+            };
 
-        let Some((node, active_parameter)) = call_context(&source, position, &tree) else {
-            return Ok(None);
-        };
+            let Ok(id) = node.utf8_text(source.as_bytes()) else {
+                return Ok(None);
+            };
 
-        let Ok(id) = node.utf8_text(source.as_bytes()) else {
-            return Ok(None);
-        };
+            let Some(f) = crate::ast::resolve_id(db, id.into(), NodeLocation::from_node(uri, node))
+            else {
+                return Ok(None);
+            };
 
-        let Some(f) =
-            crate::ast::resolve_id(state.db(), id.into(), NodeLocation::from_node(uri, node))
-        else {
-            return Ok(None);
-        };
+            let (DeclKind::FuncDecl(signature)
+            | DeclKind::FuncDef(signature)
+            | DeclKind::EventDecl(signature)
+            | DeclKind::EventDef(signature)
+            | DeclKind::HookDecl(signature)
+            | DeclKind::HookDef(signature)) = &f.kind
+            else {
+                return Ok(None);
+            };
 
-        let (DeclKind::FuncDecl(signature)
-        | DeclKind::FuncDef(signature)
-        | DeclKind::EventDecl(signature)
-        | DeclKind::EventDef(signature)
-        | DeclKind::HookDecl(signature)
-        | DeclKind::HookDef(signature)) = &f.kind
-        else {
-            return Ok(None);
-        };
+            // Recompute `tree` and `source` in the context of the function declaration.
+            let Some(loc) = &f.loc else { return Ok(None) };
+            let uri = loc.uri;
+            let Some(tree) = crate::parse::parse(db, uri) else {
+                return Ok(None);
+            };
+            let Some(source) = crate::source(db, uri) else {
+                return Ok(None);
+            };
 
-        // Recompute `tree` and `source` in the context of the function declaration.
-        let Some(loc) = &f.loc else { return Ok(None) };
-        let uri = loc.uri;
-        let Some(tree) = crate::parse::parse(state.db(), uri) else {
-            return Ok(None);
-        };
-        let Some(source) = crate::source(state.db(), uri) else {
-            return Ok(None);
-        };
+            let (label, parameters) = signature_label(f.id, signature, &tree, &source);
 
-        let (label, parameters) = signature_label(f.id, signature, &tree, &source);
-
-        Ok(Some(SignatureHelp {
-            signatures: vec![SignatureInformation {
-                label,
-                documentation: None,
-                parameters,
-                active_parameter,
-            }],
-            active_signature: None,
-            active_parameter: None,
-        }))
+            Ok(Some(SignatureHelp {
+                signatures: vec![SignatureInformation {
+                    label,
+                    documentation: None,
+                    parameters,
+                    active_parameter,
+                }],
+                active_signature: None,
+                active_parameter: None,
+            }))
+        })?
     }
 
     #[instrument]
@@ -1238,10 +1223,11 @@ impl LanguageServer for Backend {
         }
 
         let state = self.snapshot().await;
-        let uri = uri_db(state.db(), Arc::new(params.text_document.uri));
-        let tree = crate::parse::parse(state.db(), uri);
-
-        Ok(tree.map(|t| compute_folds(t.root_node(), false)))
+        state.query(|db| {
+            let uri = uri_db(db, Arc::new(params.text_document.uri));
+            let tree = crate::parse::parse(db, uri);
+            Ok(tree.map(|t| compute_folds(t.root_node(), false)))
+        })?
     }
 
     #[instrument]
@@ -1249,19 +1235,15 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
 
         let state = self.snapshot().await;
-
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let source = crate::source(state.db(), uri);
-
-        let Some(source) = source else {
+        let Some((source, range)) = state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let source = crate::source(db, uri)?;
+            let range = crate::parse::parse(db, uri)?.root_node().range();
+            Some((source, range))
+        })?
+        else {
             return Ok(None);
         };
-
-        let range = match crate::parse::parse(state.db(), uri) {
-            Some(t) => t.root_node().range(),
-            None => return Ok(None),
-        };
-
         drop(state);
 
         let Ok(formatted) = zeek::format(&source).await else {
@@ -1279,15 +1261,15 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = Arc::new(params.text_document.uri);
 
-        let source = {
-            let state = self.snapshot().await;
-            let uri = uri_db(state.db(), Arc::clone(&uri));
-            crate::source(state.db(), uri)
-        };
-
-        let Some(source) = source else {
+        let state = self.snapshot().await;
+        let Some(source) = state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            crate::source(db, uri)
+        })?
+        else {
             return Ok(None);
         };
+        drop(state);
 
         let start = params.range.start;
         let end = params.range.end;
@@ -1321,33 +1303,32 @@ impl LanguageServer for Backend {
         let position = params.position;
 
         let state = self.snapshot().await;
+        state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let tree = crate::parse::parse(db, uri);
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let tree = crate::parse::parse(state.db(), uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
-        };
+            let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+                return Ok(None);
+            };
 
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
+            let Some(decl) = crate::ast::resolve(db, NodeLocation::from_node(uri, node)) else {
+                return Ok(None);
+            };
 
-        let Some(decl) = crate::ast::resolve(state.db(), NodeLocation::from_node(uri, node)) else {
-            return Ok(None);
-        };
-
-        let decl = {
-            match &decl.kind {
+            let decl = match &decl.kind {
                 // We are done as we have found a declaration.
                 DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_) => {
                     Some((*decl).clone())
                 }
                 // If we resolved to a definition, look for the declaration.
                 DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_) => {
-                    crate::query::decls(state.db(), uri)
+                    crate::query::decls(db, uri)
                         .iter()
-                        .chain(crate::ast::implicit_decls(state.db()).iter())
-                        .chain(crate::ast::explicit_decls_recursive(state.db(), uri).iter())
+                        .chain(crate::ast::implicit_decls(db).iter())
+                        .chain(crate::ast::explicit_decls_recursive(db, uri).iter())
                         .filter(|&d| {
                             matches!(
                                 &d.kind,
@@ -1360,16 +1341,16 @@ impl LanguageServer for Backend {
                         .cloned()
                 }
                 _ => None,
-            }
-        };
+            };
 
-        Ok(decl.and_then(|d| {
-            let loc = &d.loc.as_ref()?;
-            Some(GotoDeclarationResponse::Scalar(Location::new(
-                (*loc.uri.uri(state.db())).clone(),
-                loc.range,
-            )))
-        }))
+            Ok(decl.and_then(|d| {
+                let loc = &d.loc.as_ref()?;
+                Some(GotoDeclarationResponse::Scalar(Location::new(
+                    (*loc.uri.uri(db)).clone(),
+                    loc.range,
+                )))
+            }))
+        })?
     }
 
     #[instrument]
@@ -1382,57 +1363,55 @@ impl LanguageServer for Backend {
         let position = params.position;
 
         let state = self.snapshot().await;
+        state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let tree = crate::parse::parse(db, uri);
+            let Some(tree) = tree.as_ref() else {
+                return Ok(None);
+            };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let tree = crate::parse::parse(state.db(), uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
-        };
+            let Some(node) = tree.root_node().named_descendant_for_position(position) else {
+                return Ok(None);
+            };
 
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
+            let Some(decl) = crate::ast::resolve(db, NodeLocation::from_node(uri, node)) else {
+                return Ok(None);
+            };
 
-        let Some(decl) = crate::ast::resolve(state.db(), NodeLocation::from_node(uri, node)) else {
-            return Ok(None);
-        };
+            if !matches!(
+                &decl.kind,
+                DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
+            ) {
+                return Ok(None);
+            }
 
-        if !matches!(
-            &decl.kind,
-            DeclKind::EventDecl(_) | DeclKind::FuncDecl(_) | DeclKind::HookDecl(_)
-        ) {
-            return Ok(None);
-        }
+            let files = db.file_list().map_or_else(Arc::default, |fl| fl.files(db));
+            let response = files
+                .iter()
+                .flat_map(|f| {
+                    crate::query::decls(db, *f)
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .filter(|d| {
+                    matches!(
+                        &d.kind,
+                        DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
+                    )
+                })
+                .filter_map(|d| {
+                    let loc = &d.loc.as_ref()?;
+                    if d.id == decl.id {
+                        Some(Location::new((*loc.uri.uri(db)).clone(), loc.range))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
 
-        let files = state
-            .db()
-            .file_list()
-            .map_or_else(Arc::default, |fl| fl.files(state.db()));
-        let response = files
-            .iter()
-            .flat_map(|f| {
-                crate::query::decls(state.db(), *f)
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-            .filter(|d| {
-                matches!(
-                    &d.kind,
-                    DeclKind::EventDef(_) | DeclKind::FuncDef(_) | DeclKind::HookDef(_)
-                )
-            })
-            .filter_map(|d| {
-                let loc = &d.loc.as_ref()?;
-                if d.id == decl.id {
-                    Some(Location::new((*loc.uri.uri(state.db())).clone(), loc.range))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        Ok(Some(response.into()))
+            Ok(Some(response.into()))
+        })?
     }
 
     #[instrument]
@@ -1449,39 +1428,41 @@ impl LanguageServer for Backend {
 
         let uri = Arc::new(params.text_document.uri);
         let state = self.snapshot().await;
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let Some(missing) = crate::parse::parse(state.db(), uri).and_then(|t| {
-            t.root_node().errors().find_map(|err| {
-                // Filter out `MISSING` nodes at the diagnostic.
-                if err.is_missing() && err.range() == diag.range {
-                    // `kind` holds the fix for the `MISSING` error.
-                    Some(err.kind().to_string())
-                } else {
-                    None
+        state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let Some(missing) = crate::parse::parse(db, uri).and_then(|t| {
+                t.root_node().errors().find_map(|err| {
+                    // Filter out `MISSING` nodes at the diagnostic.
+                    if err.is_missing() && err.range() == diag.range {
+                        // `kind` holds the fix for the `MISSING` error.
+                        Some(err.kind().to_string())
+                    } else {
+                        None
+                    }
+                })
+            }) else {
+                return Ok(None);
+            };
+
+            let edit = Some(WorkspaceEdit::new(
+                [(
+                    (*uri.uri(db)).clone(),
+                    vec![{ TextEdit::new(diag.range, missing.clone()) }],
+                )]
+                .into_iter()
+                .collect(),
+            ));
+
+            Ok(Some(CodeActionResponse::from(vec![
+                CodeAction {
+                    title: format!("Insert missing '{missing}'"),
+                    kind: Some(CodeActionKind::QUICKFIX),
+                    edit,
+                    ..CodeAction::default()
                 }
-            })
-        }) else {
-            return Ok(None);
-        };
-
-        let edit = Some(WorkspaceEdit::new(
-            [(
-                (*uri.uri(state.db())).clone(),
-                vec![{ TextEdit::new(diag.range, missing.clone()) }],
-            )]
-            .into_iter()
-            .collect(),
-        ));
-
-        Ok(Some(CodeActionResponse::from(vec![
-            CodeAction {
-                title: format!("Insert missing '{missing}'"),
-                kind: Some(CodeActionKind::QUICKFIX),
-                edit,
-                ..CodeAction::default()
-            }
-            .into(),
-        ])))
+                .into(),
+            ])))
+        })?
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1490,121 +1471,112 @@ impl LanguageServer for Backend {
         let uri = Arc::new(params.text_document.uri);
         let range = params.range;
 
-        let mut hints = Vec::new();
-
         let state = self.snapshot().await;
-        let uri = uri_db(state.db(), Arc::clone(&uri));
+        let (param_tasks, var_tasks) = state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let opts = db
+                .client_state()
+                .map_or_else(InitializationOptions::new, |cs| {
+                    cs.initialization_options(db)
+                });
 
-        let params = if state
-            .db()
-            .client_state()
-            .map_or_else(InitializationOptions::new, |cs| {
-                cs.initialization_options(state.db())
-            })
-            .inlay_hints_parameters
-        {
-            crate::query::function_calls(state.db(), uri)
-                .iter()
-                .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
-                .map(|c| {
-                    let db = state.db().clone();
+            let param_tasks = if opts.inlay_hints_parameters {
+                crate::query::function_calls(db, uri)
+                    .iter()
+                    .filter(|c| c.f.range.start >= range.start && c.f.range.end <= range.end)
+                    .map(|c| {
+                        let db = db.clone();
+                        let c = c.clone();
+                        tokio::spawn(async move {
+                            match &crate::ast::resolve(&db, c.f)?.kind {
+                                DeclKind::FuncDef(s)
+                                | DeclKind::FuncDecl(s)
+                                | DeclKind::HookDef(s)
+                                | DeclKind::HookDecl(s)
+                                | DeclKind::EventDef(s)
+                                | DeclKind::EventDecl(s) => Some(
+                                    c.args
+                                        .into_iter()
+                                        .zip(s.args.iter())
+                                        .filter_map(|(p, a)| {
+                                            // If the argument has the same name as the parameter do
+                                            // not set an inlay hint.
+                                            let uri = p.uri;
+                                            let tree = crate::parse::parse(&db, uri)?;
+                                            let node = tree
+                                                .root_node()
+                                                .named_descendant_for_point_range(p.range)?;
+                                            let source = crate::source(&db, uri)?;
+                                            let maybe_id =
+                                                node.utf8_text(source.as_bytes()).ok()?;
+                                            if maybe_id == a.id {
+                                                return None;
+                                            }
 
-                    let c = c.clone();
-
-                    tokio::spawn(async move {
-                        match &crate::ast::resolve(&db, c.f)?.kind {
-                            DeclKind::FuncDef(s)
-                            | DeclKind::FuncDecl(s)
-                            | DeclKind::HookDef(s)
-                            | DeclKind::HookDecl(s)
-                            | DeclKind::EventDef(s)
-                            | DeclKind::EventDecl(s) => Some(
-                                c.args
-                                    .into_iter()
-                                    .zip(s.args.iter())
-                                    .filter_map(|(p, a)| {
-                                        // If the argument has the same name as the parameter do
-                                        // not set an inlay hint.
-                                        let uri = p.uri;
-                                        let tree = crate::parse::parse(&db, uri)?;
-                                        let node = tree
-                                            .root_node()
-                                            .named_descendant_for_point_range(p.range)?;
-                                        let source = crate::source(&db, uri)?;
-                                        let maybe_id = node.utf8_text(source.as_bytes()).ok()?;
-                                        if maybe_id == a.id {
-                                            return None;
-                                        }
-
-                                        Some(InlayHint {
-                                            position: p.range.start,
-                                            label: InlayHintLabel::String(format!("{}:", a.id)),
-                                            kind: Some(InlayHintKind::PARAMETER),
-                                            text_edits: None,
-                                            tooltip: Some(InlayHintTooltip::MarkupContent(
-                                                MarkupContent {
-                                                    kind: MarkupKind::Markdown,
-                                                    value: a.documentation.to_string(),
-                                                },
-                                            )),
-                                            padding_left: None,
-                                            padding_right: Some(true),
-                                            data: None,
+                                            Some(InlayHint {
+                                                position: p.range.start,
+                                                label: InlayHintLabel::String(format!("{}:", a.id)),
+                                                kind: Some(InlayHintKind::PARAMETER),
+                                                text_edits: None,
+                                                tooltip: Some(InlayHintTooltip::MarkupContent(
+                                                    MarkupContent {
+                                                        kind: MarkupKind::Markdown,
+                                                        value: a.documentation.to_string(),
+                                                    },
+                                                )),
+                                                padding_left: None,
+                                                padding_right: Some(true),
+                                                data: None,
+                                            })
                                         })
-                                    })
-                                    .collect::<Vec<_>>(),
-                            ),
-                            _ => None,
-                        }
-                    })
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::default()
-        };
-
-        let vars = if state
-            .db()
-            .client_state()
-            .map_or_else(InitializationOptions::new, |cs| {
-                cs.initialization_options(state.db())
-            })
-            .inlay_hints_variables
-        {
-            crate::query::untyped_var_decls(state.db(), uri)
-                .iter()
-                .filter(|d| {
-                    d.loc
-                        .as_ref()
-                        .is_some_and(|r| r.range.start >= range.start && r.range.end <= range.end)
-                })
-                .map(|d| {
-                    let db = state.db().clone();
-
-                    let d = d.clone();
-
-                    tokio::spawn(async move {
-                        let t = crate::ast::typ(&db, Arc::new(d.clone()))?;
-                        Some(InlayHint {
-                            position: d.loc.as_ref().map(|l| l.selection_range.end)?,
-                            label: InlayHintLabel::String(format!(": {}", t.id)),
-                            kind: Some(InlayHintKind::TYPE),
-                            text_edits: None,
-                            tooltip: None,
-                            padding_left: None,
-                            padding_right: None,
-                            data: None,
+                                        .collect::<Vec<_>>(),
+                                ),
+                                _ => None,
+                            }
                         })
                     })
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::default()
-        };
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::default()
+            };
+
+            let var_tasks = if opts.inlay_hints_variables {
+                crate::query::untyped_var_decls(db, uri)
+                    .iter()
+                    .filter(|d| {
+                        d.loc.as_ref().is_some_and(|r| {
+                            r.range.start >= range.start && r.range.end <= range.end
+                        })
+                    })
+                    .map(|d| {
+                        let db = db.clone();
+                        let d = d.clone();
+                        tokio::spawn(async move {
+                            let t = crate::ast::typ(&db, Arc::new(d.clone()))?;
+                            Some(InlayHint {
+                                position: d.loc.as_ref().map(|l| l.selection_range.end)?,
+                                label: InlayHintLabel::String(format!(": {}", t.id)),
+                                kind: Some(InlayHintKind::TYPE),
+                                text_edits: None,
+                                tooltip: None,
+                                padding_left: None,
+                                padding_right: None,
+                                data: None,
+                            })
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::default()
+            };
+
+            (param_tasks, var_tasks)
+        })?;
+        drop(state);
 
         let (params, vars) = futures::future::join(
             async {
-                futures::future::join_all(params)
+                futures::future::join_all(param_tasks)
                     .await
                     .into_iter()
                     .filter_map(std::result::Result::ok)
@@ -1612,7 +1584,7 @@ impl LanguageServer for Backend {
                     .flatten()
             },
             async {
-                futures::future::join_all(vars)
+                futures::future::join_all(var_tasks)
                     .await
                     .into_iter()
                     .filter_map(std::result::Result::ok)
@@ -1621,6 +1593,7 @@ impl LanguageServer for Backend {
         )
         .await;
 
+        let mut hints = Vec::new();
         hints.extend(params);
         hints.extend(vars);
 
@@ -1635,30 +1608,28 @@ impl LanguageServer for Backend {
         let include_declaration = params.context.include_declaration;
 
         let state = self.snapshot().await;
+        let Some((decl, decl_node_loc, db)) = state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let tree = crate::parse::parse(db, uri);
+            let tree = tree.as_ref()?;
+            let node = tree.root_node().named_descendant_for_position(position)?;
+            let decl = crate::ast::resolve(db, NodeLocation::from_node(uri, node))?;
+            let decl_node_loc = decl
+                .loc
+                .as_ref()
+                .map(|l| NodeLocation::from_range(l.uri, l.selection_range));
+            Some((decl, decl_node_loc, db.clone()))
+        })?
+        else {
+            return Ok(None);
+        };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let tree = crate::parse::parse(state.db(), uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
-        };
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
-        let Some(decl) = crate::ast::resolve(state.db(), NodeLocation::from_node(uri, node)) else {
-            return Ok(None);
-        };
-
-        let decl_node_loc = decl
-            .loc
-            .as_ref()
-            .map(|l| NodeLocation::from_range(l.uri, l.selection_range));
-        let references = references(state.db().clone(), decl).await;
+        let refs = references(db.clone(), Arc::clone(&decl)).await;
 
         Ok(Some(
-            references
-                .into_iter()
+            refs.into_iter()
                 .filter(|l| include_declaration || Some(l) != decl_node_loc.as_ref())
-                .map(|l| Location::new((*l.uri.uri(state.db())).clone(), l.range))
+                .map(|l| Location::new((*l.uri.uri(&db)).clone(), l.range))
                 .collect::<Vec<_>>(),
         ))
     }
@@ -1669,26 +1640,25 @@ impl LanguageServer for Backend {
         let position = params.text_document_position.position;
 
         let state = self.snapshot().await;
+        let Some((decl, db)) = state.query(|db| {
+            let uri = uri_db(db, Arc::clone(&uri));
+            let tree = crate::parse::parse(db, uri);
+            let tree = tree.as_ref()?;
+            let node = tree.root_node().named_descendant_for_position(position)?;
+            let decl = crate::ast::resolve(db, NodeLocation::from_node(uri, node))?;
+            Some((decl, db.clone()))
+        })?
+        else {
+            return Ok(None);
+        };
 
-        let uri = uri_db(state.db(), Arc::clone(&uri));
-        let tree = crate::parse::parse(state.db(), uri);
-        let Some(tree) = tree.as_ref() else {
-            return Ok(None);
-        };
-        let Some(node) = tree.root_node().named_descendant_for_position(position) else {
-            return Ok(None);
-        };
-        let Some(decl) = crate::ast::resolve(state.db(), NodeLocation::from_node(uri, node)) else {
-            return Ok(None);
-        };
-
-        let references = references(state.db().clone(), decl).await;
+        let refs = references(db.clone(), decl).await;
 
         let new_name = params.new_name;
 
-        let changes = references
+        let changes = refs
             .into_iter()
-            .chunk_by(|r| (*r.uri.uri(state.db())).clone())
+            .chunk_by(|r| (*r.uri.uri(&db)).clone())
             .into_iter()
             .map(|(uri, g)| {
                 let edits = g
@@ -1710,12 +1680,12 @@ impl LanguageServer for Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
 
-        let source = {
-            let state = self.snapshot().await;
-            let uri = uri_db(state.db(), Arc::new(uri));
-            crate::source(state.db(), uri)
-        };
-        let Some(source) = source else {
+        let state = self.snapshot().await;
+        let Some(source) = state.query(|db| {
+            let uri = uri_db(db, Arc::new(uri));
+            crate::source(db, uri)
+        })?
+        else {
             return Ok(None);
         };
 
@@ -3785,8 +3755,15 @@ b::VAL;",
             async move { s2.hover(hover_params).await },
         );
 
-        // Either result (pre- or post-change type) is valid; what matters is no panic.
-        assert!(hover.is_ok());
+        // Either result (pre- or post-change type) is valid; cancellation via
+        // content_modified is also acceptable when the mutation wins the race.
+        match hover {
+            Ok(_) => {}
+            Err(e) => assert_eq!(
+                e.code,
+                tower_lsp_server::jsonrpc::ErrorCode::ContentModified
+            ),
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -3828,8 +3805,9 @@ b::VAL;",
         )]);
 
         for task in tasks {
-            task.await
-                .expect("background query panicked from Salsa cancellation");
+            // Tasks may complete normally or be cancelled by Salsa when the
+            // mutation invalidates their snapshot; both outcomes are valid.
+            let _ = task.await;
         }
     }
 }

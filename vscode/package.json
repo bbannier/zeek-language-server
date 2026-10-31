@@ -25,7 +25,7 @@
 	},
 	"homepage": "https://github.com/bbannier/zeek-language-server",
 	"engines": {
-		"vscode": "^1.82.0"
+		"vscode": "^1.144.0"
 	},
 	"main": "./out/extension",
 	"icon": "images/icon.png",
@@ -174,12 +174,12 @@
 		"watch": "npm run build-base -- --sourcemap --watch"
 	},
 	"devDependencies": {
-		"@types/node": "^26.6.2",
-		"@types/vscode": "^1.82.0",
+		"@types/node": "^26.6.6",
+		"@types/vscode": "^1.144.0",
 		"@vscode/vsce": "^4.0.0",
 		"esbuild": "^0.28.2",
 		"typescript": "^7.0.2",
-		"vscode-languageclient": "^10.1.1"
+		"vscode-languageclient": "^11.0.0"
 	},
 	"dependencies": {
 		"tar": "^7.5.22",

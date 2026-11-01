@@ -42,7 +42,7 @@ repos:
     hooks:
       - id: actionlint
   - repo: https://github.com/biomejs/pre-commit
-    rev: 5090c1e080cc8cec15feee68a9355c0f660d3712  # frozen: v2.5.15
+    rev: e5f293b7668ac8bfeb2c4bc6740affc40b4f51e1  # frozen: v2.6.2
     hooks:
       - id: biome-format
       - id: biome-lint

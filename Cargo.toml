@@ -16,7 +16,7 @@ version-sync = "0.9.5"
 
 [features]
 default = []
-telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp"]
+telemetry = ["opentelemetry", "tracing-opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "opentelemetry-semantic-conventions"]
 
 [dependencies]
 az = { workspace = true }
@@ -28,7 +28,7 @@ itertools = { workspace = true }
 line-index = { workspace = true }
 opentelemetry = { workspace = true, optional = true }
 opentelemetry-otlp = { workspace = true, optional = true }
-opentelemetry-semantic-conventions = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, optional = true }
 path-clean = { workspace = true }
 rayon = { workspace = true }
